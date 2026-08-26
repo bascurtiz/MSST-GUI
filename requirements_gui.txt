@@ -1,0 +1,64 @@
+# MSST Modern GUI — Python dependencies
+# Install with:  pip install -r msst_gui/requirements_gui.txt
+# Python 3.10+ recommended
+#
+# For PyTorch with CUDA 12.1, use:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# === GUI ===
+PySide6>=6.6.0
+
+# === Audio I/O & Metadata ===
+mutagen>=1.47.0
+soundfile>=0.12.0
+librosa>=0.10.0
+pyloudnorm>=0.2.0
+
+# === Core ML ===
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# === Model Architectures ===
+einops>=0.8.0
+rotary-embedding-torch>=0.8.0
+conformer>=0.3.0
+spafe>=0.3.0
+
+# === Model Zoo (Demucs / Open-Unmix) ===
+demucs>=4.0.0
+openunmix>=1.3.0
+
+# === Config / Serialization ===
+PyYAML>=6.0
+omegaconf>=2.3.0
+ml-collections>=1.0.0
+packaging>=23.0
+
+# === Training & Evaluation ===
+tqdm>=4.65.0
+loralib>=0.1.0
+wandb>=0.15.0
+auraloss>=0.4.0
+torch-log-wmse>=0.3.0
+pytorch-lightning>=2.0.0
+torchmetrics>=1.0.0
+
+# === Transformers (for UperNet segmentation models) ===
+transformers>=4.30.0
+
+# === Audio Augmentation ===
+audiomentations>=0.33.0
+pedalboard>=0.9.0
+
+# === Networking ===
+requests>=2.31.0
+urllib3>=2.0.0
+
+# === Type Checking ===
+beartype>=0.15.0
+
+# === Testing ===
+pytest>=8.0.0
+pytest-qt>=4.0.0
