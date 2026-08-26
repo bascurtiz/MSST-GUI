@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QTimer, QPoint, QEvent
 from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath
 from ui.theme import theme_manager, UIConstants
+from backend import update_checker as uc
 from ui.widgets.common import PageHeader
 
 from backend.downloader import HuggingFaceDownloader
@@ -1857,6 +1858,31 @@ class SettingsPage(QWidget):
         theme_row.addStretch()
         ll.addLayout(theme_row)
 
+        # Updates
+        update_row = QHBoxLayout()
+        update_row.setSpacing(12)
+        self._update_btn = QPushButton("CHECK FOR UPDATES")
+        self._update_btn.setCursor(Qt.PointingHandCursor)
+        self._update_btn.setFixedHeight(30)
+        self._update_btn.setStyleSheet(
+            f"QPushButton{{background:{theme_manager.theme.surface};"
+            f"color:{theme_manager.theme.text_dim};"
+            f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
+            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:9px;"
+            "letter-spacing:1px;padding:0 14px;}"
+            f"QPushButton:hover{{color:{theme_manager.theme.text};}}"
+            f"QPushButton:disabled{{color:{theme_manager.theme.disabled_text};}}")
+        self._update_btn.clicked.connect(self._check_updates)
+        update_row.addWidget(self._update_btn)
+        self._update_status = QLabel(
+            f"Current version {uc.app_version()}")
+        self._update_status.setStyleSheet(
+            "font-family:'Montserrat',sans-serif;font-size:10px;"
+            f"color:{theme_manager.theme.text_muted};background:transparent;")
+        update_row.addWidget(self._update_status)
+        update_row.addStretch()
+        ll.addLayout(update_row)
+
         ll.addStretch()
         main.addWidget(left, 1)
 
@@ -1899,6 +1925,17 @@ class SettingsPage(QWidget):
         # Model Manager is the default source; apply its visibility state now
         # that every section widget exists.
         self._set_mode("manager")
+
+    def _check_updates(self):
+        from ui.widgets.update_dialog import check_now
+        self._update_btn.setEnabled(False)
+        self._update_status.setText("Checking…")
+
+        def _status(text):
+            self._update_status.setText(text)
+            self._update_btn.setEnabled(True)
+
+        check_now(self, _status)
 
     def _set_theme(self, mode):
         self._theme_dark.set_checked(mode == "dark")

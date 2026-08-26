@@ -679,6 +679,9 @@ class MainWindow(QMainWindow):
         theme_manager.theme_changed.connect(self._on_theme_changed)
         theme_manager.theme_about_to_change.connect(self._on_theme_about_to_change)
         self._enable_native_resize()
+        # Update check for exe builds, ~2.5s after launch (silent if current).
+        from ui.widgets.update_dialog import run_startup_check
+        QTimer.singleShot(2500, lambda: run_startup_check(self))
 
     # —— Theme switching ————————————————————————————————————————————————
     def _create_pages(self):

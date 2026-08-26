@@ -19,7 +19,7 @@ OUT = os.path.join(OUT_DIR, "msst-gui-repo.zip")
 SKIP_DIRS = {
     "__pycache__", ".git", ".zcode", ".freebuff", ".pytest_cache",
     ".venv", "build", "dist", "runtime", "runtime_test", "iterative_output",
-    "_dl_tmp", "temp",
+    "test_iterative", "_dl_tmp", "temp",
 }
 
 # models/ ships as source code only — never checkpoints or user downloads.
