@@ -1,4 +1,4 @@
-# MSST Modern GUI — Python dependencies
+# MSST GUI — Python dependencies
 # Install with:  pip install -r msst_gui/requirements_gui.txt
 # Python 3.10+ recommended
 #

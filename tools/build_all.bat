@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  MSST Modern GUI - full build: exe + Inno Setup installer
+REM  MSST GUI - full build: exe + Inno Setup installer
 REM  Outputs: dist\MSST-GUI\           (portable app)
 REM           dist\MSST-GUI-Setup-*.exe (installer)
 REM ============================================================

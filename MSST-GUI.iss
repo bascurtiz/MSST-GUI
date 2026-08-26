@@ -1,8 +1,8 @@
-; MSST Modern GUI — Inno Setup script
+; MSST GUI — Inno Setup script
 ; Build the app bundle first (pyinstaller MSST-GUI.spec --noconfirm),
 ; then compile this script with ISCC. Output: dist\MSST-GUI-Setup-<ver>.exe
 
-#define AppName "MSST Modern GUI"
+#define AppName "MSST GUI"
 #define AppExe "MSST-GUI.exe"
 #define AppVersion "1.0.0"
 #define AppMutex "MSST-GUI-Mutex"
@@ -11,7 +11,7 @@
 AppId={{7E1A2C64-5B9D-4A0E-9C3F-2A8B1D6E5F01}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=MSST Modern GUI contributors
+AppPublisher=MSST GUI contributors
 AppMutex={#AppMutex}
 DefaultDirName={autopf}\MSST-GUI
 DefaultGroupName={#AppName}

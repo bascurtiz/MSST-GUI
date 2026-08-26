@@ -1,5 +1,5 @@
 """
-MSST Modern GUI — entry point.
+MSST GUI — entry point.
 Run this from the root of the Music-Source-Separation-Training repo:
     python msst_gui/main.py
 """

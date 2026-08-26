@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for the MSST Modern GUI.
+# PyInstaller spec for the MSST GUI.
 #
 # Produces dist/MSST-GUI/ — a onedir bundle whose exe covers the GUI, while
 # separation jobs run under the bundled Python runtime (runtime_pristine is

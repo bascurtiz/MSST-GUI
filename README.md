@@ -1,4 +1,4 @@
-# MSST Modern GUI
+# MSST GUI
 
 A modern desktop GUI for [Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training) (MSST) by ZFTurbo, built with PySide6 and styled after [mvsep.com](https://mvsep.com).
 

@@ -1,4 +1,4 @@
-# MSST Modern GUI — inference runtime dependencies
+# MSST GUI — inference runtime dependencies
 # Installed into the bundled runtime by the first-run GPU setup,
 # AFTER the GPU-appropriate PyTorch build (see backend/runtime_setup.py).
 # torch / torchaudio are intentionally NOT listed here.
