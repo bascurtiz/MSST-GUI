@@ -18,7 +18,7 @@ DefaultGroupName={#AppName}
 ; Per-user install: no admin prompt, installs to %LocalAppData%\Programs
 PrivilegesRequired=lowest
 SetupIconFile=resources\app_icon.ico
-WizardImageFile=build\setup\wizard.bmp
+WizardImageFile=build\setup\wizard.png
 WizardSmallImageFile=build\setup\wizardsmall.png
 UninstallDisplayIcon={app}\{#AppExe}
 Compression=lzma2/max

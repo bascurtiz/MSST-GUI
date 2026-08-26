@@ -1742,7 +1742,7 @@ class InferencePage(QWidget):
 
         # Run Inference
         ll.addWidget(_sec_hdr("Run Inference"))
-        ll.addSpacing(10)
+        ll.addSpacing(12)  # matches the MODEL LIBRARY header→cards gap
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)

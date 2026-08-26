@@ -1132,6 +1132,15 @@ class MainWindow(QMainWindow):
     def nativeEvent(self, eventType, message):
         if eventType == b"windows_generic_MSG":
             msg = wintypes.MSG.from_address(int(message))
+            if msg.message == 0x0086:  # WM_NCACTIVATE
+                # Default processing makes DWM paint a light legacy border
+                # around the frameless window whenever it loses focus.
+                # Forwarding with lParam = -1 applies the activation change
+                # without the non-client repaint, keeping the chrome clean.
+                result = ctypes.windll.user32.DefWindowProcW(
+                    wintypes.HWND(int(self.winId())), 0x0086,
+                    msg.wParam, -1)
+                return True, result
             if msg.message == 0x0083 and msg.wParam:  # WM_NCCALCSIZE
                 return True, 0  # the added thick frame occupies no space
             if msg.message == 0x0084 and self.isVisible() \

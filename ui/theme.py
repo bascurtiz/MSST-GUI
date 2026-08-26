@@ -191,8 +191,8 @@ class ThemeManager(QObject):
 
     def __init__(self):
         super().__init__()
-        self._mode = "light"  # mvsep.com's default look
-        self.theme = _LightTheme()
+        self._mode = "dark"  # mvsep.com's default look, and ours
+        self.theme = _DarkTheme()
         self._apply_accent()
 
     # — public API (backward compatible) —

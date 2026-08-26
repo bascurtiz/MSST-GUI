@@ -50,7 +50,7 @@ def main():
 
     apply_palette(app)
 
-    saved_theme = settings_store.load().get("ui", {}).get("theme", "light")
+    saved_theme = settings_store.load().get("ui", {}).get("theme", "dark")
     theme_manager.set_mode(saved_theme, persist=False)
 
     window = MainWindow()
