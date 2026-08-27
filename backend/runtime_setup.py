@@ -20,6 +20,12 @@ import sys
 
 from backend.paths import get_app_dir, get_runtime_dir, get_runtime_python, REPO_ROOT
 
+# Keep the bundled runtime hermetic: installed packages must never be
+# resolved from the user's roaming site-packages (version conflicts), and
+# inference subprocesses inherit this flag automatically.
+if getattr(sys, "frozen", False):
+    os.environ.setdefault("PYTHONNOUSERSITE", "1")
+
 _TORCH_CUDA_INDEX = "https://download.pytorch.org/whl/{line}"
 
 # torch specs per accelerator line (installed from the PyTorch wheel index)
@@ -140,21 +146,33 @@ def _bootstrap_runtime_dir():
     return py
 
 
-def _run_pip(py, args, log_cb, cancel_check):
-    cmd = [py, "-m", "pip"] + args
+def _run_pip(py, args, log_cb, cancel_check, line_cb=None):
+    # PIP_CONFIG_FILE -> devnull ignores machine/user pip.ini overrides
+    # (e.g. NVIDIA PyIndex setups adding unreachable extra indexes); without
+    # this every lookup can stall for ~10s on failed DNS retries.
+    env = os.environ.copy()
+    env["PIP_CONFIG_FILE"] = os.devnull
+    env["PYTHONNOUSERSITE"] = "1"
+    cmd = [py, "-m", "pip"] + args + ["--retries", "3"]
     log_cb(" ".join(cmd))
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace",
+        env=env,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
-    for line in proc.stdout:
+    for raw_line in proc.stdout:
         if cancel_check and cancel_check():
             proc.terminate()
             raise RuntimeError("Setup cancelled.")
-        line = line.rstrip()
+        line = raw_line.rstrip()
         if line:
             log_cb(line)
+            if line_cb:
+                try:
+                    line_cb(line.strip())
+                except Exception:
+                    pass
     proc.wait()
     return proc.returncode
 
@@ -177,18 +195,37 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None):
                "cu128": "PyTorch (CUDA 12.8) — supports RTX 50-series and newer"}[line]
     log_cb(f"Selected build: {summary}")
 
+    # Fine-grained progress: pip reports package downloads line by line, so
+    # every wheel lands as a small, monotonic nudge inside the phase band.
+    def _phase_counter(base, span, cap):
+        state = {"n": 0}
+
+        def on_line(line):
+            if not progress_cb:
+                return
+            s = line.lstrip()
+            if s.startswith(("Downloading ", "Using cached ")) and (
+                    ".whl" in s or ".tar.gz" in s):
+                state["n"] += 1
+                frac = min(state["n"], cap) / float(cap)
+                progress_cb(base + span * frac)
+
+        return on_line
+
     if progress_cb:
-        progress_cb(0.05)
+        progress_cb(0.04)
 
     # 1. PyTorch + torchaudio from the matching wheel index
     torch_args = _TORCH_SPECS[line]
+    torch_line_cb = _phase_counter(0.05, 0.45, cap=14)
     if line == "cpu":
-        torch_args = torch_args  # PyPI default index already serves CPU wheels
-        rc = _run_pip(py, ["install", "--upgrade"] + torch_args, log_cb, cancel_check)
+        rc = _run_pip(py, ["install", "--upgrade"] + torch_args,
+                      log_cb, cancel_check, line_cb=torch_line_cb)
     else:
         index = _TORCH_CUDA_INDEX.format(line=line)
         rc = _run_pip(py, ["install", "--upgrade"] + torch_args +
-                      ["--index-url", index], log_cb, cancel_check)
+                      ["--index-url", index],
+                      log_cb, cancel_check, line_cb=torch_line_cb)
     if rc != 0:
         return False, f"PyTorch installation failed (exit code {rc})."
     if progress_cb:
@@ -197,11 +234,13 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None):
     # 2. Remaining inference libraries from PyPI (torch already satisfied)
     req = _requirements_runtime_file()
     if req:
-        rc = _run_pip(py, ["install", "-r", req], log_cb, cancel_check)
+        req_line_cb = _phase_counter(0.56, 0.32, cap=40)
+        rc = _run_pip(py, ["install", "-r", req],
+                      log_cb, cancel_check, line_cb=req_line_cb)
         if rc != 0:
             return False, f"Library installation failed (exit code {rc})."
     if progress_cb:
-        progress_cb(0.95)
+        progress_cb(0.93)
 
     if not runtime_ready():
         return False, "Runtime installed but 'import torch' failed."

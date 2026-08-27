@@ -11,7 +11,7 @@ PyTorch build into the bundled runtime.
 import os
 import sys
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QPlainTextEdit,
     QProgressBar,
@@ -100,9 +100,8 @@ class RuntimeSetupDialog(QDialog):
         info = QLabel(
             f"Detected GPU: <b style='color:{theme_manager.accent};'>{gpu_txt}</b><br>"
             f"PyTorch to install: <b>{line_txt}</b><br><br>"
-            f"One PyTorch build cannot cover both older and newest GPUs, so the "
-            f"download is picked for your hardware. This happens once — around "
-            f"2.5–3 GB — and requires an internet connection.")
+            f"Installation will take 5-10 minutes, depending on your hardware and "
+            f"internet connection (2.5-3 GB).")
         info.setWordWrap(True)
         info.setTextFormat(Qt.RichText)
         root.addWidget(info)
@@ -111,6 +110,14 @@ class RuntimeSetupDialog(QDialog):
         self._bar.setRange(0, 100)
         self._bar.setValue(0)
         root.addWidget(self._bar)
+
+        # Progress reports arrive as coarse milestones (per pip package), so
+        # the bar eases toward each target instead of snapping between them.
+        self._shown = 0.0
+        self._target = 0.0
+        self._easer = QTimer(self)
+        self._easer.setInterval(60)
+        self._easer.timeout.connect(self._ease_progress)
 
         self._log = QPlainTextEdit()
         self._log.setReadOnly(True)
@@ -137,12 +144,29 @@ class RuntimeSetupDialog(QDialog):
         btns.addWidget(self._close_btn)
         root.addLayout(btns)
 
+    def set_progress(self, fraction):
+        """Set a progress target (0..1). The bar eases toward it so coarse
+        milestone updates read as continuous movement."""
+        self._target = max(self._target, min(1.0, float(fraction)))
+        if not self._easer.isActive():
+            self._easer.start()
+
+    def _ease_progress(self):
+        gap = self._target - self._shown
+        if gap <= 0.001:
+            self._shown = self._target
+            self._easer.stop()
+        else:
+            # glide over a full-scale jump in ~4s; small nudges land faster
+            self._shown += max(gap * 0.10, 0.002)
+        self._bar.setValue(int(round(min(self._shown, 1.0) * 100)))
+
     def _start_install(self):
         self._install_btn.setEnabled(False)
         self._log.appendPlainText("— preparing runtime —")
         self._thread = _SetupThread(self)
         self._thread.log_line.connect(self._log.appendPlainText)
-        self._thread.progress.connect(lambda f: self._bar.setValue(int(f * 100)))
+        self._thread.progress.connect(self.set_progress)
         self._thread.finished_ok.connect(self._on_finished)
         self._cancel_btn.setText("Cancel setup")
         try:
@@ -171,8 +195,8 @@ class RuntimeSetupDialog(QDialog):
 
 def ensure_runtime(parent=None) -> bool:
     """Gate for job-start paths. True when separation jobs can run."""
-    if not getattr(sys_frozen(), "frozen", False):
-        return True
+    if not getattr(sys, "frozen", False):
+        return True  # dev checkout: the running venv is the runtime
     if runtime_setup.runtime_ready():
         return True
     dlg = RuntimeSetupDialog(parent)

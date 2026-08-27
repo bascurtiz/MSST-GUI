@@ -22,6 +22,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 
 import backend.settings as settings_store
+import backend.runtime_setup  # noqa: F401  (sets PYTHONNOUSERSITE early when frozen)
 from ui.main_window import MainWindow
 from ui.theme import theme_manager, apply_palette
 
