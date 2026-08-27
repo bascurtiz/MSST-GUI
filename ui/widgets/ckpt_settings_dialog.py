@@ -36,7 +36,7 @@ def _value_lbl_ss():
 
 def _title_lbl_ss():
     return (
-        "font-family:'Montserrat',sans-serif;font-size:9px;font-weight:900;"
+        "font-family:'Montserrat',sans-serif;font-size:9px;font-weight:bold;"
         f"color:{theme_manager.theme.text_label};background:transparent;letter-spacing:1px;"
     )
 
@@ -63,7 +63,7 @@ class _TitleBar(QWidget):
 
         title_lbl = QLabel(title)
         title_lbl.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:bold;"
             "color:#FFFFFF;background:transparent;letter-spacing:1px;"
         )
         hl.addWidget(title_lbl)
@@ -314,14 +314,14 @@ class CkptSettingsDialog(QDialog):
         btn_row.setContentsMargins(0, 4, 0, 0)
 
         _err = QColor(theme_manager.theme.error)
-        self._btn_cancel = QPushButton("CANCEL")
+        self._btn_cancel = QPushButton("Cancel")
         self._btn_cancel.setFixedSize(120, 36)
         self._btn_cancel.setStyleSheet(
             "QPushButton{"
             "background:" + theme_manager.theme.surface + ";color:" + theme_manager.theme.text_muted + ";"
             "border:1px solid " + theme_manager.theme.border_dim + ";border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:10px;letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:10px;}"
             "QPushButton:hover{color:" + theme_manager.theme.error + ";border:1px solid rgba(" + str(_err.red()) + "," + str(_err.green()) + "," + str(_err.blue()) + ",0.40);}"
         )
         self._btn_cancel.clicked.connect(self.reject)
@@ -329,13 +329,13 @@ class CkptSettingsDialog(QDialog):
 
         btn_row.addStretch()
 
-        self._btn_save = QPushButton("SAVE SETTINGS")
+        self._btn_save = QPushButton("Save Settings")
         self._btn_save.setFixedSize(140, 36)
         self._btn_save.setStyleSheet(
             "QPushButton{"
             "background:" + theme_manager.accent + ";color:" + theme_manager._accent_text + ";border:none;border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:10px;letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:10px;}"
             "QPushButton:hover{background:" + theme_manager._accent_hover + ";}"
             "QPushButton:pressed{background:" + theme_manager.accent + ";}"
         )
@@ -417,8 +417,8 @@ class CkptSettingsDialog(QDialog):
         self._btn_save.setStyleSheet(
             "QPushButton{"
             "background:" + theme_manager.accent + ";color:" + theme_manager._accent_text + ";border:none;border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:10px;letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:10px;}"
             "QPushButton:hover{background:" + theme_manager._accent_hover + ";}"
             "QPushButton:pressed{background:" + theme_manager.accent + ";}"
         )

@@ -250,6 +250,12 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None):
     if progress_cb:
         progress_cb(0.55)
 
+    # 1b. Remove known-broken zstd stub bindings: urllib3 2.6+ probes them and
+    # crashes on import (AttributeError on ZstdError) when the canonical
+    # `zstandard` package isn't what it finds first.
+    _run_pip(py, ["uninstall", "-y", "backports.zstd", "zstd"],
+             log_cb, cancel_check)
+
     # 2. Remaining inference libraries from PyPI (torch already satisfied)
     req = _requirements_runtime_file()
     if req:

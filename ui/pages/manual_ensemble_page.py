@@ -146,7 +146,7 @@ def _badge_ss():
         f"background:{theme_manager.accent};"
         f"color:{theme_manager._accent_text};"
         "font-family:'Montserrat',sans-serif;"
-        "font-size:10px;font-weight:900;"
+        "font-size:10px;font-weight:bold;"
         "border-radius:4px;"
         "padding:2px 6px;}"
     )
@@ -157,7 +157,7 @@ def _sec_hdr(text):
     t = theme_manager.theme
     w = QLabel(text.upper())
     w.setStyleSheet(
-        "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:900;"
+        "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:bold;"
         f"color:{t.text};background:transparent;padding-left:8px;"
         f"border-left:3px solid {theme_manager.accent};letter-spacing:1.5px;"
     )
@@ -457,9 +457,9 @@ class _EnsembleGuidePanel(QFrame):
 
         t = theme_manager.theme
         hdr = QHBoxLayout()
-        title = QLabel("HOW ENSEMBLE WORKS")
+        title = QLabel("How Ensemble Works")
         title.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:bold;"
             f"color:{t.text};background:transparent;letter-spacing:1.5px;"
         )
         hdr.addWidget(title)
@@ -553,7 +553,7 @@ class _EnsembleGuidePanel(QFrame):
             "background:" + theme_manager.accent + ";"
             "color:" + theme_manager._accent_text + ";"
             "font-family:'Montserrat',sans-serif;"
-            "font-size:11px;font-weight:900;"
+            "font-size:11px;font-weight:bold;"
             "border-radius:3px;"
         )
         return b
@@ -573,7 +573,7 @@ class _EnsembleGuidePanel(QFrame):
         hr.addWidget(self._badge(1))
         tl = QLabel("INPUT")
         tl.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:bold;"
             "color:" + theme_manager.accent + ";background:transparent;letter-spacing:1px;"
         )
         hr.addWidget(tl)
@@ -644,7 +644,7 @@ class _EnsembleGuidePanel(QFrame):
         hr.addWidget(self._badge(2))
         tl = QLabel("PROCESS")
         tl.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:bold;"
             "color:" + theme_manager.accent + ";background:transparent;letter-spacing:1px;"
         )
         hr.addWidget(tl)
@@ -739,7 +739,7 @@ class _EnsembleGuidePanel(QFrame):
         hr.addWidget(self._badge(3))
         tl = QLabel("OUTPUT")
         tl.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:bold;"
             "color:" + theme_manager.accent + ";background:transparent;letter-spacing:1px;"
         )
         hr.addWidget(tl)
@@ -797,7 +797,7 @@ class _EnsembleGuidePanel(QFrame):
         hr.addWidget(self._badge(4))
         tl = QLabel("WEIGHT SYSTEM")
         tl.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;font-weight:bold;"
             "color:" + theme_manager.accent + ";background:transparent;letter-spacing:1px;"
         )
         hr.addWidget(tl)
@@ -840,7 +840,7 @@ class _EnsembleGuidePanel(QFrame):
         left_col.setSpacing(8)
         left_title = QLabel("How weight works:")
         left_title.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:bold;"
             "color:" + theme_manager.accent + ";background:transparent;letter-spacing:0.5px;"
         )
         left_col.addWidget(left_title)
@@ -865,7 +865,7 @@ class _EnsembleGuidePanel(QFrame):
         right_title = QLabel("Weight only applies to:")
         right_title.setWordWrap(True)
         right_title.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:bold;"
             "color:" + theme_manager.accent + ";background:transparent;letter-spacing:0.5px;"
         )
         right_col.addWidget(right_title)
@@ -892,7 +892,7 @@ class _EnsembleGuidePanel(QFrame):
         no_title = QLabel("Weight does NOT apply to:")
         no_title.setWordWrap(True)
         no_title.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:bold;"
             "color:" + t.error + ";background:transparent;letter-spacing:0.5px;"
         )
         right_col.addWidget(no_title)
@@ -934,6 +934,7 @@ class ManualEnsemblePage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("manualEnsemblePage")
         self._runner = None
         self._file_rows = []
         self._build_ui()
@@ -941,7 +942,9 @@ class ManualEnsemblePage(QWidget):
 
     def reapply_theme(self):
         t = theme_manager.theme
-        self.setStyleSheet(f"background:{t.bg};")
+        # Object-name scoped so the background doesn't cascade into child
+        # dialogs (QMessageBox etc.) and overwrite their button styles.
+        self.setStyleSheet(f"#manualEnsemblePage{{background:{t.bg};}}")
 
         self._guide_panel.setStyleSheet(_guide_ss())
         self._drop_zone.setStyleSheet(_drop_zone_ss())
@@ -952,8 +955,8 @@ class ManualEnsemblePage(QWidget):
                     "QPushButton{"
                     f"background:{theme_manager.accent};"
                     f"color:{theme_manager._accent_text};border:none;border-radius:4px;"
-                    "font-family:'Montserrat',sans-serif;font-weight:900;"
-                    "font-size:12px;letter-spacing:2px;}"
+                    "font-family:'Montserrat',sans-serif;font-weight:600;"
+                    "font-size:12px;}"
                     f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
                     f"QPushButton:pressed{{background:{theme_manager.accent};}}"
                     f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};}}"
@@ -963,8 +966,8 @@ class ManualEnsemblePage(QWidget):
                     f"QPushButton{{"
                     f"background:{t.surface_alt};color:{t.text_label};"
                     f"border:1px solid {t.border_dim};border-radius:4px;"
-                    "font-family:'Montserrat',sans-serif;font-weight:900;"
-                    "font-size:12px;letter-spacing:2px;}"
+                    "font-family:'Montserrat',sans-serif;font-weight:600;"
+                    "font-size:12px;}"
                     f"QPushButton:enabled{{"
                     f"color:{t.error};border:1px solid {_rgba_str(t.error, 102)};}}"
                     f"QPushButton:hover:enabled{{background:{_rgba_str(t.error, 20)};}}"
@@ -975,16 +978,16 @@ class ManualEnsemblePage(QWidget):
                     f"QPushButton{{background:transparent;color:{t.text_dim};"
                     f"border:1px solid {t.border_dim};border-radius:4px;"
                     "padding-left:10px;padding-right:10px;"
-                    "font-family:'Montserrat',sans-serif;font-weight:900;font-size:8px;"
-                    "letter-spacing:1px;}"
+                    "font-family:'Montserrat',sans-serif;font-weight:600;font-size:8px;"
+                    "}"
                     f"QPushButton:hover{{color:{theme_manager.accent};border:1px solid {theme_manager._accent_glow};}}"
                 )
             elif w is self._btn_add:
                 w.setStyleSheet(
                     f"QPushButton{{background:transparent;color:{t.text_muted};"
                     f"border:1px solid {t.border_dim};border-radius:4px;"
-                    "font-family:'Montserrat',sans-serif;font-weight:900;font-size:8px;"
-                    "letter-spacing:1px;}"
+                    "font-family:'Montserrat',sans-serif;font-weight:600;font-size:8px;"
+                    "}"
                     f"QPushButton:hover{{color:{theme_manager.accent};border:1px solid {theme_manager._accent_glow};}}"
                 )
 
@@ -1055,29 +1058,29 @@ class ManualEnsemblePage(QWidget):
         btn_row.setSpacing(8)
         btn_row.setContentsMargins(0, 0, 0, 0)
 
-        self.btn_run = QPushButton("\u25B6  RUN ENSEMBLE")
+        self.btn_run = QPushButton("\u25B6  Run Ensemble")
         self.btn_run.setFixedSize(240, 44)
         self.btn_run.setStyleSheet(
             "QPushButton{"
             f"background:{theme_manager.accent};"
             f"color:{theme_manager._accent_text};border:none;border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:12px;letter-spacing:2px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:12px;}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
             f"QPushButton:pressed{{background:{theme_manager.accent};}}"
             f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};}}"
         )
         self.btn_run.clicked.connect(self._run)
 
-        self.btn_stop = QPushButton("\u25A0  STOP")
+        self.btn_stop = QPushButton("\u25A0  Stop")
         self.btn_stop.setFixedSize(110, 44)
         self.btn_stop.setEnabled(False)
         self.btn_stop.setStyleSheet(
             f"QPushButton{{"
             f"background:{t.surface_alt};color:{t.text_label};"
             f"border:1px solid {t.border_dim};border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:12px;letter-spacing:2px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:12px;}"
             f"QPushButton:enabled{{"
             f"color:{t.error};border:1px solid {_rgba_str(t.error, 102)};}}"
             f"QPushButton:hover:enabled{{background:{_rgba_str(t.error, 20)};}}"
@@ -1103,14 +1106,14 @@ class ManualEnsemblePage(QWidget):
         settings_hdr.addWidget(_sec_hdr("Settings"))
         settings_hdr.addStretch()
 
-        self._guide_btn = QPushButton("HOW ENSEMBLE WORKS")
+        self._guide_btn = QPushButton("How Ensemble Works")
         self._guide_btn.setFixedHeight(24)
         self._guide_btn.setStyleSheet(
             f"QPushButton{{background:transparent;color:{t.text_dim};"
             f"border:1px solid {t.border_dim};border-radius:4px;"
             "padding-left:10px;padding-right:10px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:8px;"
-            "letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:8px;"
+            "}"
             f"QPushButton:hover{{color:{theme_manager.accent};border:1px solid {theme_manager._accent_glow};}}"
         )
         self._guide_btn.clicked.connect(self._toggle_guide)
@@ -1196,7 +1199,7 @@ class ManualEnsemblePage(QWidget):
         or_btn.setFixedSize(34, 34)
         or_btn.setStyleSheet(
             f"QPushButton{{background:transparent;color:{t.text_label};"
-            "border:none;font-size:14px;font-weight:700;border-radius:4px;}"
+            "border:none;font-size:14px;font-weight:600;border-radius:4px;}"
             f"QPushButton:hover{{color:{theme_manager.accent};background:{theme_manager._accent_soft};}}"
         )
         or_btn.clicked.connect(self._browse_output)
@@ -1227,13 +1230,13 @@ class ManualEnsemblePage(QWidget):
         hdr_row.addWidget(sub2)
         hdr_row.addStretch()
 
-        self._btn_add = QPushButton("+ ADD FILE")
+        self._btn_add = QPushButton("+ Add File")
         self._btn_add.setFixedSize(100, 26)
         self._btn_add.setStyleSheet(
             f"QPushButton{{background:transparent;color:{t.text_muted};"
             f"border:1px solid {t.border_dim};border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:8px;"
-            "letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:8px;"
+            "}"
             f"QPushButton:hover{{color:{theme_manager.accent};border:1px solid {theme_manager._accent_glow};}}"
         )
         self._btn_add.clicked.connect(self._add_file_row)
@@ -1354,7 +1357,7 @@ class ManualEnsemblePage(QWidget):
         self._guide_anim.start()
 
     def _on_guide_closed(self):
-        self._guide_btn.setText("HOW ENSEMBLE WORKS")
+        self._guide_btn.setText("How Ensemble Works")
         try:
             self._guide_anim.finished.disconnect(self._on_guide_closed)
         except TypeError:

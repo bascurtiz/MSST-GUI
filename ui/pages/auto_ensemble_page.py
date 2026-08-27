@@ -146,7 +146,7 @@ class _CardContainer(QFrame):
                 tl = QLabel(title)
                 tl.setWordWrap(True)
                 tl.setStyleSheet(
-                    "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:900;"
+                    "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:bold;"
                     f"color:{theme_manager.theme.text};background:transparent;letter-spacing:1.5px;"
                 )
                 txt_col.addWidget(tl)
@@ -238,7 +238,7 @@ class _StemTypeButton(QPushButton):
                 f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
             )
             self._name_lbl.setStyleSheet(
-                f"font-family:'Montserrat',sans-serif;font-size:11px;font-weight:900;color:{theme_manager._accent_text};background:transparent;"
+                f"font-family:'Montserrat',sans-serif;font-size:11px;font-weight:bold;color:{theme_manager._accent_text};background:transparent;"
             )
             _at = QColor(theme_manager._accent_text)
             self._count_lbl.setStyleSheet(
@@ -251,7 +251,7 @@ class _StemTypeButton(QPushButton):
                 f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};border-color:{theme_manager.theme.border_dim};}}"
             )
             self._name_lbl.setStyleSheet(
-                f"font-family:'Montserrat',sans-serif;font-size:11px;font-weight:900;"
+                f"font-family:'Montserrat',sans-serif;font-size:11px;font-weight:bold;"
                 f"color:{theme_manager.theme.text_sec};background:transparent;"
             )
             self._count_lbl.setStyleSheet(
@@ -452,7 +452,7 @@ class _ModelCard(QFrame):
             f"QFrame#modelRow:hover{{background:{theme_manager.theme.surface_alt};border-color:{theme_manager.theme.border_dim};}}"
         )
         self._name_label.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:13px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:13px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;"
         )
         self._arch_label.setStyleSheet(
@@ -461,7 +461,7 @@ class _ModelCard(QFrame):
         )
         self._dots_btn.setStyleSheet(
             f"QPushButton{{background:transparent;color:{theme_manager.theme.text_dim};"
-            f"border:none;font-size:14px;font-weight:700;border-radius:4px;}}"
+            f"border:none;font-size:14px;font-weight:600;border-radius:4px;}}"
             f"QPushButton:hover{{color:{_accent()};background:{_rgba_str(_accent(), 0.12)};}}"
         )
         self._apply_badge_styles()
@@ -477,7 +477,7 @@ class _ModelCard(QFrame):
     def set_skipped(self):
         self._cb.setEnabled(False)
         self._name_label.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:13px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:13px;font-weight:bold;"
             f"color:{theme_manager.theme.disabled_text};background:transparent;"
         )
 
@@ -501,14 +501,14 @@ class _TargetCard(QPushButton):
         if self._selected:
             self.setStyleSheet(
                 f"QPushButton{{background:{_accent()};color:{theme_manager._accent_text};border:none;"
-                "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:900;"
+                "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:600;"
                 "border-radius:8px;padding:0 20px;}"
             )
         else:
             self.setStyleSheet(
                 f"QPushButton{{background:{theme_manager.theme.surface};border:1px solid {theme_manager.theme.border_visible};"
                 "border-radius:10px;font-family:'Montserrat',sans-serif;font-size:12px;"
-                f"font-weight:900;color:{theme_manager.theme.text_sec};padding:0 24px;}}"
+                f"font-weight:600;color:{theme_manager.theme.text_sec};padding:0 24px;}}"
                 f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};border-color:{theme_manager.theme.border_dim};color:{theme_manager.theme.text};}}"
             )
 
@@ -543,14 +543,14 @@ class _EnsembleTypeCard(QPushButton):
         if self._selected:
             self.setStyleSheet(
                 f"QPushButton{{background:{_accent()};color:{theme_manager._accent_text};border:none;"
-                "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:900;"
+                "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;"
                 "border-radius:8px;padding:0 16px;}"
             )
         else:
             self.setStyleSheet(
                 f"QPushButton{{background:{theme_manager.theme.surface};border:1px solid {theme_manager.theme.border_visible};"
                 "border-radius:8px;font-family:'Montserrat',sans-serif;font-size:10px;"
-                f"font-weight:900;color:{theme_manager.theme.text_sec};padding:0 16px;}}"
+                f"font-weight:600;color:{theme_manager.theme.text_sec};padding:0 16px;}}"
                 f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};border-color:{theme_manager.theme.border_dim};color:{theme_manager.theme.text};}}"
             )
 
@@ -583,8 +583,8 @@ class _BrowseButton(QPushButton):
         self.setStyleSheet(
             f"QPushButton{{background:transparent;color:{theme_manager.theme.text_dim};"
             f"border:1px solid {theme_manager.theme.border};"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:{UIConstants.BTN_FONT_SIZE}px;"
-            f"letter-spacing:1px;border-radius:{UIConstants.BTN_RADIUS}px;padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:{UIConstants.BTN_FONT_SIZE}px;"
+            f"border-radius:{UIConstants.BTN_RADIUS}px;padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
             f"QPushButton:hover{{border-color:{theme_manager.theme.border_dim};color:{theme_manager.theme.text};}}"
         )
 
@@ -598,13 +598,13 @@ def _tta_btn_style(active):
     if active:
         return (
             f"QPushButton{{background:{_accent()};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;font-weight:600;"
             f"border-radius:{UIConstants.BTN_RADIUS}px;padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
         )
     else:
         return (
             f"QPushButton{{background:{theme_manager.theme.surface};border:1px solid {theme_manager.theme.border_visible};"
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;font-weight:600;"
             f"color:{theme_manager.theme.text_sec};border-radius:{UIConstants.BTN_RADIUS}px;padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
             f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};border-color:{theme_manager.theme.border_dim};color:{theme_manager.theme.text};}}"
         )
@@ -627,14 +627,14 @@ class _QualityButton(QPushButton):
         if self._selected:
             self.setStyleSheet(
                 f"QPushButton{{background:{_accent()};color:{theme_manager._accent_text};border:none;"
-                f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;font-weight:900;"
+                f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;font-weight:600;"
                 f"border-radius:{UIConstants.BTN_RADIUS}px;padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
             )
         else:
             self.setStyleSheet(
                 f"QPushButton{{background:{theme_manager.theme.surface};border:1px solid {theme_manager.theme.border_visible};"
                 f"border-radius:{UIConstants.BTN_RADIUS}px;font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;"
-                f"font-weight:900;color:{theme_manager.theme.text_sec};padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
+                f"font-weight:600;color:{theme_manager.theme.text_sec};padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
                 f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};border-color:{theme_manager.theme.border_dim};color:{theme_manager.theme.text};}}"
             )
 
@@ -701,7 +701,10 @@ class AutoEnsemblePage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(f"background:{_bg()};")
+        self.setObjectName("autoEnsemblePage")
+        # Object-name scoped so the background doesn't cascade into child
+        # dialogs (QMessageBox etc.) and overwrite their button styles.
+        self.setStyleSheet(f"#autoEnsemblePage{{background:{_bg()};}}")
         self._models = []
         self._stem_type = ""
         self._target_output = ""
@@ -835,11 +838,11 @@ class AutoEnsemblePage(QWidget):
         tta_row.addWidget(tta_lbl)
         tta_row.addStretch()
         self._tta_group = QButtonGroup(self)
-        self._tta_off = QPushButton("OFF")
+        self._tta_off = QPushButton("Off")
         self._tta_off.setCheckable(True)
         self._tta_off.setChecked(True)
         self._tta_off.setCursor(Qt.PointingHandCursor)
-        self._tta_on = QPushButton("ON")
+        self._tta_on = QPushButton("On")
         self._tta_on.setCheckable(True)
         self._tta_on.setChecked(False)
         self._tta_on.setCursor(Qt.PointingHandCursor)
@@ -986,15 +989,15 @@ class AutoEnsemblePage(QWidget):
         bar.setContentsMargins(UIConstants.ACTION_BAR_MARGIN_LR, UIConstants.ACTION_BAR_MARGIN_TOP, UIConstants.ACTION_BAR_MARGIN_LR, UIConstants.ACTION_BAR_MARGIN_BOTTOM)
         bar.setSpacing(UIConstants.ACTION_BAR_SPACING)
 
-        self._start_btn = QPushButton("START ENSEMBLE")
+        self._start_btn = QPushButton("Start Ensemble")
         self._start_btn.setCursor(Qt.PointingHandCursor)
         self._start_btn.setMinimumWidth(200)
         self._start_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
         self._start_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self._start_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
-            f"letter-spacing:2px;border-radius:{UIConstants.ACTION_RADIUS}px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
+            f"border-radius:{UIConstants.ACTION_RADIUS}px;}}"
             f"QPushButton:hover{{background:{theme_manager.accent};}}"
             f"QPushButton:pressed{{background:{theme_manager.accent};}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
@@ -1002,7 +1005,7 @@ class AutoEnsemblePage(QWidget):
         self._start_btn.clicked.connect(self._start)
         bar.addWidget(self._start_btn)
 
-        self._stop_btn = QPushButton("STOP")
+        self._stop_btn = QPushButton("Stop")
         self._stop_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
         self._stop_btn.setMinimumWidth(90)
         self._stop_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
@@ -1012,7 +1015,7 @@ class AutoEnsemblePage(QWidget):
         self._update_stop_style()
         bar.addWidget(self._stop_btn)
 
-        self._pause_btn = QPushButton("PAUSE")
+        self._pause_btn = QPushButton("Pause")
         self._pause_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
         self._pause_btn.setMinimumWidth(90)
         self._pause_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
@@ -1022,7 +1025,7 @@ class AutoEnsemblePage(QWidget):
         self._update_pause_style()
         bar.addWidget(self._pause_btn)
 
-        self._open_btn = QPushButton("OPEN OUTPUT")
+        self._open_btn = QPushButton("Open Output")
         self._open_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
         self._open_btn.setMinimumWidth(110)
         self._open_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
@@ -1038,8 +1041,8 @@ class AutoEnsemblePage(QWidget):
     def _update_stop_style(self):
         self._stop_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.error};color:{theme_manager.theme.text};border:none;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-            "letter-spacing:2px;border-radius:8px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+            "border-radius:8px;}"
             f"QPushButton:hover{{background:{theme_manager.theme.error};}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
         )
@@ -1048,8 +1051,8 @@ class AutoEnsemblePage(QWidget):
         self._pause_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
             f"border:1px solid {theme_manager.theme.border};"
-            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-            "letter-spacing:2px;border-radius:8px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+            "border-radius:8px;}"
             f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
         )
@@ -1058,8 +1061,8 @@ class AutoEnsemblePage(QWidget):
         self._open_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
             f"border:1px solid {theme_manager.theme.border};"
-            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:10px;"
-            "letter-spacing:1px;border-radius:8px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:10px;"
+            "border-radius:8px;}"
             f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
         )
 

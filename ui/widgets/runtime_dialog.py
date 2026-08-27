@@ -94,7 +94,7 @@ class RuntimeSetupDialog(QDialog):
 
         title = QLabel("First-time setup — GPU runtime")
         title.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:14px;font-weight:900;")
+            f"font-family:'Montserrat',sans-serif;font-size:14px;font-weight:bold;")
         root.addWidget(title)
 
         info = QLabel(
@@ -128,17 +128,19 @@ class RuntimeSetupDialog(QDialog):
         btns = QHBoxLayout()
         btns.addStretch()
         self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setStyleSheet("QPushButton{font-weight:600;}")
         self._cancel_btn.clicked.connect(self.reject)
         btns.addWidget(self._cancel_btn)
         self._install_btn = QPushButton("Install")
         self._install_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:#FFFFFF;"
             f"border:none;border-radius:6px;padding:0 18px;min-height:32px;"
-            f"font-weight:700;}}"
+            f"font-weight:600;}}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}")
         self._install_btn.clicked.connect(self._start_install)
         btns.addWidget(self._install_btn)
         self._close_btn = QPushButton("Close")
+        self._close_btn.setStyleSheet("QPushButton{font-weight:600;}")
         self._close_btn.clicked.connect(self.reject)
         self._close_btn.setVisible(False)
         btns.addWidget(self._close_btn)

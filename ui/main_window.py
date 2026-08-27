@@ -746,6 +746,9 @@ class MainWindow(QMainWindow):
         self.inference_page.ckpt_settings_requested.connect(
             self._show_ckpt_settings
         )
+        self.inference_page.add_model_requested.connect(
+            lambda: self._switch(3)
+        )
         self.ensemble_landing.auto_selected.connect(
             lambda: self.ensemble_stack.setCurrentWidget(self.auto_ensemble)
         )
@@ -796,7 +799,10 @@ class MainWindow(QMainWindow):
         # _central only: the stacks are transparent children, so restyling
         # them as well would re-polish the whole page tree two extra times —
         # a visible freeze on every theme switch.
-        self._central.setStyleSheet(f"background:{bg};")
+        # Object-name scoped: a bare `background:` declaration would cascade
+        # into child dialogs (QMessageBox etc.) and wash out their buttons.
+        self._central.setObjectName("appCentral")
+        self._central.setStyleSheet(f"#appCentral{{background:{bg};}}")
 
     def _on_theme_changed(self):
         self._apply_theme_bgs()

@@ -233,7 +233,7 @@ def _section_hdr(text):
     # matches the INFERENCE page's section header (bar-to-text gap, tracking)
     l = QLabel(text.upper())
     l.setStyleSheet(
-        f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_HDR_FONT_SIZE + 1}px;font-weight:900;"
+        f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_HDR_FONT_SIZE + 1}px;font-weight:bold;"
         f"color:{theme_manager.theme.text};background:transparent;padding-left:8px;"
         f"border-left:3px solid {theme_manager.accent};letter-spacing:1.5px;"
     )
@@ -323,7 +323,7 @@ class _InputField(QFrame):
             self.btn.setCursor(Qt.PointingHandCursor)
             self.btn.setStyleSheet(
                 f"QPushButton{{background:transparent;color:{theme_manager.theme.text_dim};"
-                f"border:none;font-size:14px;font-weight:700;border-radius:4px;}}"
+                f"border:none;font-size:14px;font-weight:600;border-radius:4px;}}"
                 f"QPushButton:hover{{color:{theme_manager.accent};background:{_rgba_str(theme_manager.accent, 0.12)};}}"
             )
             hl.addWidget(self.btn)
@@ -418,7 +418,7 @@ class _EditTypeDialog(QDialog):
         cancel_btn.setStyleSheet(
             f"QPushButton{{background:{t.surface_alt};color:{t.text};"
             f"border:1px solid {t.border_dim};border-radius:8px;"
-            "font-family:'Montserrat';font-weight:700;font-size:12px;padding:0 22px;}"
+            "font-family:'Montserrat';font-weight:600;font-size:12px;padding:0 22px;}"
             f"QPushButton:hover{{background:{t.border_visible};}}"
         )
         cancel_btn.clicked.connect(self.reject)
@@ -428,7 +428,7 @@ class _EditTypeDialog(QDialog):
         ok_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};"
             "border:none;border-radius:8px;"
-            "font-family:'Montserrat';font-weight:700;font-size:12px;padding:0 26px;}"
+            "font-family:'Montserrat';font-weight:600;font-size:12px;padding:0 26px;}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
         )
         ok_btn.clicked.connect(self.accept)
@@ -480,7 +480,7 @@ class _ModelCard(QFrame):
 
         n = QLabel(name)
         n.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:15px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:15px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;border:none;"
         )
         name_row.addWidget(n)
@@ -515,12 +515,12 @@ class _ModelCard(QFrame):
         )
         type_row.addWidget(self._type_label)
 
-        edit_btn = QPushButton("edit")
+        edit_btn = QPushButton("Edit")
         edit_btn.setMinimumHeight(18)
         edit_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         edit_btn.setStyleSheet(
             f"QPushButton{{background:transparent;border:1px solid {theme_manager.theme.border_visible};"
-            f"color:{theme_manager.theme.text_dim};font-family:'Montserrat';font-size:8px;border-radius:3px;"
+            f"color:{theme_manager.theme.text_dim};font-family:'Montserrat';font-size:8px;font-weight:600;border-radius:3px;"
             f"padding:0 6px;}}"
             f"QPushButton:hover{{background:{theme_manager.accent};border-color:{theme_manager.accent};color:{theme_manager._accent_text};}}"
         )
@@ -753,7 +753,7 @@ class _DownloadProgressDialog(QDialog):
 
         self._name_lbl = QLabel(model_name)
         self._name_lbl.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:15px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:15px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;"
         )
         root.addWidget(self._name_lbl)
@@ -808,8 +808,8 @@ class _DownloadProgressDialog(QDialog):
         self._action_btn.setMinimumHeight(40)
         self._action_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text_dim};border:1px solid {theme_manager.theme.border_dim};"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-            f"letter-spacing:1px;border-radius:8px;padding:0 24px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+            f"border-radius:8px;padding:0 24px;}}"
             f"QPushButton:hover{{background:{theme_manager.theme.border_visible};color:{theme_manager.theme.text};}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.surface};color:{theme_manager.theme.disabled_text};border-color:transparent;}}"
         )
@@ -1026,6 +1026,26 @@ def _folder_arch_color(folder_key):
     return None
 
 
+class _ColorDot(QWidget):
+    """Small solid dot in front of a model-manager folder, color-coded by
+    architecture (same arch_dot_* palette as the rest of the GUI)."""
+
+    def __init__(self, color=None, parent=None):
+        super().__init__(parent)
+        self._color = color
+        self.setFixedSize(8, 8)
+
+    def paintEvent(self, event):
+        if not self._color:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(self._color))
+        p.drawEllipse(self.rect())
+        p.end()
+
+
 class _FolderIcon(QWidget):
     def __init__(self, color=None, parent=None):
         super().__init__(parent)
@@ -1122,7 +1142,7 @@ class _FolderManagerWidget(QWidget):
         self._scroll_widget = QWidget()
         self._scroll_widget.setStyleSheet("background:transparent;")
         self._list_layout = QVBoxLayout(self._scroll_widget)
-        self._list_layout.setContentsMargins(0, 0, 8, 0)
+        self._list_layout.setContentsMargins(0, 0, 8, 26)  # air under last row
         self._list_layout.setSpacing(8)
         self._list_layout.addStretch()
 
@@ -1343,7 +1363,8 @@ class _FolderManagerWidget(QWidget):
             clo.setContentsMargins(18, 0, 14, 0)
             clo.setSpacing(12)
 
-            fi = _FolderIcon(_folder_arch_color(fk))
+            clo.addWidget(_ColorDot(_folder_arch_color(fk)))
+            fi = _FolderIcon()  # neutral gray; the dot carries the arch color
             clo.addWidget(fi)
 
             label = _ElidedLabel(f"{fk}/")
@@ -1545,7 +1566,7 @@ class _FolderManagerWidget(QWidget):
                 new_badge.setStyleSheet(
                     f"background:{_inv.name()};"
                     f"color:{_txt};"
-                    f"font-weight:900;font-size:9px;border-radius:3px;"
+                    f"font-weight:bold;font-size:9px;border-radius:3px;"
                     f"padding:0 6px;border:1px solid {_inv.name()};"
                 )
                 updated_row.addWidget(new_badge)
@@ -1563,14 +1584,14 @@ class _FolderManagerWidget(QWidget):
                 inst_btn.setStyleSheet(
                     f"QPushButton{{background:{theme_manager.theme.disabled_bg};"
                     f"color:{theme_manager.theme.text_muted};border:none;"
-                    f"font-weight:700;font-size:9px;border-radius:5px;padding:0 14px;}}"
+                    f"font-weight:600;font-size:9px;border-radius:5px;padding:0 14px;}}"
                 )
             else:
                 inst_btn = QPushButton("Install")
                 inst_btn.setFixedHeight(30)
                 inst_btn.setStyleSheet(
                     f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-                    f"font-family:'Montserrat',sans-serif;font-weight:700;font-size:9px;letter-spacing:1px;"
+                    f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:9px;"
                     f"border-radius:5px;padding:0 14px;}}"
                     f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
                 )
@@ -1602,23 +1623,57 @@ class SettingsPage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(f"background:{theme_manager.theme.bg};")
+        self.setObjectName("settingsPage")
+        # Object-name scoped so the background doesn't cascade into child
+        # dialogs (QMessageBox etc.) and overwrite their button styles.
+        self.setStyleSheet(f"#settingsPage{{background:{theme_manager.theme.bg};}}")
         self._registered = []
         self._download_worker = None
         self._download_mode = "manager"
         self._pending_backend_module = ""
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(32, 32, 32, 40)
+        root.setContentsMargins(32, 32, 32, 68)
         # 43px gap under the page header so the section headers sit on the
         # same line as the INFERENCE page's (CONFIGURATION / MODEL LIBRARY)
         root.setSpacing(43)
 
-        root.addWidget(PageHeader(
+        # Updates — docked at the right of the page header, on the headliner
+        # line (same pattern as the LOG button in CONSOLE).
+        self._update_btn = QPushButton("Check For Updates")
+        self._update_btn.setCursor(Qt.PointingHandCursor)
+        self._update_btn.setFixedHeight(30)
+        self._update_btn.setStyleSheet(
+            f"QPushButton{{background:{theme_manager.theme.surface};"
+            f"color:{theme_manager.theme.text_dim};"
+            f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:9px;"
+            "padding:0 14px;}"
+            f"QPushButton:hover{{color:{theme_manager.theme.text};}}"
+            f"QPushButton:disabled{{color:{theme_manager.theme.disabled_text};}}")
+        self._update_btn.clicked.connect(self._check_updates)
+        self._update_status = QLabel(
+            f"Current version {uc.app_version()}")
+        self._update_status.setStyleSheet(
+            "font-family:'Montserrat',sans-serif;font-size:10px;"
+            f"color:{theme_manager.theme.text_muted};background:transparent;")
+        update_w = QWidget()
+        update_w.setStyleSheet("background:transparent;")
+        uw = QHBoxLayout(update_w)
+        # pushes the docked row down from the header's vertical centre onto
+        # the headliner (subtitle) line
+        uw.setContentsMargins(0, 35, 0, 0)
+        uw.setSpacing(12)
+        uw.addWidget(self._update_btn)
+        uw.addWidget(self._update_status)
+
+        header = PageHeader(
             "SETTINGS",
-            "CONFIGURE MODELS, PATHS AND APPEARANCE",
-            highlight="APPEARANCE",
-        ))
+            "ADD, REGISTER, AND CONFIGURE MODELS",
+            highlight="MODELS",
+        )
+        header.add_extra(update_w)
+        root.addWidget(header)
 
         main = QHBoxLayout()
         main.setSpacing(48)
@@ -1803,13 +1858,13 @@ class SettingsPage(QWidget):
 
         ll.addSpacing(8)
 
-        self._reg_btn = QPushButton("+  REGISTER MODEL")
-        self._reg_btn.setMinimumHeight(48)
+        self._reg_btn = QPushButton("+  Register Model")
+        self._reg_btn.setFixedHeight(44)
         self._reg_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._reg_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:12px;"
-            f"letter-spacing:2px;border-radius:6px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;"
+            f"border-radius:6px;}}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
             f"QPushButton:pressed{{background:{theme_manager.accent};}}"
         )
@@ -1823,13 +1878,13 @@ class SettingsPage(QWidget):
         dl.setContentsMargins(0, 0, 0, 0)
         dl.setSpacing(12)
 
-        self._download_btn = QPushButton("+  DOWNLOAD MODEL")
-        self._download_btn.setMinimumHeight(48)
+        self._download_btn = QPushButton("+  Download Model")
+        self._download_btn.setFixedHeight(44)
         self._download_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._download_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:12px;"
-            f"letter-spacing:2px;border-radius:6px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;"
+            f"border-radius:6px;}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.text_muted};}}"
         )
         self._download_btn.clicked.connect(self._start_download)
@@ -1842,48 +1897,9 @@ class SettingsPage(QWidget):
         self._model_mgr.setVisible(False)
         ll.addWidget(self._model_mgr, 2)
 
-        ll.addSpacing(12)
-
-        ll.addWidget(_section_hdr("Appearance"))
-        ll.addSpacing(4)
-
-        theme_row = QHBoxLayout()
-        theme_row.setSpacing(24)
-        self._theme_dark = _RadioCheck("DARK", checked=(theme_manager.mode == "dark"))
-        self._theme_light = _RadioCheck("LIGHT", checked=(theme_manager.mode == "light"))
-        self._theme_dark.clicked.connect(lambda: self._set_theme("dark"))
-        self._theme_light.clicked.connect(lambda: self._set_theme("light"))
-        theme_row.addWidget(self._theme_dark)
-        theme_row.addWidget(self._theme_light)
-        theme_row.addStretch()
-        ll.addLayout(theme_row)
-
-        # Updates
-        update_row = QHBoxLayout()
-        update_row.setSpacing(12)
-        self._update_btn = QPushButton("CHECK FOR UPDATES")
-        self._update_btn.setCursor(Qt.PointingHandCursor)
-        self._update_btn.setFixedHeight(30)
-        self._update_btn.setStyleSheet(
-            f"QPushButton{{background:{theme_manager.theme.surface};"
-            f"color:{theme_manager.theme.text_dim};"
-            f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:9px;"
-            "letter-spacing:1px;padding:0 14px;}"
-            f"QPushButton:hover{{color:{theme_manager.theme.text};}}"
-            f"QPushButton:disabled{{color:{theme_manager.theme.disabled_text};}}")
-        self._update_btn.clicked.connect(self._check_updates)
-        update_row.addWidget(self._update_btn)
-        self._update_status = QLabel(
-            f"Current version {uc.app_version()}")
-        self._update_status.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:10px;"
-            f"color:{theme_manager.theme.text_muted};background:transparent;")
-        update_row.addWidget(self._update_status)
-        update_row.addStretch()
-        ll.addLayout(update_row)
-
-        ll.addStretch()
+        # No trailing stretch: the manager panel stretches to the bottom so
+        # both scroll panels end on the same line (with the page's bottom
+        # margin as breathing room).
         main.addWidget(left, 1)
 
         right = QWidget()
@@ -1898,7 +1914,7 @@ class SettingsPage(QWidget):
         self._list_container = QWidget()
         self._list_container.setStyleSheet("background:transparent;")
         self._list_layout = QVBoxLayout(self._list_container)
-        self._list_layout.setContentsMargins(0, 0, 10, 0)
+        self._list_layout.setContentsMargins(0, 0, 10, 26)  # air under last row
         self._list_layout.setSpacing(12)
         self._list_layout.addStretch()
 
@@ -1936,11 +1952,6 @@ class SettingsPage(QWidget):
             self._update_btn.setEnabled(True)
 
         check_now(self, _status)
-
-    def _set_theme(self, mode):
-        self._theme_dark.set_checked(mode == "dark")
-        self._theme_light.set_checked(mode == "light")
-        theme_manager.set_mode(mode)
 
     def _set_mode(self, mode):
         self._download_mode = mode
@@ -2002,7 +2013,7 @@ class SettingsPage(QWidget):
         self.load_settings(data.get("registered_models", []))
 
     def reapply_theme(self):
-        self.setStyleSheet(f"background:{theme_manager.theme.bg};")
+        self.setStyleSheet(f"#settingsPage{{background:{theme_manager.theme.bg};}}")
 
     def _browse(self, row, filt):
         path, _ = QFileDialog.getOpenFileName(self, "Select file", "", filt)

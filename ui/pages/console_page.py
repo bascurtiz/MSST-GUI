@@ -1286,7 +1286,7 @@ class _TaskCard(QFrame):
         )
         self._menu_btn.setStyleSheet(f"""
             QPushButton{{background:transparent;border:none;border-radius:4px;
-            color:{btn_c};font-weight:bold;font-size:16px;}}
+            color:{btn_c};font-weight:600;font-size:16px;}}
             QPushButton:hover{{color:#FFFFFF;background:rgba(255,255,255,0.18);}}
         """)
 
@@ -1740,6 +1740,19 @@ class _DetailView(QFrame):
             f"color:{theme_manager.theme.text_dim};"
         )
 
+    def set_failed(self):
+        """Processing ended with an error before any output existed: show the
+        failure instead of leaving the detail view on Loading/Processing."""
+        self._spinner.stop()
+        self._view_stack.setCurrentIndex(0)
+        self._waveform.setVisible(False)
+        self._wf_lbl.setVisible(False)
+        self._status_lbl.setText("Failed")
+        self._status_lbl.setStyleSheet(
+            "background:transparent;border:none;font-size:11px;font-weight:bold;"
+            f"color:{theme_manager.theme.error};"
+        )
+
     def show_card(self, card):
         self._card = card
         if card is None:
@@ -1998,18 +2011,18 @@ class ConsolePage(QWidget):
             highlight="OUTPUTS",
         )
 
-        self._btn_log = QPushButton("LOG")
+        self._btn_log = QPushButton("Log")
         self._btn_log.setFixedSize(70, 30)
         self._btn_log.setCheckable(True)
         self._btn_log.toggled.connect(self._toggle_view)
         self._header.add_extra(self._btn_log)
 
-        self._btn_clear = QPushButton("CLEAR")
+        self._btn_clear = QPushButton("Clear")
         self._btn_clear.setFixedSize(80, 30)
         self._btn_clear.clicked.connect(self._clear)
         self._header.add_extra(self._btn_clear)
 
-        self._btn_copy = QPushButton("COPY LOG")
+        self._btn_copy = QPushButton("Copy Log")
         self._btn_copy.setFixedSize(90, 30)
         self._btn_copy.clicked.connect(self._copy)
         self._header.add_extra(self._btn_copy)
@@ -2067,13 +2080,16 @@ class ConsolePage(QWidget):
             self._detail_view._show_empty()
 
     def _apply_styles(self):
-        self.setStyleSheet(f"background:{theme_manager.theme.bg};")
+        self.setObjectName("consolePage")
+        # Object-name scoped so the background doesn't cascade into child
+        # dialogs (QMessageBox etc.) and overwrite their button styles.
+        self.setStyleSheet(f"#consolePage{{background:{theme_manager.theme.bg};}}")
         self._btn_log.setStyleSheet(
             f"QPushButton{{"
             f"background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
             f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:9px;letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:9px;}"
             f"QPushButton:hover{{color:{theme_manager.theme.text};border:1px solid {theme_manager.theme.border_dim};}}"
             "QPushButton:checked{"
             f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
@@ -2083,15 +2099,15 @@ class ConsolePage(QWidget):
             f"QPushButton{{"
             f"background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
             f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:9px;letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:9px;}"
             f"QPushButton:hover{{color:{theme_manager.theme.error};border:1px solid {_error_rgba(0.40)};}}"
         )
         self._btn_copy.setStyleSheet(
             f"QPushButton{{"
             f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:9px;letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:9px;}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
             f"QPushButton:pressed{{background:{theme_manager.accent};}}"
         )
@@ -2253,6 +2269,8 @@ class ConsolePage(QWidget):
                 # the detail view, which was still loading/processing.
                 return
             card.mark_failed()
+            if getattr(self._detail_view, "_card", None) is card:
+                self._detail_view.set_failed()
             return
 
         pct = _extract_progress(text)
@@ -2356,22 +2374,22 @@ class ConsolePage(QWidget):
         self._show_copied_feedback()
 
     def _show_copied_feedback(self):
-        self._btn_copy.setText("COPIED!")
+        self._btn_copy.setText("Copied!")
         self._btn_copy.setStyleSheet(
             f"QPushButton{{"
             f"background:{theme_manager._accent_soft};color:{theme_manager.accent};border:none;border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:9px;letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:9px;}"
         )
         QTimer.singleShot(1200, self._reset_copy_btn)
 
     def _reset_copy_btn(self):
-        self._btn_copy.setText("COPY LOG")
+        self._btn_copy.setText("Copy Log")
         self._btn_copy.setStyleSheet(
             f"QPushButton{{"
             f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:9px;letter-spacing:1px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:9px;}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
             f"QPushButton:pressed{{background:{theme_manager.accent};}}"
         )

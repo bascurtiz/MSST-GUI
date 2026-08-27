@@ -130,3 +130,36 @@ QProgressBar::chunk {
     background: {accent};
     border-radius: 3px;
 }
+
+/* ── Message boxes (delete confirmations etc.) ─────────────────────────
+   Native boxes follow the OS dark/light mode, which mismatches the GUI
+   theme and can render unreadable. Force the app palette instead. */
+QMessageBox {
+    background: {surface};
+}
+QMessageBox QLabel {
+    background: transparent;
+    color: {text};
+    font-size: 12px;
+}
+QMessageBox QPushButton {
+    background: {surface};
+    color: {text};
+    border: 1px solid {border_dim};
+    border-radius: 6px;
+    padding: 6px 18px;
+    min-width: 72px;
+}
+QMessageBox QPushButton:hover {
+    color: {accent};
+    border-color: {accent};
+    background: {accent_soft};
+}
+QMessageBox QPushButton:default {
+    background: {accent};
+    color: {accent_text};
+    border: none;
+}
+QMessageBox QPushButton:default:hover {
+    background: {accent_hover};
+}

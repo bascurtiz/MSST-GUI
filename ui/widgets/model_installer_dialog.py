@@ -33,7 +33,7 @@ class _ModelInstallRow(QFrame):
 
         name = QLabel(model.name)
         name.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:12px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:12px;font-weight:bold;"
             "color:" + theme_manager.theme.text + ";background:transparent;border:none;"
         )
         top.addWidget(name, 1)
@@ -135,7 +135,7 @@ class _ModelInstallerDialog(QDialog):
 
         title = QLabel("INSTALL REQUIRED MODELS")
         title.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:20px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:20px;font-weight:bold;"
             "color:" + theme_manager.accent + ";background:transparent;border:none;letter-spacing:1px;"
         )
         cl.addWidget(title)
@@ -188,19 +188,19 @@ class _ModelInstallerDialog(QDialog):
         self._cancel_btn.setFixedHeight(44)
         self._cancel_btn.setStyleSheet(
             "QPushButton{background:" + theme_manager.theme.surface + ";color:" + theme_manager.theme.text_dim + ";border:1px solid " + theme_manager.theme.border_visible + ";"
-            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-            "letter-spacing:1px;border-radius:8px;padding:0 24px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+            "border-radius:8px;padding:0 24px;}"
             "QPushButton:hover{background:" + theme_manager.theme.surface_alt + ";color:" + theme_manager.theme.text + ";}"
         )
         self._cancel_btn.clicked.connect(self._on_cancel)
         btn_row.addWidget(self._cancel_btn)
 
-        self._install_btn = QPushButton("INSTALL ALL")
+        self._install_btn = QPushButton("Install All")
         self._install_btn.setFixedHeight(44)
         self._install_btn.setStyleSheet(
             "QPushButton{background:" + theme_manager.accent + ";color:" + theme_manager._accent_text + ";border:none;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-            "letter-spacing:2px;border-radius:8px;padding:0 32px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+            "border-radius:8px;padding:0 32px;}"
             "QPushButton:hover{background:" + theme_manager._accent_hover + ";}"
             "QPushButton:disabled{background:" + theme_manager.theme.disabled_bg + ";color:" + theme_manager.theme.disabled_text + ";}"
         )
@@ -256,7 +256,7 @@ class _ModelInstallerDialog(QDialog):
     def _on_all_finished(self):
         self._done = True
         self._log_label.setText("Installation complete.")
-        self._install_btn.setText("DONE")
+        self._install_btn.setText("Done")
         self._install_btn.setEnabled(True)
         self._cancel_btn.setVisible(False)
 

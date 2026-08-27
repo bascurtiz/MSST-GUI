@@ -138,7 +138,7 @@ class _EnsembleCard(QFrame):
 
         self._title_label = QLabel(title)
         self._title_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:16px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:16px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;border:none;"
         )
         root.addWidget(self._title_label)
@@ -154,7 +154,7 @@ class _EnsembleCard(QFrame):
 
         root.addStretch()
 
-        self._select_btn = QPushButton("SELECT")
+        self._select_btn = QPushButton("Select")
         self._select_btn.setFixedHeight(48)
         self._select_btn.setCursor(Qt.PointingHandCursor)
         self._select_btn.setStyleSheet(self._btn_ss())
@@ -166,7 +166,7 @@ class _EnsembleCard(QFrame):
             f"QFrame{{background:{theme_manager.theme.card};border:1px solid {theme_manager.theme.border};border-radius:20px;}}"
         )
         self._title_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:16px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:16px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;border:none;"
         )
         self._desc_label.setStyleSheet(
@@ -179,13 +179,13 @@ class _EnsembleCard(QFrame):
         if self._hovered:
             return (
                 f"QPushButton{{background:{theme_manager.accent};border:none;"
-                f"color:{theme_manager._accent_text};font-family:'Montserrat',sans-serif;font-weight:900;"
-                f"font-size:12px;letter-spacing:2px;border-radius:8px;}}"
+                f"color:{theme_manager._accent_text};font-family:'Montserrat',sans-serif;font-weight:600;"
+                f"font-size:12px;border-radius:8px;}}"
             )
         return (
             f"QPushButton{{background:transparent;border:1px solid {theme_manager.accent};"
-            f"color:{theme_manager.accent};font-family:'Montserrat',sans-serif;font-weight:900;"
-            f"font-size:12px;letter-spacing:2px;border-radius:8px;}}"
+            f"color:{theme_manager.accent};font-family:'Montserrat',sans-serif;font-weight:600;"
+            f"font-size:12px;border-radius:8px;}}"
             f"QPushButton:hover{{background:{_acc_rgba(0.08)};}}"
             f"QPushButton:pressed{{background:{_acc_rgba(0.15)};}}"
         )
@@ -237,11 +237,14 @@ class EnsembleLandingPage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(f"background:{theme_manager.theme.bg};")
+        self.setObjectName("ensembleLandingPage")
+        # Object-name scoped so the background doesn't cascade into child
+        # dialogs (QMessageBox etc.) and overwrite their button styles.
+        self.setStyleSheet(f"#ensembleLandingPage{{background:{theme_manager.theme.bg};}}")
         self._build_ui()
 
     def reapply_theme(self):
-        self.setStyleSheet(f"background:{theme_manager.theme.bg};")
+        self.setStyleSheet(f"#ensembleLandingPage{{background:{theme_manager.theme.bg};}}")
         for card in self._cards:
             card.reapply_theme()
 

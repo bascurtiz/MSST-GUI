@@ -132,7 +132,7 @@ class ModelInstallDialog(QDialog):
 
         title = QLabel("Install Model")
         title.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:16px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:16px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;border:none;"
         )
         root.addWidget(title)
@@ -278,7 +278,7 @@ class ModelInstallDialog(QDialog):
         self._cancel_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text_dim};"
             f"border:1px solid {theme_manager.theme.border_dim};font-family:'Montserrat',sans-serif;"
-            f"font-weight:900;font-size:11px;letter-spacing:1px;border-radius:8px;padding:0 32px;}}"
+            f"font-weight:600;font-size:11px;border-radius:8px;padding:0 32px;}}"
             f"QPushButton:hover{{background:{theme_manager.theme.border_visible};color:{theme_manager.theme.text};}}"
         )
         self._cancel_btn.clicked.connect(self._on_cancel)
@@ -288,7 +288,7 @@ class ModelInstallDialog(QDialog):
         self._install_btn.setMinimumHeight(44)
         self._install_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;letter-spacing:1px;border-radius:8px;padding:0 32px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;border-radius:8px;padding:0 32px;}}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.text_muted};}}"
         )

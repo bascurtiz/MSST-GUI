@@ -53,7 +53,7 @@ class IterativeWarningDialog(QDialog):
 
         title = QLabel("ITERATIVE ENSEMBLE")
         title.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:20px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:20px;font-weight:bold;"
             f"color:{theme_manager.accent};background:transparent;border:none;letter-spacing:1px;"
         )
         cl.addWidget(title)
@@ -76,7 +76,7 @@ class IterativeWarningDialog(QDialog):
 
             header = QLabel(f"\u26a0  {icon_text}")
             header.setStyleSheet(
-                f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:900;"
+                f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:bold;"
                 f"color:{theme_manager.theme.text};background:transparent;border:none;"
             )
             item.addWidget(header)
@@ -106,19 +106,19 @@ class IterativeWarningDialog(QDialog):
         cancel_btn.setFixedHeight(44)
         cancel_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};border:1px solid {theme_manager.theme.border_visible};"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-            f"letter-spacing:1px;border-radius:8px;padding:0 24px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+            f"border-radius:8px;padding:0 24px;}}"
             f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
         )
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
 
-        continue_btn = QPushButton("CONTINUE")
+        continue_btn = QPushButton("Continue")
         continue_btn.setFixedHeight(44)
         continue_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-            f"letter-spacing:2px;border-radius:8px;padding:0 32px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+            f"border-radius:8px;padding:0 32px;}}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
         )
         continue_btn.clicked.connect(self._on_continue)

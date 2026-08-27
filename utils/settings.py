@@ -5,7 +5,10 @@ import yaml
 try:
     import wandb
     _WANDB_AVAILABLE = True
-except ImportError:  # wandb is only needed for training, not inference
+except Exception:  # wandb is only needed for training, not inference.
+    # Broad on purpose: broken optional deps (e.g. a broken zstd binding that
+    # makes urllib3 raise AttributeError inside wandb's import chain) must
+    # never take inference down with them.
     wandb = None
     _WANDB_AVAILABLE = False
 import numpy as np

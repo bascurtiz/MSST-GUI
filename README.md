@@ -83,6 +83,16 @@ One PyTorch build cannot cover both Pascal and Blackwell, so the download (~2.5�
 └── tests/                # pytest suite
 ```
 
+## Troubleshooting & logs
+
+The app writes `msst-gui.log` next to the executable (rotated at 2 MB). It
+captures Python errors, Qt warnings and the update check. To see output live
+in your terminal instead:
+
+```bash
+MSST-GUI.exe --console
+```
+
 ## Running tests
 
 ```bash

@@ -31,7 +31,7 @@ class _ModelProgressCard(QFrame):
 
         self._name_label = QLabel(model_name)
         self._name_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;"
         )
         top.addWidget(self._name_label, 1)
@@ -72,17 +72,17 @@ class _ModelProgressCard(QFrame):
         )
         if self._state == "complete":
             self._name_label.setStyleSheet(
-                f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:900;"
+                f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:bold;"
                 f"color:{theme_manager.accent};background:transparent;"
             )
         elif self._state == "skipped":
             self._name_label.setStyleSheet(
-                f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:900;"
+                f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:bold;"
                 f"color:{theme_manager.theme.text_dim};background:transparent;"
             )
         else:
             self._name_label.setStyleSheet(
-                f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:900;"
+                f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:bold;"
                 f"color:{theme_manager.theme.text};background:transparent;"
             )
 
@@ -98,7 +98,7 @@ class _ModelProgressCard(QFrame):
         self._status_label.setText("Complete")
         self._state = "complete"
         self._name_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:bold;"
             f"color:{theme_manager.accent};background:transparent;"
         )
 
@@ -107,7 +107,7 @@ class _ModelProgressCard(QFrame):
         self._status_label.setText("Skipped")
         self._state = "skipped"
         self._name_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:12px;font-weight:bold;"
             f"color:{theme_manager.theme.text_dim};background:transparent;"
         )
 
@@ -140,7 +140,7 @@ class ProgressPanel(QWidget):
 
         self._overall_label = QLabel("Overall Progress")
         self._overall_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:10px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:10px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;letter-spacing:1px;"
         )
         oh.addWidget(self._overall_label, 1)
@@ -167,7 +167,7 @@ class ProgressPanel(QWidget):
 
         self._models_label = QLabel("Model Progress")
         self._models_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:bold;"
             f"color:{theme_manager.theme.text_dim};background:transparent;letter-spacing:1px;"
         )
         root.addWidget(self._models_label)
@@ -193,7 +193,7 @@ class ProgressPanel(QWidget):
 
         self._log_label = QLabel("Log Output")
         self._log_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:bold;"
             f"color:{theme_manager.theme.text_dim};background:transparent;letter-spacing:1px;"
         )
         log_header.addWidget(self._log_label, 1)
@@ -249,11 +249,11 @@ class ProgressPanel(QWidget):
     def reapply_theme(self):
         self._apply_overall_styles()
         self._models_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:bold;"
             f"color:{theme_manager.theme.text_dim};background:transparent;letter-spacing:1px;"
         )
         self._log_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:bold;"
             f"color:{theme_manager.theme.text_dim};background:transparent;letter-spacing:1px;"
         )
         self._log_toggle.setStyleSheet(
@@ -280,7 +280,7 @@ class ProgressPanel(QWidget):
                 f"border:1px solid {theme_manager.theme.border};border-radius:12px;}}"
             )
         self._overall_label.setStyleSheet(
-            f"font-family:'Montserrat',sans-serif;font-size:10px;font-weight:900;"
+            f"font-family:'Montserrat',sans-serif;font-size:10px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;letter-spacing:1px;"
         )
         self._time_label.setStyleSheet(

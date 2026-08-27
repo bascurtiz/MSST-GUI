@@ -287,8 +287,8 @@ class _BrowseButton(QPushButton):
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};border:1px solid {theme_manager.theme.border};"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:{UIConstants.BTN_FONT_SIZE}px;"
-            f"letter-spacing:1px;border-radius:{UIConstants.BTN_RADIUS}px;padding:0 {UIConstants.BTN_PADDING_H + 4}px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:{UIConstants.BTN_FONT_SIZE}px;"
+            f"border-radius:{UIConstants.BTN_RADIUS}px;padding:0 {UIConstants.BTN_PADDING_H + 4}px;}}"
             f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};border-color:{theme_manager.theme.border_dim};}}"
             f"QPushButton:pressed{{background:{theme_manager.theme.surface_alt};}}"
         )
@@ -301,8 +301,8 @@ class _StartButton(QPushButton):
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
-            f"letter-spacing:2px;border-radius:{UIConstants.ACTION_RADIUS}px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
+            f"border-radius:{UIConstants.ACTION_RADIUS}px;}}"
             f"QPushButton:hover{{background:{theme_manager.accent};}}"
             f"QPushButton:pressed{{background:{theme_manager.accent};}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
@@ -316,8 +316,8 @@ class _StopButton(QPushButton):
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.error};color:{theme_manager.theme.text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
-            f"letter-spacing:2px;border-radius:{UIConstants.ACTION_RADIUS}px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
+            f"border-radius:{UIConstants.ACTION_RADIUS}px;}}"
             f"QPushButton:hover{{background:{theme_manager.theme.error};}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
         )
@@ -330,8 +330,8 @@ class _PauseButton(QPushButton):
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};border:1px solid {theme_manager.theme.border};"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
-            f"letter-spacing:2px;border-radius:{UIConstants.ACTION_RADIUS}px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
+            f"border-radius:{UIConstants.ACTION_RADIUS}px;}}"
             f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
             f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
         )
@@ -509,6 +509,7 @@ class IterativeEnsemblePage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("iterativeEnsemblePage")
         self._input_files = []
         self._output_dir = ""
         self._runner = None
@@ -869,14 +870,14 @@ class IterativeEnsemblePage(QWidget):
         self._pause_btn.clicked.connect(self._toggle_pause)
         ctrl.addWidget(self._pause_btn)
 
-        open_btn = QPushButton("OPEN OUTPUT")
+        open_btn = QPushButton("Open Output")
         open_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
         open_btn.setMinimumWidth(120)
         open_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         open_btn.setStyleSheet(
             f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};border:1px solid {theme_manager.theme.border};"
-            f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:{UIConstants.BTN_FONT_SIZE}px;"
-            f"letter-spacing:1px;border-radius:{UIConstants.ACTION_RADIUS}px;}}"
+            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:{UIConstants.BTN_FONT_SIZE}px;"
+            f"border-radius:{UIConstants.ACTION_RADIUS}px;}}"
             f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
         )
         open_btn.clicked.connect(self._open_output)
@@ -889,7 +890,9 @@ class IterativeEnsemblePage(QWidget):
 
     def reapply_theme(self):
         # ── 1. Re-set page background ──
-        self.setStyleSheet(f"background:{theme_manager.theme.bg};")
+        # Object-name scoped so the background doesn't cascade into child
+        # dialogs (QMessageBox etc.) and overwrite their button styles.
+        self.setStyleSheet(f"#iterativeEnsemblePage{{background:{theme_manager.theme.bg};}}")
 
         # ── 2. Trigger atmospheric background repaint ──
         bg = self.findChild(_AtmosphericBackground)
@@ -913,8 +916,8 @@ class IterativeEnsemblePage(QWidget):
                 btn.setStyleSheet(
                     f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
                     f"border:1px solid {theme_manager.theme.border};"
-                    f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:10px;"
-                    f"letter-spacing:1px;border-radius:6px;padding:0 20px;}}"
+                    f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:10px;"
+                    f"border-radius:6px;padding:0 20px;}}"
                     f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};"
                     f"border-color:{theme_manager.theme.border_dim};}}"
                     f"QPushButton:pressed{{background:{theme_manager.theme.surface_alt};}}"
@@ -922,8 +925,8 @@ class IterativeEnsemblePage(QWidget):
             elif isinstance(btn, _StartButton):
                 btn.setStyleSheet(
                     f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-                    f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-                    f"letter-spacing:2px;border-radius:8px;}}"
+                    f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+                    f"border-radius:8px;}}"
                     f"QPushButton:hover{{background:{theme_manager.accent};}}"
                     f"QPushButton:pressed{{background:{theme_manager.accent};}}"
                     f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
@@ -931,8 +934,8 @@ class IterativeEnsemblePage(QWidget):
             elif isinstance(btn, _StopButton):
                 btn.setStyleSheet(
                     f"QPushButton{{background:{theme_manager.theme.error};color:{theme_manager.theme.text};border:none;"
-                    f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-                    f"letter-spacing:2px;border-radius:8px;}}"
+                    f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+                    f"border-radius:8px;}}"
                     f"QPushButton:hover{{background:{theme_manager.theme.error};}}"
                     f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
                 )
@@ -940,8 +943,8 @@ class IterativeEnsemblePage(QWidget):
                 btn.setStyleSheet(
                     f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
                     f"border:1px solid {theme_manager.theme.border};"
-                    f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;"
-                    f"letter-spacing:2px;border-radius:8px;}}"
+                    f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
+                    f"border-radius:8px;}}"
                     f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
                     f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
                 )
@@ -963,8 +966,8 @@ class IterativeEnsemblePage(QWidget):
                 btn.setStyleSheet(
                     f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
                     f"border:1px solid {theme_manager.theme.border};"
-                    f"font-family:'Montserrat',sans-serif;font-weight:900;font-size:10px;"
-                    f"letter-spacing:1px;border-radius:8px;}}"
+                    f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:10px;"
+                    f"border-radius:8px;}}"
                     f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
                 )
 
@@ -1012,15 +1015,15 @@ class IterativeEnsemblePage(QWidget):
             # Main title "ITERATIVE ENSEMBLE" (28px, 900)
             if "font-size:28px" in ss:
                 lbl.setStyleSheet(
-                    f"font-family:'Montserrat',sans-serif;font-size:28px;font-weight:900;"
+                    f"font-family:'Montserrat',sans-serif;font-size:28px;font-weight:bold;"
                     f"color:{theme_manager.theme.text};background:transparent;letter-spacing:-0.5px;"
                 )
                 continue
 
             # Card titles & workflow title (accent, 900, letter-spacing:1)
-            if "font-weight:900" in ss:
+            if "font-weight:bold" in ss:
                 lbl.setStyleSheet(
-                    f"font-family:'Montserrat';font-size:11px;font-weight:900;"
+                    f"font-family:'Montserrat';font-size:11px;font-weight:bold;"
                     f"color:{theme_manager.accent};background:transparent;letter-spacing:1px;border:none;"
                 )
                 continue
@@ -1186,7 +1189,7 @@ class IterativeEnsemblePage(QWidget):
         if title:
             lbl = QLabel(title.upper())
             lbl.setStyleSheet(
-                f"font-family:'Montserrat';font-size:11px;font-weight:900;"
+                f"font-family:'Montserrat';font-size:11px;font-weight:bold;"
                 f"color:{theme_manager.accent};background:transparent;letter-spacing:1px;border:none;"
             )
             layout.addWidget(lbl)
@@ -1215,7 +1218,7 @@ class IterativeEnsemblePage(QWidget):
 
         wf_title = QLabel("WORKFLOW PREVIEW")
         wf_title.setStyleSheet(
-            f"font-family:'Montserrat';font-size:11px;font-weight:900;"
+            f"font-family:'Montserrat';font-size:11px;font-weight:bold;"
             f"color:{theme_manager.accent};background:transparent;letter-spacing:1px;border:none;"
         )
         layout.addWidget(wf_title)
@@ -1397,11 +1400,11 @@ class IterativeEnsemblePage(QWidget):
             return
         if self._runner._paused:
             self._runner.resume()
-            self._pause_btn.setText("PAUSE")
+            self._pause_btn.setText("Pause")
             self.log_output.emit("Resumed")
         else:
             self._runner.pause()
-            self._pause_btn.setText("RESUME")
+            self._pause_btn.setText("Resume")
             self.log_output.emit("Paused")
 
     def reset_workflow(self):
@@ -1439,7 +1442,7 @@ class IterativeEnsemblePage(QWidget):
         self._start_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
         self._pause_btn.setEnabled(False)
-        self._pause_btn.setText("PAUSE")
+        self._pause_btn.setText("Pause")
         self.process_running.emit(False)
         if success:
             for step in self._workflow_steps:

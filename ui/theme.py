@@ -10,10 +10,13 @@ screenshots of the site):    * Font: Montserrat (bundled in resources/, SIL OFL 
 """
 import os
 
-from PySide6.QtCore import QObject, Signal, Qt, QEvent, SignalInstance
+from PySide6.QtCore import (
+    QObject, Signal, Qt, QEvent, SignalInstance,
+    QPoint, QEasingCurve, QAbstractAnimation, QPropertyAnimation,
+)
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import (
-    QApplication, QLabel, QWidget, QAbstractButton, QComboBox,
+    QApplication, QLabel, QWidget, QPushButton, QAbstractButton, QComboBox,
     QAbstractSpinBox, QSlider, QTabBar, QLineEdit, QMenu,
 )
 
@@ -96,10 +99,10 @@ class _LightTheme:
     card = "#FFFFFF"
     header_bg = "#FFFFFF"
     text = "#203048"
-    text_sec = "rgba(32,48,72,0.66)"
-    text_dim = "rgba(32,48,72,0.48)"
-    text_muted = "rgba(32,48,72,0.38)"
-    text_label = "rgba(32,48,72,0.28)"
+    text_sec = "rgba(32,48,72,0.78)"
+    text_dim = "rgba(32,48,72,0.62)"
+    text_muted = "rgba(32,48,72,0.52)"
+    text_label = "rgba(32,48,72,0.40)"
     border = "rgba(0,0,0,0.16)"
     border_visible = "#D9E1E8"
     border_dim = "rgba(0,0,0,0.22)"
@@ -121,19 +124,21 @@ class _LightTheme:
     console_bg = "#FFFFFF"
     console_text = "#3A4452"
     disabled_bg = "#F4F8F8"
-    disabled_text = "#A7B2BE"
+    disabled_text = "#8E9AA8"
     success = "#2E9E5B"
     warning = "#E08A00"
     error = "#D93025"
     purple = "#7C4DFF"
-    arch_dot_vr = "#0288D1"
-    arch_dot_mdx = "#E64A19"
-    arch_dot_demucs = "#8E24AA"
-    arch_dot_bs = "#2E7D32"
-    arch_dot_melband = "#F9A825"
-    arch_dot_scnet = "#C2185B"
-    arch_dot_apollo = "#1565C0"
-    arch_dot_bandit = "#6D4C41"
+    # Architecture dots use the same palette in both themes (identical to
+    # the dark theme) so the color coding never changes between themes.
+    arch_dot_vr = "#4FC3F7"
+    arch_dot_mdx = "#FF7043"
+    arch_dot_demucs = "#AB47BC"
+    arch_dot_bs = "#66BB6A"
+    arch_dot_melband = "#FFCA28"
+    arch_dot_scnet = "#EC407A"
+    arch_dot_apollo = "#42A5F5"
+    arch_dot_bandit = "#8D6E63"
     accent = "#0F7FB3"
     accent_hover = "#0B6A99"
     accent_soft = "rgba(15,127,179,0.13)"
@@ -272,7 +277,7 @@ def register_fonts():
     """Register bundled Montserrat faces (Regular/Bold) with Qt."""
     from PySide6.QtGui import QFontDatabase
 
-    for fname in ("Montserrat-Regular.ttf", "Montserrat-Bold.ttf"):
+    for fname in ("Montserrat-Regular.ttf", "Montserrat-SemiBold.ttf", "Montserrat-Bold.ttf"):
         path = os.path.join(_FONT_DIR, fname)
         if os.path.isfile(path):
             QFontDatabase.addApplicationFont(path)
@@ -288,6 +293,7 @@ def apply_palette(app):
     _apply_selection_colors(app)
     install_styled_tooltips()
     install_interactive_cursors()
+    install_button_lift()
 
 
 def _apply_selection_colors(app):
@@ -370,6 +376,79 @@ def install_interactive_cursors():
         if _is_interactive(w) and w.cursor().shape() == Qt.CursorShape.ArrowCursor:
             w.setCursor(Qt.PointingHandCursor)
     _CURSOR_FILTER_INSTALLED = True
+
+
+# ── Button hover lift ─────────────────────────────────────────────────────────
+# Every QPushButton in the GUI lifts up a few pixels while hovered. Implemented
+# as an app-wide event filter (same pattern as the cursor/tooltip filters) so
+# it covers buttons created at any time — pages, dialogs, message boxes —
+# without touching every construction site. The lift animates the widget's
+# `pos`; layouts only re-polish on structural changes, so the offset persists
+# while hovered. Disabled buttons never lift.
+
+_BUTTON_LIFT_PX = 4
+
+
+class _ButtonLiftFilter(QObject):
+    """Lifts QPushButtons on hover via a QPropertyAnimation on `pos`."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._lift = _BUTTON_LIFT_PX
+        self._state = {}  # widget -> {"rest": QPoint, "anim": QPropertyAnimation}
+
+    def eventFilter(self, obj, event):
+        if isinstance(obj, QPushButton):
+            t = event.type()
+            if t == QEvent.Type.Enter and obj.isEnabled():
+                st = self._state.setdefault(obj, {"rest": None, "anim": None})
+                if st["rest"] is None:
+                    st["rest"] = QPoint(obj.pos())
+                self._animate(obj, st, st["rest"].y() - self._lift)
+            elif t == QEvent.Type.Leave:
+                st = self._state.get(obj)
+                if st is not None and st["rest"] is not None:
+                    self._animate(obj, st, st["rest"].y())
+            elif t == QEvent.Type.Move:
+                st = self._state.get(obj)
+                if st is not None and not (
+                        st["anim"] and st["anim"].state() == QAbstractAnimation.State.Running):
+                    st["rest"] = QPoint(obj.pos())
+            elif t == QEvent.Type.EnabledChange and not obj.isEnabled():
+                st = self._state.get(obj)
+                if st is not None and st["rest"] is not None:
+                    self._animate(obj, st, st["rest"].y())
+            elif t == QEvent.Type.Destroy:
+                st = self._state.pop(obj, None)
+                if st is not None and st["anim"] is not None:
+                    st["anim"].stop()
+        return False
+
+    def _animate(self, widget, st, y):
+        if st["anim"]:
+            st["anim"].stop()
+        anim = QPropertyAnimation(widget, b"pos", self)
+        anim.setDuration(160)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        anim.setStartValue(widget.pos())
+        anim.setEndValue(QPoint(widget.pos().x(), y))
+        st["anim"] = anim
+        anim.start()
+
+
+_LIFT_FILTER_INSTALLED = False
+
+
+def install_button_lift():
+    """Install the app-wide button hover-lift filter (idempotent)."""
+    global _LIFT_FILTER_INSTALLED
+    if _LIFT_FILTER_INSTALLED:
+        return
+    app = QApplication.instance()
+    if app is None:
+        return
+    app.installEventFilter(_ButtonLiftFilter(app))
+    _LIFT_FILTER_INSTALLED = True
 
 
 # ── Styled tooltip ───────────────────────────────────────────────────────────

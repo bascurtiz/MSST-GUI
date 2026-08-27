@@ -46,7 +46,7 @@ class _UpdateDialog(QDialog):
 
         title = QLabel("Update Available")
         title.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:14px;font-weight:900;")
+            "font-family:'Montserrat',sans-serif;font-size:14px;font-weight:bold;")
         root.addWidget(title)
 
         msg = QLabel(
@@ -63,14 +63,14 @@ class _UpdateDialog(QDialog):
         later.setStyleSheet(
             f"QPushButton{{background:{t.surface};color:{t.text_dim};"
             f"border:1px solid {t.border_dim};border-radius:6px;"
-            f"padding:0 18px;min-height:32px;}}")
+            f"font-weight:600;padding:0 18px;min-height:32px;}}")
         later.clicked.connect(self.reject)
         btns.addWidget(later)
         dl = QPushButton("Download Update")
         dl.setStyleSheet(
             f"QPushButton{{background:{theme_manager.accent};color:#FFFFFF;"
             f"border:none;border-radius:6px;padding:0 18px;min-height:32px;"
-            f"font-weight:700;}}"
+            f"font-weight:600;}}"
             f"QPushButton:hover{{background:{theme_manager._accent_hover};}}")
         dl.clicked.connect(self._open_releases)
         btns.addWidget(dl)

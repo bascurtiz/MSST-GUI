@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
     QDialogButtonBox,
 )
-from PySide6.QtCore import Qt, Signal, Property, QEasingCurve, QSize, QPropertyAnimation, QEvent
+from PySide6.QtCore import Qt, Signal, Property, QEasingCurve, QSize, QPoint, QPropertyAnimation, QVariantAnimation, QEvent
 from PySide6.QtGui import QFont, QPainter, QPen, QColor
 
 from backend.runner import ProcessRunner
@@ -45,7 +45,7 @@ ARCH_TO_MODEL_TYPE = {
 def _sec_hdr(text):
     w = QLabel(text.upper())
     w.setStyleSheet(
-        "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:900;"
+        "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:bold;"
         f"color:{theme_manager.theme.text};background:transparent;padding-left:8px;"
         f"border-left:3px solid {theme_manager.accent};letter-spacing:1.5px;"
     )
@@ -271,6 +271,11 @@ class _ComboBox(QComboBox):
         super().hidePopup()
         self.popupClosed.emit()
 
+
+# ── Animated icon button ────────────────────────────────────────────────────────
+# QPushButton whose leading glyph icon animates on hover. The icon lives in a
+# transparent-for-mouse QLabel child, so the button's stylesheet keeps drawing
+# the text as usual while the icon moves/pulses independently.
 
 # ── Custom QPainter icons ───────────────────────────────────────────────────────
 
@@ -700,7 +705,7 @@ class _StemTitleBar(QWidget):
         hl.setSpacing(0)
         title_lbl = QLabel("OUTPUT STEMS")
         title_lbl.setStyleSheet(
-            "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:900;"
+            "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:bold;"
             "color:" + theme_manager.theme.text + ";"
             "background:transparent;letter-spacing:1px;"
         )
@@ -850,7 +855,7 @@ class _StemSelectionDialog(QDialog):
             f"background:{theme_manager.theme.surface_alt};"
             f"color:{theme_manager.theme.text};"
             "border:none;border-radius:4px;padding:6px 18px;"
-            "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:700;}"
+            "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;}"
             "QPushButton:hover{"
             f"background:{theme_manager.theme.border};}}"
         )
@@ -1224,7 +1229,7 @@ class _ModelItem(QFrame):
         self._dots.setStyleSheet(
             "QPushButton{background:transparent;"
             f"color:{theme_manager.theme.text_muted};"
-            "border:none;font-size:11px;font-weight:700;border-radius:4px;}"
+            "border:none;font-size:11px;font-weight:600;border-radius:4px;}"
             f"QPushButton:hover{{color:{theme_manager.accent};"
             f"background:{theme_manager._accent_soft};}}"
         )
@@ -1655,10 +1660,14 @@ class InferencePage(QWidget):
     model_selected = Signal(str)
     ckpt_settings_requested = Signal(str, str, str, str)
     process_running = Signal(bool)
+    add_model_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(f"background:{theme_manager.theme.bg};")
+        self.setObjectName("inferencePage")
+        # Object-name scoped so the background doesn't cascade into child
+        # dialogs (QMessageBox etc.) and overwrite their button styles.
+        self.setStyleSheet(f"#inferencePage{{background:{theme_manager.theme.bg};}}")
         self._runner         = None
         self._tmp_input      = None
         self._tmp_yaml       = None
@@ -1692,7 +1701,7 @@ class InferencePage(QWidget):
         left.setStyleSheet(f"background:{theme_manager.theme.bg};")
         left.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         ll = QVBoxLayout(left)
-        ll.setContentsMargins(32, 32, 10, 20)
+        ll.setContentsMargins(32, 32, 10, 64)
         ll.setSpacing(0)
 
         t = theme_manager.theme
@@ -1739,24 +1748,26 @@ class InferencePage(QWidget):
         ll.addLayout(cfg)
 
         ll.addSpacing(36)
+        ll.addStretch()  # anchor the Run Inference block to the bottom so it
+                         # aligns horizontally with + ADD in the right column
 
         # Run Inference
         ll.addWidget(_sec_hdr("Run Inference"))
-        ll.addSpacing(12)  # matches the MODEL LIBRARY header→cards gap
+        ll.addSpacing(28)  # roomier than CONFIGURATION: buttons sit close otherwise
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
         btn_row.setContentsMargins(0, 0, 0, 0)
 
-        self.btn_run = QPushButton("\u25b6  RUN INFERENCE")
-        self.btn_run.setFixedSize(220, 44)
+        self.btn_run = QPushButton("\u25B6  Separate")
+        self.btn_run.setFixedSize(170, 44)
         self.btn_run.setStyleSheet(
             "QPushButton{"
             "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             f"stop:0 {theme_manager._accent_hover},stop:1 {theme_manager.accent});"
             f"color:{theme_manager._accent_text};border:none;border-radius:6px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:12px;letter-spacing:2px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:17px;}"
             "QPushButton:hover{"
             "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             f"stop:0 {theme_manager._accent_hover},stop:1 {theme_manager.accent});}}"
@@ -1765,15 +1776,15 @@ class InferencePage(QWidget):
         )
         self.btn_run.clicked.connect(self._run)
 
-        self.btn_stop = QPushButton("\u25a0  STOP")
+        self.btn_stop = QPushButton("\u25A0  Stop")
         self.btn_stop.setFixedSize(100, 44)
         self.btn_stop.setEnabled(False)
         self.btn_stop.setStyleSheet(
             "QPushButton{"
             f"background:{t.surface};color:{t.text_muted};"
             f"border:1px solid {t.border};border-radius:6px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:12px;letter-spacing:2px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:12px;}"
             "QPushButton:enabled{"
             f"color:{t.error};border:1px solid {t.error};}}"
             f"QPushButton:hover:enabled{{background:{t.surface_alt};}}"
@@ -1785,14 +1796,13 @@ class InferencePage(QWidget):
         btn_row.addWidget(self.btn_stop)
         btn_row.addStretch()
         ll.addLayout(btn_row)
-        ll.addStretch()
 
         # ── RIGHT COLUMN ───────────────────────────────────────────────
         right = QWidget()
         right.setStyleSheet(f"background:{theme_manager.theme.bg};")
         right.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         rl = QVBoxLayout(right)
-        rl.setContentsMargins(10, 32, 32, 20)
+        rl.setContentsMargins(10, 32, 32, 64)
         rl.setSpacing(0)
 
         # Model Library header, vertically centered against the search box
@@ -1845,6 +1855,28 @@ class InferencePage(QWidget):
 
         scroll.setWidget(model_content)
         rl.addWidget(scroll, 1)
+        rl.addSpacing(10)
+
+        # + ADD (bottom of the library) — jumps to Settings where models
+        # are added/registered. Styled like the LOG button in CONSOLE;
+        # lifted 7px so its centre aligns with the 44px RUN/STOP row.
+        add_row = QHBoxLayout()
+        add_row.setContentsMargins(0, 0, 14, 7)
+        add_row.addStretch()
+        self._add_btn = QPushButton("+  Add")
+        self._add_btn.setCursor(Qt.PointingHandCursor)
+        self._add_btn.setFixedSize(70, 30)
+        self._add_btn.setStyleSheet(
+            f"QPushButton{{"
+            f"background:{t.surface};color:{t.text_dim};"
+            f"border:1px solid {t.border_dim};border-radius:4px;"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:9px;padding:0 8px;}"
+            f"QPushButton:hover{{background:{theme_manager._accent_soft};"
+            f"color:{t.text};border:1px solid {theme_manager.accent};}}")
+        self._add_btn.clicked.connect(self.add_model_requested.emit)
+        add_row.addWidget(self._add_btn)
+        rl.addLayout(add_row)
 
         # Assemble
         body.addWidget(left, 48)
@@ -1855,7 +1887,7 @@ class InferencePage(QWidget):
 
     def reapply_theme(self):
         t = theme_manager.theme
-        self.setStyleSheet(f"background:{t.bg};")
+        self.setStyleSheet(f"#inferencePage{{background:{t.bg};}}")
 
         # Update search bar
         self._search_bar.reapply_theme()
@@ -1913,7 +1945,7 @@ class InferencePage(QWidget):
                 item._dots.setStyleSheet(
                     "QPushButton{background:transparent;"
                     f"color:{t.text_muted};"
-                    "border:none;font-size:11px;font-weight:700;border-radius:4px;}"
+                    "border:none;font-size:11px;font-weight:600;border-radius:4px;}"
                     f"QPushButton:hover{{color:{theme_manager.accent};"
                     f"background:{theme_manager._accent_soft};}}"
                 )
@@ -1978,8 +2010,8 @@ class InferencePage(QWidget):
             "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             f"stop:0 {theme_manager._accent_hover},stop:1 {theme_manager.accent});"
             f"color:{theme_manager._accent_text};border:none;border-radius:6px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:12px;letter-spacing:2px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:17px;}"
             "QPushButton:hover{"
             "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             f"stop:0 {theme_manager._accent_hover},stop:1 {theme_manager.accent});}}"
@@ -1990,8 +2022,8 @@ class InferencePage(QWidget):
             "QPushButton{"
             f"background:{t.surface};color:{t.text_muted};"
             f"border:1px solid {t.border};border-radius:6px;"
-            "font-family:'Montserrat',sans-serif;font-weight:900;"
-            "font-size:12px;letter-spacing:2px;}"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:12px;}"
             "QPushButton:enabled{"
             f"color:{t.error};border:1px solid {t.error};}}"
             f"QPushButton:hover:enabled{{background:{t.surface_alt};}}"

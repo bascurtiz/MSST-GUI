@@ -30,3 +30,4 @@ dist/
 build/
 runtime/
 runtime_test/
+msst-gui.log
