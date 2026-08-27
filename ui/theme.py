@@ -17,7 +17,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import (
     QApplication, QLabel, QWidget, QPushButton, QAbstractButton, QComboBox,
-    QAbstractSpinBox, QSlider, QTabBar, QLineEdit, QMenu,
+    QAbstractSpinBox, QSlider, QTabBar, QLineEdit, QMenu, QMessageBox,
 )
 
 import backend.settings as settings_store
@@ -294,6 +294,7 @@ def apply_palette(app):
     install_styled_tooltips()
     install_interactive_cursors()
     install_button_lift()
+    install_message_box_style()
 
 
 def _apply_selection_colors(app):
@@ -449,6 +450,56 @@ def install_button_lift():
         return
     app.installEventFilter(_ButtonLiftFilter(app))
     _LIFT_FILTER_INSTALLED = True
+
+
+# ── Message box styling ──────────────────────────────────────────────────────
+# Widget-level stylesheets cascade into child dialogs and beat the app-level
+# QMessageBox rules. Any ancestor with a bare `background:transparent` (common
+# on page containers) overrides the box's background and renders it black —
+# dark text on black in the bright theme, unreadable. A message box's own
+# stylesheet always wins over ancestor cascades, so every QMessageBox is
+# re-asserted with the themed rules on Polish (mirrors the QMessageBox block
+# in resources/style.qss).
+
+def _message_box_style():
+    t = theme_manager.theme
+    return (
+        f"QMessageBox{{background:{t.surface};}}"
+        f"QMessageBox QLabel{{background:transparent;color:{t.text};font-size:12px;}}"
+        f"QMessageBox QPushButton{{background:{t.surface};color:{t.text};"
+        f"border:1px solid {t.border_dim};border-radius:6px;padding:6px 18px;min-width:72px;}}"
+        f"QMessageBox QPushButton:hover{{color:{theme_manager.accent};"
+        f"border-color:{theme_manager.accent};background:{theme_manager._accent_soft};}}"
+        f"QMessageBox QPushButton:default{{background:{theme_manager.accent};"
+        f"color:{theme_manager._accent_text};border:none;}}"
+        f"QMessageBox QPushButton:default:hover{{background:{theme_manager._accent_hover};}}"
+    )
+
+
+class _MessageBoxStyleFilter(QObject):
+    """Re-assert the themed message-box stylesheet on every QMessageBox."""
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Polish and isinstance(obj, QMessageBox):
+            ss = _message_box_style()
+            if obj.styleSheet() != ss:
+                obj.setStyleSheet(ss)
+        return False
+
+
+_MSGBOX_FILTER_INSTALLED = False
+
+
+def install_message_box_style():
+    """Install the app-wide QMessageBox styling filter (idempotent)."""
+    global _MSGBOX_FILTER_INSTALLED
+    if _MSGBOX_FILTER_INSTALLED:
+        return
+    app = QApplication.instance()
+    if app is None:
+        return
+    app.installEventFilter(_MessageBoxStyleFilter(app))
+    _MSGBOX_FILTER_INSTALLED = True
 
 
 # ── Styled tooltip ───────────────────────────────────────────────────────────
