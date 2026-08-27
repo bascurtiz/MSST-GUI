@@ -323,6 +323,7 @@ class AutoEnsembleRunner(QThread):
                 encoding="utf-8",
                 errors="replace",
                 cwd=REPO_ROOT,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
             stdout_lines = []

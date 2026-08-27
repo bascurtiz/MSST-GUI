@@ -163,9 +163,9 @@ class RuntimeSetupDialog(QDialog):
 
     def _start_install(self):
         self._install_btn.setEnabled(False)
-        self._log.appendPlainText("— preparing runtime —")
+        self._append_log("— preparing runtime —")
         self._thread = _SetupThread(self)
-        self._thread.log_line.connect(self._log.appendPlainText)
+        self._thread.log_line.connect(self._append_log)
         self._thread.progress.connect(self.set_progress)
         self._thread.finished_ok.connect(self._on_finished)
         self._cancel_btn.setText("Cancel setup")
@@ -178,15 +178,36 @@ class RuntimeSetupDialog(QDialog):
 
     def _on_finished(self, ok, msg):
         self._bar.setValue(100 if ok else self._bar.value())
-        self._log.appendPlainText(("— done: " if ok else "— failed: ") + msg)
+        if ok:
+            self._append_log(
+                f'<span style="color:{theme_manager.theme.success};'
+                f'font-weight:bold;">Installation complete!</span>', html=True)
+        else:
+            self._append_log(
+                f'<span style="color:{theme_manager.theme.error};'
+                f'font-weight:bold;">Installation failed:</span> {msg}', html=True)
         self._result = (ok, msg)
         self._cancel_btn.setVisible(False)
         self._close_btn.setVisible(True)
         self._install_btn.setVisible(not ok)
         self._install_btn.setText("Retry")
         self._install_btn.setEnabled(True)
-        self._install_btn.clicked.disconnect()
+        try:
+            self._install_btn.clicked.disconnect()
+        except RuntimeError:
+            pass
         self._install_btn.clicked.connect(self._start_install)
+
+    def _append_log(self, line, html=False):
+        if html:
+            self._log.appendHtml(line)
+        else:
+            self._log.appendPlainText(line)
+        self._scroll_log()
+
+    def _scroll_log(self):
+        bar = self._log.verticalScrollBar()
+        bar.setValue(bar.maximum())
 
     @property
     def succeeded(self):
@@ -197,7 +218,7 @@ def ensure_runtime(parent=None) -> bool:
     """Gate for job-start paths. True when separation jobs can run."""
     if not getattr(sys, "frozen", False):
         return True  # dev checkout: the running venv is the runtime
-    if runtime_setup.runtime_ready():
+    if runtime_setup.runtime_ready() and not runtime_setup.runtime_needs_repair():
         return True
     dlg = RuntimeSetupDialog(parent)
     dlg.exec()

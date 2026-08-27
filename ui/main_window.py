@@ -678,7 +678,8 @@ class MainWindow(QMainWindow):
         self._load_all()
         theme_manager.theme_changed.connect(self._on_theme_changed)
         theme_manager.theme_about_to_change.connect(self._on_theme_about_to_change)
-        self._enable_native_resize()
+        if self._NATIVE_RESIZE:
+            self._enable_native_resize()
         # Update check for exe builds, ~2.5s after launch (silent if current).
         from ui.widgets.update_dialog import run_startup_check
         QTimer.singleShot(2500, lambda: run_startup_check(self))
@@ -774,6 +775,20 @@ class MainWindow(QMainWindow):
         )
         self.iterative_ensemble.process_running.connect(
             self._on_process_state
+        )
+        # Console needs the same state: mid-run error lines must not flip
+        # song cards to FAILED while the job is still going.
+        self.inference_page.process_running.connect(
+            self.console_page.set_job_active
+        )
+        self.auto_ensemble.process_running.connect(
+            self.console_page.set_job_active
+        )
+        self.manual_ensemble.process_running.connect(
+            self.console_page.set_job_active
+        )
+        self.iterative_ensemble.process_running.connect(
+            self.console_page.set_job_active
         )
 
     def _apply_theme_bgs(self):
@@ -1103,9 +1118,14 @@ class MainWindow(QMainWindow):
         (False, False, False, True): 15,   # HTBOTTOM
     }
     _RESIZE_BORDER = 6
+    # Resizing is disabled: with WS_THICKFRAME present, Windows still paints
+    # its legacy inactive frame around the frameless window on some systems
+    # (the "ugly border"). Fixed size + min/max/close only. Flip to True to
+    # re-enable native edge resizing (requires the thick-frame styles below).
+    _NATIVE_RESIZE = False
 
     def _enable_native_resize(self):
-        if os.name != "nt":
+        if os.name != "nt" or not self._NATIVE_RESIZE:
             return
         try:
             hwnd = wintypes.HWND(int(self.winId()))
@@ -1143,8 +1163,9 @@ class MainWindow(QMainWindow):
                 return True, result
             if msg.message == 0x0083 and msg.wParam:  # WM_NCCALCSIZE
                 return True, 0  # the added thick frame occupies no space
-            if msg.message == 0x0084 and self.isVisible() \
-                    and not self._is_maximized():  # WM_NCHITTEST
+            if (msg.message == 0x0084 and self._NATIVE_RESIZE and
+                    self.isVisible() and
+                    not self._is_maximized()):  # WM_NCHITTEST
                 # lParam packs the screen cursor position as two shorts.
                 x = ctypes.c_short(msg.lParam & 0xFFFF).value
                 y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value

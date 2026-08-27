@@ -59,11 +59,13 @@ def main():
     theme_manager.init_app(app)
     mw = MainWindow()
 
-    check("startup theme is light", theme_manager.mode == "light")
-    check("central bg uses light token",
+    check("startup theme is dark", theme_manager.mode == "dark")
+    check("central bg uses dark token",
           theme_manager.theme.bg in mw._central.styleSheet())
 
-    # ── switch to dark via the real pipeline ────────────────────────────
+    # ── switch to light and back via the real pipeline ──────────────────
+    theme_manager.set_mode("light")
+    check("chunked rebuild completed (to light)", pump_until(app, lambda: not mw._switching))
     theme_manager.set_mode("dark")
     check("chunked rebuild completed", pump_until(app, lambda: not mw._switching))
     dark_bg = theme_manager.theme.bg

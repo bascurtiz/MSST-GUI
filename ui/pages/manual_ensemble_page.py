@@ -930,6 +930,7 @@ class _EnsembleGuidePanel(QFrame):
 class ManualEnsemblePage(QWidget):
     navigate_back = Signal()
     log_output = Signal(str)
+    process_running = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1429,6 +1430,7 @@ class ManualEnsemblePage(QWidget):
         self._runner = ProcessRunner(cmd, cwd=REPO_ROOT)
         self._runner.log_line.connect(self.log_output.emit)
         self._runner.finished.connect(self._on_finished)
+        self.process_running.emit(True)
         self._runner.start()
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -1438,5 +1440,6 @@ class ManualEnsemblePage(QWidget):
             self._runner.stop()
 
     def _on_finished(self, code):
+        self.process_running.emit(False)
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)

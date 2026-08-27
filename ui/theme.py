@@ -11,7 +11,7 @@ screenshots of the site):    * Font: Montserrat (bundled in resources/, SIL OFL 
 import os
 
 from PySide6.QtCore import QObject, Signal, Qt, QEvent, SignalInstance
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import (
     QApplication, QLabel, QWidget, QAbstractButton, QComboBox,
     QAbstractSpinBox, QSlider, QTabBar, QLineEdit, QMenu,
@@ -251,6 +251,7 @@ class ThemeManager(QObject):
         if app is None:
             return
         app.setStyleSheet(build_stylesheet(self.theme))
+        _apply_selection_colors(app)
         for w in app.topLevelWidgets():
             try:
                 w.style().unpolish(w)
@@ -284,8 +285,23 @@ def apply_palette(app):
     font.setStyleStrategy(QFont.PreferAntialias)
     font.setHintingPreference(QFont.PreferFullHinting)
     app.setFont(font)
+    _apply_selection_colors(app)
     install_styled_tooltips()
     install_interactive_cursors()
+
+
+def _apply_selection_colors(app):
+    """Override the OS selection highlight (Windows theme purple/blue) with
+    the GUI's own accent blue — text selection, list and combo highlights."""
+    pal = app.palette()
+    hi = QColor(theme_manager.accent)
+    for group in (QPalette.Active, QPalette.Inactive):
+        pal.setColor(group, QPalette.Highlight, hi)
+    pal.setColor(QPalette.Disabled, QPalette.Highlight,
+                 QColor(hi).lighter(180))
+    pal.setColor(QPalette.Active, QPalette.HighlightedText, QColor("#FFFFFF"))
+    pal.setColor(QPalette.Inactive, QPalette.HighlightedText, QColor("#FFFFFF"))
+    app.setPalette(pal)
 
 
 # ── Interactive cursors ──────────────────────────────────────────────────────

@@ -55,6 +55,7 @@ class ProcessRunner(QThread):
                 encoding="utf-8",
                 errors="replace",
                 cwd=self._cwd,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
             for raw_line in self._process.stdout:

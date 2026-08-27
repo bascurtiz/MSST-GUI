@@ -79,17 +79,36 @@ def pick_torch_line(caps):
 
 
 def runtime_ready():
-    """True when the runtime interpreter exists and can import torch."""
+    """True when the runtime interpreter exists and can import the real
+    dependency chain (torch alone passing is not enough: inference imports
+    requests/urllib3 via wandb, which is where broken codec bindings crash)."""
     py = get_runtime_python()
     if not os.path.isfile(py):
         return False
     try:
         r = subprocess.run(
-            [py, "-c", "import torch"],
-            capture_output=True, timeout=120,
+            [py, "-c", "import torch, requests"],
+            capture_output=True, timeout=180,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         return r.returncode == 0
+    except Exception:
+        return False
+
+
+def runtime_needs_repair():
+    """Runtime exists but the library chain is broken (e.g. missing/broken
+    zstd binding picked by urllib3). Installer should offer Repair."""
+    py = get_runtime_python()
+    if not os.path.isfile(py):
+        return False
+    try:
+        r = subprocess.run(
+            [py, "-c", "import requests"],
+            capture_output=True, timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return r.returncode != 0
     except Exception:
         return False
 

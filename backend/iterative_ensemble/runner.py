@@ -389,6 +389,7 @@ class IterativeEnsembleRunner(QThread):
             process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace", cwd=REPO_ROOT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
             def read_stream(stream, prefix=""):
@@ -458,6 +459,7 @@ class IterativeEnsembleRunner(QThread):
             process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace", cwd=REPO_ROOT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             stdout, stderr = process.communicate()
             for line in stdout.splitlines():

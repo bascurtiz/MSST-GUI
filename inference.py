@@ -212,7 +212,8 @@ def run_folder(
                     res = subprocess.run(
                         [ffmpeg, "-y", "-i", tmp_wav, "-codec:a", "libmp3lame",
                          "-b:a", f"{args.mp3_bitrate}k", output_path],
-                        capture_output=True, text=True
+                        capture_output=True, text=True,
+                        creationflags=0x08000000 if os.name == "nt" else 0
                     )
                     if res.returncode == 0 and os.path.isfile(output_path):
                         os.remove(tmp_wav)

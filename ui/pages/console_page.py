@@ -1942,6 +1942,7 @@ class ConsolePage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._job_active = False  # True while an inference/ensemble job runs
         self._song_cards = {}
         self._unmatched_exports = []
         self._current_song = None
@@ -1961,6 +1962,11 @@ class ConsolePage(QWidget):
                 _f.write("=== msst console debug log ===\n")
         except Exception:
             self._debug_path = None
+
+    def set_job_active(self, active):
+        """Driven by the pages' process_running signal so mid-run error text
+        never marks a card FAILED before the job has actually ended."""
+        self._job_active = bool(active)
 
     def set_current_model(self, name):
         self._current_model = name or ""
@@ -2241,6 +2247,11 @@ class ConsolePage(QWidget):
             return
 
         if _has_error(text):
+            if self._job_active:
+                # Mid-run error-ish output (tracebacks, warnings) stays in the
+                # log only; flipping the card to FAILED here desynced it from
+                # the detail view, which was still loading/processing.
+                return
             card.mark_failed()
             return
 

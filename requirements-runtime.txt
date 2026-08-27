@@ -48,6 +48,10 @@ pedalboard>=0.9.0
 # === Networking ===
 requests>=2.31.0
 urllib3>=2.0.0
+# urllib3 2.6+ probes a zstd codec; installing the canonical package keeps it
+# away from broken stub 'zstd'/'backports.zstd' bindings (AttributeError on
+# ZstdError crashed inference startup).
+zstandard>=0.22.0
 
 # === Type Checking ===
 beartype>=0.15.0
