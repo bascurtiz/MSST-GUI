@@ -99,6 +99,26 @@ def runtime_ready():
         return False
 
 
+def _probe_torch(py):
+    """(version, cuda_build|None, cuda_usable) for the runtime's torch.
+    cuda_usable is only meaningful when cuda_build is set; None on probe
+    failure (torch not importable yet, etc.)."""
+    try:
+        r = subprocess.run(
+            [py, "-c",
+             "import torch;print(torch.__version__, torch.version.cuda, "
+             "torch.cuda.is_available())"],
+            capture_output=True, text=True, timeout=180,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if r.returncode != 0:
+            return None
+        ver, build, ok = r.stdout.split()[:3]
+        return ver, (None if build == "None" else build), ok == "True"
+    except Exception:
+        return None
+
+
 def runtime_needs_repair():
     """Runtime exists but the library chain is broken (e.g. missing/broken
     zstd binding picked by urllib3). Installer should offer Repair."""
@@ -409,9 +429,36 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
 
     if not runtime_ready():
         return False, "Runtime installed but 'import torch' failed."
+
+    # 3. Verify the CUDA build actually survived and works. Two silent
+    # failure modes: a PyPI dependency can pull a CPU-only torch over the
+    # pinned CUDA one, and an outdated NVIDIA driver leaves a correct CUDA
+    # build unable to initialize. CPU fallback still counts as success —
+    # but the completion message must not promise GPU that won't start.
+    note = ""
+    probe = _probe_torch(py)
+    if line != "cpu":
+        if probe and probe[1] is None:
+            log_cb("A dependency replaced the CUDA PyTorch build with the CPU "
+                   "build — reinstalling it from the CUDA wheel index…")
+            index = _TORCH_CUDA_INDEX.format(line=line)
+            if _run_pip_retries(py, ["install", "--upgrade"] + _TORCH_SPECS[line] +
+                                ["--index-url", index],
+                                log_cb, cancel_check) == 0:
+                probe = _probe_torch(py)
+        if not probe or probe[1] is None:
+            note = (" A CPU-only PyTorch ended up installed — inference will "
+                    "run on CPU. Re-run GPU setup from Settings.")
+        elif not probe[2]:
+            note = (" CUDA could not be initialized — the NVIDIA driver is "
+                    "likely too old for this PyTorch build (>= 531.14 needed "
+                    "for CUDA 12.1). Update the driver; inference uses CPU "
+                    "meanwhile.")
+        if note:
+            log_cb(f"WARNING:{note}")
     if progress_cb:
         progress_cb(1.0)
-    return True, f"{summary} installed."
+    return True, f"{summary} installed.{note}"
 
 
 def runtime_status_text():

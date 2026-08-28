@@ -13,6 +13,15 @@ pyloudnorm>=0.2.0
 numpy>=1.24.0
 scipy>=1.10.0
 
+# === Imaging (torchmetrics compat) ===
+# torchmetrics 1.x touches PIL.__version__ at import time (PILLOW_VERSION
+# compat shim). The frozen app ships stray PIL *.pyd binaries in _internal
+# (GUI bundle leftovers) that import as a namespace package without
+# __version__, so any pytorch_lightning-based architecture (bandit) crashes
+# with "module 'PIL' has no attribute '__version__'" unless a real Pillow is
+# installed into the runtime.
+Pillow>=10.0
+
 # === Model Architectures ===
 einops>=0.8.0
 rotary-embedding-torch>=0.8.0
@@ -39,6 +48,9 @@ auraloss>=0.4.0
 torch-log-wmse>=0.3.0
 pytorch-lightning>=2.0.0
 torchmetrics>=1.0.0
+# asteroid — required by the Bandit architecture (models/bandit/core imports
+# asteroid.losses at module import time, so even inference needs it).
+asteroid>=0.6.0
 
 # === Transformers (for UperNet segmentation models) ===
 transformers>=4.30.0

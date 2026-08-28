@@ -44,6 +44,9 @@ auraloss>=0.4.0
 torch-log-wmse>=0.3.0
 pytorch-lightning>=2.0.0
 torchmetrics>=1.0.0
+# asteroid — required by the Bandit architecture (models/bandit/core imports
+# asteroid.losses at module import time, so even inference needs it).
+asteroid>=0.6.0
 
 # === Transformers (for UperNet segmentation models) ===
 transformers>=4.30.0

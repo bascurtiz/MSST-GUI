@@ -103,9 +103,11 @@ def _relative_time(iso_str: str) -> str:
 
 ARCH_TYPES = [
     "Apollo Architecture", "Bandit Architecture", "BS Roformer Architecture",
-    "Demucs Architecture", "MDX23c Architecture", "MDX-Net Architecture",
+    "BSMamba2 Architecture", "Conformer Architecture", "Demucs Architecture",
+    "DTTNet Architecture", "MDX23c Architecture", "MDX-Net Architecture",
     "Medley Vox Architecture", "Melband Roformer Architecture",
-    "SCNet Architecture", "VR Architecture",
+    "SCNet Architecture", "Swin Upernet Architecture", "TorchSeg Architecture",
+    "VR Architecture", "VitLarge23 Architecture",
 ]
 
 MODEL_TYPES = [
@@ -583,8 +585,9 @@ class _DownloadWorker(QThread):
         import threading
 
         def _resolve(url):
-            u = url.strip() if url else ""
-            return u.replace("/blob/", "/resolve/", 1) if "/blob/" in u else u
+            # HuggingFace blob → resolve; GitHub blob → raw.githubusercontent
+            # (github.com/blob serves the HTML viewer, not the file).
+            return HuggingFaceDownloader.to_direct_download_url(url)
 
         ckpt_url = _resolve(self._ckpt_url)
         yaml_url = _resolve(self._yaml_url)
@@ -2121,14 +2124,16 @@ class SettingsPage(QWidget):
             QMessageBox.warning(self, "Missing", "Please enter a config YAML URL.")
             return
 
-        if not HuggingFaceDownloader.is_hf_url(ckpt_url):
+        if not HuggingFaceDownloader.is_downloadable_url(ckpt_url):
             QMessageBox.warning(self, "Invalid URL",
-                "Checkpoint URL must be a HuggingFace resolve/main or blob/main link.\n"
+                "Checkpoint URL must be a direct download link — a HuggingFace "
+                "resolve/main link, a GitHub release asset, or any direct http(s) URL.\n"
                 "Example: https://huggingface.co/user/model/resolve/main/model.ckpt")
             return
-        if not HuggingFaceDownloader.is_hf_url(yaml_url):
+        if not HuggingFaceDownloader.is_downloadable_url(yaml_url):
             QMessageBox.warning(self, "Invalid URL",
-                "Config URL must be a HuggingFace resolve/main or blob/main link.\n"
+                "Config URL must be a direct download link — a HuggingFace "
+                "resolve/main link, a GitHub release asset, or any direct http(s) URL.\n"
                 "Example: https://huggingface.co/user/model/resolve/main/model.yaml")
             return
 

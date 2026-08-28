@@ -41,6 +41,13 @@ MODEL_TYPE_TO_ARCH = {
     "scnet_masked": "SCNet Architecture",
     "scnet_tran": "SCNet Architecture",
     "medley_vox": "Medley Vox Architecture",
+    "apollo": "Apollo Architecture",
+    "segm_models": "VitLarge23 Architecture",
+    "torchseg": "TorchSeg Architecture",
+    "swin_upernet": "Swin Upernet Architecture",
+    "bs_mamba2": "BSMamba2 Architecture",
+    "conformer": "Conformer Architecture",
+    "dtt_net": "DTTNet Architecture",
 }
 
 STEM_MAP = {
@@ -170,6 +177,12 @@ def _arch_folder(arch: str) -> str:
         "Demucs Architecture": "demucs",
         "Apollo Architecture": "apollo",
         "Bandit Architecture": "bandit",
+        "VitLarge23 Architecture": "segm_models",
+        "TorchSeg Architecture": "torchseg",
+        "Swin Upernet Architecture": "swin_upernet",
+        "BSMamba2 Architecture": "bs_mamba2",
+        "Conformer Architecture": "conformer",
+        "DTTNet Architecture": "dtt_net",
     }
     return mapping.get(arch, "bs_roformer")
 

@@ -59,6 +59,21 @@ def _normalize_stem(label):
     return _STEM_ALIASES.get(key, key)
 
 
+# Desired waveform row order: vocals first, then any extra/custom stems
+# (piano, guitar, ...), then other, drums, bass. Unrecognized stems fall
+# between vocals and other (rank 1).
+_STEM_DISPLAY_ORDER = {
+    "vocals": 0,
+    "other": 2,
+    "drums": 3,
+    "bass": 4,
+}
+
+
+def _stem_display_rank(label):
+    return _STEM_DISPLAY_ORDER.get(_normalize_stem(label), 1)
+
+
 def _stem_color(label):
     return _STEM_COLORS.get(_normalize_stem(label), _REST_COLOR)
 
@@ -860,10 +875,20 @@ class _WaveformContainer(QFrame):
         for t in self._tracks:
             t.apply_sync(ms)
 
+    @staticmethod
+    def _sorted_paths(tracks):
+        """Return output paths sorted into the canonical stem display order
+        (vocals, extra stems, other, drums, bass), stable within a rank."""
+        def _label(p):
+            name_no_ext, _ = os.path.splitext(os.path.basename(p))
+            m = re.search(r'\(([^)]+)\)$', name_no_ext)
+            return (m.group(1).strip().capitalize() if m else name_no_ext)
+        return sorted(tracks, key=lambda p: _stem_display_rank(_label(p)))
+
     def load_tracks(self, card_ref):
         self._card = card_ref
         self._shared_pos_ms = 0
-        tracks = card_ref._output_paths
+        tracks = self._sorted_paths(card_ref._output_paths)
         old_count = len(self._tracks)
         for i, path in enumerate(tracks):
             basename = os.path.basename(path)
@@ -889,7 +914,7 @@ class _WaveformContainer(QFrame):
             self._tracks[i].setVisible(False)
 
     def refresh_tracks(self, card_ref):
-        tracks = card_ref._output_paths
+        tracks = self._sorted_paths(card_ref._output_paths)
         old_count = len(self._tracks)
         for i, path in enumerate(tracks):
             basename = os.path.basename(path)
@@ -1187,6 +1212,7 @@ class _TaskCard(QFrame):
         s = int(elapsed % 60)
         self._eta_lbl.setText(f"Elapsed: {h:02d}:{m:02d}:{s:02d}")
         self._apply_style()
+        self._apply_text_style()
 
     def mark_queued(self):
         self._progress = 0
@@ -1214,6 +1240,7 @@ class _TaskCard(QFrame):
         self._icon._completed = False
         self._icon.update()
         self._apply_style()
+        self._apply_text_style()
 
     def _tick(self):
         elapsed = time.time() - self._start_time
@@ -1280,9 +1307,17 @@ class _TaskCard(QFrame):
             "background:transparent;border:none;font-size:10px;"
             f"color:{dim_c};"
         )
+        # Status colour follows the card state: white while processing,
+        # the dot-green once complete, error red on failure.
+        if self._is_complete:
+            status_c = theme_manager.theme.success
+        elif self._failed:
+            status_c = theme_manager.theme.error
+        else:
+            status_c = name_c
         self._status_lbl.setStyleSheet(
             "background:transparent;border:none;font-size:10px;"
-            f"color:{mut_c};"
+            f"color:{status_c};"
         )
         self._menu_btn.setStyleSheet(f"""
             QPushButton{{background:transparent;border:none;border-radius:4px;
@@ -1740,6 +1775,12 @@ class _DetailView(QFrame):
             f"color:{theme_manager.theme.text_dim};"
         )
 
+    def _set_status_style(self, color):
+        self._status_lbl.setStyleSheet(
+            "background:transparent;border:none;font-size:11px;font-weight:bold;"
+            f"color:{color};"
+        )
+
     def set_failed(self):
         """Processing ended with an error before any output existed: show the
         failure instead of leaving the detail view on Loading/Processing."""
@@ -1748,10 +1789,7 @@ class _DetailView(QFrame):
         self._waveform.setVisible(False)
         self._wf_lbl.setVisible(False)
         self._status_lbl.setText("Failed")
-        self._status_lbl.setStyleSheet(
-            "background:transparent;border:none;font-size:11px;font-weight:bold;"
-            f"color:{theme_manager.theme.error};"
-        )
+        self._set_status_style(theme_manager.theme.error)
 
     def show_card(self, card):
         self._card = card
@@ -1781,10 +1819,13 @@ class _DetailView(QFrame):
 
         if is_complete:
             self._status_lbl.setText("Complete")
+            self._set_status_style(theme_manager.theme.success)
         elif is_failed:
             self._status_lbl.setText("Failed")
+            self._set_status_style(theme_manager.theme.error)
         else:
             self._status_lbl.setText("Processing...")
+            self._set_status_style(theme_manager.theme.text)
 
         elapsed_text = card._eta_lbl.text()
         self._elapsed_lbl.setText(elapsed_text)
@@ -1946,6 +1987,7 @@ class _ConsoleEdit(QTextEdit):
 # ── console page (main) ───────────────────────────────────────────
 
 class ConsolePage(QWidget):
+    stop_requested = Signal()
     # Raw log lines kept at class level so the text survives the full page
     # recreation MainWindow performs on every theme switch; replayed through
     # the current colorizer on construction so old lines re-render in the
@@ -1980,6 +2022,7 @@ class ConsolePage(QWidget):
         """Driven by the pages' process_running signal so mid-run error text
         never marks a card FAILED before the job has actually ended."""
         self._job_active = bool(active)
+        self._btn_stop.setEnabled(self._job_active)
 
     def set_current_model(self, name):
         self._current_model = name or ""
@@ -2026,6 +2069,25 @@ class ConsolePage(QWidget):
         self._btn_copy.setFixedSize(90, 30)
         self._btn_copy.clicked.connect(self._copy)
         self._header.add_extra(self._btn_copy)
+
+        # Stop — mirrors the INFERENCE stop: kills the active job. MainWindow
+        # wires stop_requested to the inference page; enabled only while a
+        # job is running (set_job_active).
+        self._btn_stop = QPushButton("Stop")
+        self._btn_stop.setFixedSize(70, 30)
+        self._btn_stop.setEnabled(False)
+        self._btn_stop.setToolTip("Stop the running job")
+        self._btn_stop.setStyleSheet(
+            f"QPushButton{{"
+            f"background:{theme_manager.theme.surface};color:{theme_manager.theme.error};"
+            f"border:1px solid {theme_manager.theme.error};border-radius:6px;"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:9px;}"
+            f"QPushButton:hover:enabled{{background:{theme_manager.theme.surface_alt};}}"
+            f"QPushButton:disabled{{color:{theme_manager.theme.text_muted};"
+            f"border:1px solid {theme_manager.theme.border};}}")
+        self._btn_stop.clicked.connect(lambda: self.stop_requested.emit())
+        self._header.add_extra(self._btn_stop)
 
         root.addWidget(self._header)
         root.addSpacing(40)

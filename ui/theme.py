@@ -83,6 +83,13 @@ class _DarkTheme:
     arch_dot_apollo = "#42A5F5"
     arch_dot_bandit = "#8D6E63"
     arch_dot_medley = "#AB47BC"
+    # Newer architectures — unique hues vs the palette above.
+    arch_dot_vitlarge23 = "#5C6BC0"   # indigo
+    arch_dot_torchseg = "#00BCD4"     # cyan
+    arch_dot_swin = "#E53935"         # red
+    arch_dot_bsmamba2 = "#C0CA33"     # lime
+    arch_dot_conformer = "#7E57C2"    # violet
+    arch_dot_dttnet = "#78909C"       # slate
     accent = "#0F7FB3"
     accent_hover = "#0B6A99"
     accent_soft = "rgba(15,127,179,0.18)"
@@ -142,6 +149,13 @@ class _LightTheme:
     arch_dot_apollo = "#42A5F5"
     arch_dot_bandit = "#8D6E63"
     arch_dot_medley = "#AB47BC"
+    # Newer architectures — unique hues vs the palette above.
+    arch_dot_vitlarge23 = "#5C6BC0"   # indigo
+    arch_dot_torchseg = "#00BCD4"     # cyan
+    arch_dot_swin = "#E53935"         # red
+    arch_dot_bsmamba2 = "#C0CA33"     # lime
+    arch_dot_conformer = "#7E57C2"    # violet
+    arch_dot_dttnet = "#78909C"       # slate
     accent = "#0F7FB3"
     accent_hover = "#0B6A99"
     accent_soft = "rgba(15,127,179,0.13)"

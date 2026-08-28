@@ -11,6 +11,24 @@ except Exception:  # wandb is only needed for training, not inference.
     # never take inference down with them.
     wandb = None
     _WANDB_AVAILABLE = False
+
+# Pillow compat: the frozen app ships stray PIL *.pyd binaries in _internal
+# that import as a namespace package (no __version__). torchmetrics then
+# crashes on `PIL.PILLOW_VERSION = PIL.__version__` the moment any
+# pytorch_lightning-based architecture (bandit) is imported. Fill in a
+# version from package metadata so the import chain survives until a real
+# Pillow is installed into the runtime (requirements-runtime.txt).
+try:
+    import PIL as _PIL
+    if not hasattr(_PIL, "__version__"):
+        try:
+            from importlib.metadata import version as _md_version
+            _PIL.__version__ = _md_version("pillow")
+        except Exception:
+            _PIL.__version__ = "0.0.0"
+except ImportError:
+    pass
+
 import numpy as np
 import torch
 import argparse
@@ -320,6 +338,9 @@ def _load_custom_backend(model_type, config, custom_backend):
         "scnet": "SCNet", "scnet_unofficial": "SCNet",
         "apollo": "BaseModel", "bandit": "MultiMaskMultiSourceBandSplitRNNSimple",
         "htdemucs": "get_model", "mdx23c": "TFC_TDF_net",
+        # DTTNet (upstream Music-Source-Separation-Training spells it
+        # both 'dttnet' and 'dtt_net'); the top-level model class is DPTDFNet.
+        "dtt_net": "DPTDFNet", "dttnet": "DPTDFNet",
     }
     class_name = CLASS_NAME_MAP.get(model_type, "BSRoformer")
     model_class = getattr(module, class_name, None)
@@ -330,7 +351,8 @@ def _load_custom_backend(model_type, config, custom_backend):
             f"Available exports: {', '.join(available[:20])}")
     if model_type in ('htdemucs',):
         model = model_class(config)
-    elif model_type in ('mdx23c', 'segm_models', 'torchseg', 'swin_upernet',
+    elif model_type in ('mdx23c', 'dtt_net', 'dttnet', 'segm_models',
+                        'torchseg', 'swin_upernet',
                         'experimental_mdx23c_stht'):
         model = model_class(config)
     elif model_type == 'apollo':

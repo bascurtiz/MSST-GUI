@@ -257,6 +257,14 @@ def proc_folder(dict_args):
         device = f'cuda:{args.device_ids[0]}' if isinstance(args.device_ids, list) else f'cuda:{args.device_ids}'
     elif torch.backends.mps.is_available():
         device = "mps"
+    else:
+        # Not forced to CPU, yet no CUDA — the runtime's PyTorch build is
+        # CPU-only or the NVIDIA driver predates the CUDA build it ships.
+        # Say so plainly instead of silently falling back.
+        print(f"WARNING: CUDA is not available in this runtime "
+              f"(torch {torch.__version__}) — running on CPU. If you selected "
+              f"a GPU: update the NVIDIA driver (>= 531.14 for CUDA 12.1) or "
+              f"reinstall GPU support from Settings.")
 
     print("Using device: ", device)
 

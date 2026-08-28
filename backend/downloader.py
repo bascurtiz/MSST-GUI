@@ -54,17 +54,44 @@ class HuggingFaceDownloader(QObject):
         return ("huggingface.co" in url or "hf.co" in url) and ("/resolve/" in url or "/blob/" in url)
 
     @staticmethod
+    def is_downloadable_url(url):
+        """Any direct http(s) download link — HuggingFace, GitHub releases,
+        raw.githubusercontent, or a plain file server."""
+        if not url:
+            return False
+        u = url.strip()
+        parsed = urlparse(u)
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+    @staticmethod
     def convert_blob_to_resolve(url):
         if "/blob/" in url:
             return url.replace("/blob/", "/resolve/", 1)
         return url
 
+    @staticmethod
+    def to_direct_download_url(url):
+        """Map page URLs onto their direct-download equivalents.
+
+        HuggingFace blob links become resolve links; GitHub blob links become
+        raw.githubusercontent.com links (github.com/blob serves the HTML
+        viewer, not the file). Release assets, resolve links and other
+        direct URLs pass through unchanged.
+        """
+        url = (url or "").strip()
+        if not url or "/blob/" not in url:
+            return url
+        m = re.match(r"(?i)https?://(?:www\.)?github\.com/([^/]+)/([^/]+)/blob/(.+)$", url)
+        if m:
+            return f"https://raw.githubusercontent.com/{m.group(1)}/{m.group(2)}/{m.group(3)}"
+        return url.replace("/blob/", "/resolve/", 1)
+
     def download_file(self, url, dest_path):
         self._cancel_requested = False
-        url = self.convert_blob_to_resolve(url.strip())
+        url = self.to_direct_download_url(url.strip())
         filename = self.extract_filename(url)
 
-        self.status.emit(f"Connecting to HuggingFace...")
+        self.status.emit(f"Connecting...")
 
         ok, msg = parallel_download(
             url, dest_path,
@@ -88,12 +115,16 @@ class HuggingFaceDownloader(QObject):
     def download_model(self, ckpt_url, yaml_url, ckpt_dest, yaml_dest):
         self._cancel_requested = False
 
-        if not self.is_hf_url(ckpt_url):
-            self.error.emit("Invalid checkpoint URL. Must be a HuggingFace resolve/main or blob/main link.")
+        if not self.is_downloadable_url(ckpt_url):
+            self.error.emit("Invalid checkpoint URL. Use a direct download link — "
+                            "a HuggingFace resolve/main link, a GitHub release asset, "
+                            "or any direct http(s) URL.")
             return False
 
-        if not self.is_hf_url(yaml_url):
-            self.error.emit("Invalid YAML URL. Must be a HuggingFace resolve/main or blob/main link.")
+        if not self.is_downloadable_url(yaml_url):
+            self.error.emit("Invalid YAML URL. Use a direct download link — "
+                            "a HuggingFace resolve/main link, a GitHub release asset, "
+                            "or any direct http(s) URL.")
             return False
 
         self.status.emit("Starting download...")

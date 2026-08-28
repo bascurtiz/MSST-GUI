@@ -713,6 +713,11 @@ class MainWindow(QMainWindow):
         self.settings_page.model_removed.connect(
             self.inference_page.on_model_removed
         )
+        # Console Stop kills the active inference job (same path as the
+        # INFERENCE page's own stop button).
+        self.console_page.stop_requested.connect(
+            self.inference_page._stop
+        )
         self.settings_page.model_removed.connect(
             self.auto_ensemble.on_model_removed
         )

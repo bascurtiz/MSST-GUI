@@ -10,7 +10,9 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
     QDialogButtonBox,
 )
-from PySide6.QtCore import Qt, Signal, Property, QEasingCurve, QSize, QPoint, QPropertyAnimation, QVariantAnimation, QEvent, QUrl, QThread
+from PySide6.QtCore import (Qt, Signal, Property, QEasingCurve, QSize, QPoint,
+                            QRectF, QPropertyAnimation, QVariantAnimation,
+                            QEvent, QUrl, QThread)
 from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
 
 from backend.runner import ProcessRunner
@@ -30,9 +32,11 @@ AUDIO_FILTER = ("Audio files (*.wav *.flac *.mp3 *.ogg *.aiff *.m4a *.opus *.wv)
                 "All files (*.*)")
 ARCH_TYPES = [
     "Apollo Architecture", "Bandit Architecture", "BS Roformer Architecture",
-    "Demucs Architecture", "MDX23c Architecture", "MDX-Net Architecture",
+    "BSMamba2 Architecture", "Conformer Architecture", "Demucs Architecture",
+    "DTTNet Architecture", "MDX23c Architecture", "MDX-Net Architecture",
     "Medley Vox Architecture", "Melband Roformer Architecture",
-    "SCNet Architecture", "VR Architecture",
+    "SCNet Architecture", "Swin Upernet Architecture", "TorchSeg Architecture",
+    "VR Architecture", "VitLarge23 Architecture",
 ]
 ARCH_TO_MODEL_TYPE = {
     "MDX Architecture": "mdx23c",  # legacy label from before the MDX split
@@ -46,6 +50,12 @@ ARCH_TO_MODEL_TYPE = {
     "SCNet Architecture": "scnet",
     "Apollo Architecture": "apollo",
     "Bandit Architecture": "bandit",
+    "BSMamba2 Architecture": "bs_mamba2",
+    "Conformer Architecture": "conformer",
+    "DTTNet Architecture": "dtt_net",
+    "Swin Upernet Architecture": "swin_upernet",
+    "TorchSeg Architecture": "torchseg",
+    "VitLarge23 Architecture": "segm_models",
 }
 
 # Display overrides for the MODEL LIBRARY card titles (the arch label itself
@@ -61,19 +71,32 @@ ARCH_DISPLAY_NAMES = {
     "Melband Roformer Architecture": "Mel-Band RoFormer",
     "SCNet Architecture": "SCNet",
     "VR Architecture": "VR",
+    "BSMamba2 Architecture": "BSMamba2",
+    "Conformer Architecture": "Conformer",
+    "DTTNet Architecture": "DTTNet",
+    "Swin Upernet Architecture": "Swin Upernet",
+    "TorchSeg Architecture": "TorchSeg",
+    "VitLarge23 Architecture": "VitLarge23",
 }
 
-# Paper / project links shown behind the small "?" button on library cards.
+# Paper / project links shown behind the small "i" button on library cards.
 ARCH_INFO_LINKS = {
-    "Apollo Architecture": "https://arxiv.org/pdf/2409.08514",
-    "Bandit Architecture": "https://arxiv.org/pdf/2407.07275",
-    "BS Roformer Architecture": "https://arxiv.org/pdf/2309.02612",
-    "Demucs Architecture": "https://arxiv.org/pdf/2211.08553",
-    "MDX23c Architecture": "https://github.com/kuielab/sdx23/",
-    "MDX-Net Architecture": "https://arxiv.org/pdf/2111.12203",
-    "Medley Vox Architecture": "https://arxiv.org/pdf/2211.07302",
-    "Melband Roformer Architecture": "https://arxiv.org/pdf/2310.01809",
-    "SCNet Architecture": "https://arxiv.org/pdf/2401.13276",
+    "Apollo Architecture": "https://mvsep.com/algorithms/52",
+    "Bandit Architecture": "https://mvsep.com/algorithms/27",
+    "BS Roformer Architecture": "https://mvsep.com/algorithms/34",
+    "BSMamba2 Architecture": "https://arxiv.org/pdf/2508.14556",
+    "Conformer Architecture": "https://arxiv.org/pdf/2005.08100",
+    "Demucs Architecture": "https://mvsep.com/algorithms/3",
+    "DTTNet Architecture": "https://arxiv.org/pdf/2309.08684",
+    "MDX23c Architecture": "https://mvsep.com/algorithms/7",
+    "MDX-Net Architecture": "https://mvsep.com/algorithms/12",
+    "Medley Vox Architecture": "https://mvsep.com/algorithms/60",
+    "Melband Roformer Architecture": "https://mvsep.com/algorithms/49",
+    "SCNet Architecture": "https://mvsep.com/algorithms/51",
+    "Swin Upernet Architecture": "https://arxiv.org/pdf/2103.14030",
+    "TorchSeg Architecture": "https://github.com/qubvel-org/segmentation_models.pytorch",
+    "VR Architecture": "https://mvsep.com/algorithms/68",
+    "VitLarge23 Architecture": "https://mvsep.com/algorithms/21",
 }
 
 
@@ -1350,6 +1373,94 @@ class _ExpandArrow(QWidget):
         e.accept()
 
 
+def _qcolor(value, fallback=None):
+    """QColor from a theme token. rgba()/rgb() tokens are stylesheet strings
+    QColor can't parse — handle that form manually or the pen falls back to
+    black."""
+    c = QColor(str(value))
+    if c.isValid():
+        return c
+    s = str(value).strip().replace(" ", "")
+    if s.startswith("rgb") and "(" in s and ")" in s:
+        try:
+            parts = [p for p in s[s.index("(") + 1:s.index(")")].split(",") if p]
+            if len(parts) >= 3:
+                alpha = int(float(parts[3]) * 255) if len(parts) > 3 else 255
+                c = QColor(int(parts[0]), int(parts[1]), int(parts[2]), alpha)
+                if c.isValid():
+                    return c
+        except (ValueError, IndexError):
+            pass
+    return QColor(fallback) if fallback else QColor(Qt.white)
+
+
+class _LinkBadge(QWidget):
+    """Small rounded chip with a minimal external-link glyph (box + arrow) —
+    same scheme as the + ADD button: surface fill, dim border and muted glyph
+    at rest; soft accent fill, accent border and bright glyph on hover. Click
+    opens the architecture's paper / project page."""
+    clicked = Signal()
+
+    def __init__(self, tooltip="", parent=None):
+        super().__init__(parent)
+        self._hovered = False
+        self.setFixedSize(16, 16)
+        self.setCursor(Qt.PointingHandCursor)
+        if tooltip:
+            self.setToolTip(tooltip)
+
+    def paintEvent(self, event):
+        from PySide6.QtCore import QPointF
+        t = theme_manager.theme
+        hovered = self._hovered
+        fill = _qcolor(theme_manager._accent_soft if hovered else t.surface)
+        ring = _qcolor(theme_manager.accent if hovered else t.border_dim)
+        glyph = _qcolor(t.text if hovered else t.text_dim)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        # No resting border: the link shows as a bare glyph. Only on hover
+        # draw the accent chip so the clickable affordance reads clearly.
+        if hovered:
+            p.setPen(QPen(ring, 1.0))
+            p.setBrush(fill)
+            p.drawRoundedRect(QRectF(0.5, 0.5, self.width() - 1.0,
+                                     self.height() - 1.0), 4, 4)
+        # Minimal external-link: page outline with an open top-right corner,
+        # plus a thin diagonal arrow escaping through it (feather geometry).
+        p.setBrush(Qt.NoBrush)
+        p.translate(self.width() / 2.0, self.height() / 2.0)
+        p.scale(0.85, 0.85)
+        pen = QPen(glyph, 1.05)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.drawPolyline([QPointF(2.7, 0.45), QPointF(2.7, 4.05),
+                        QPointF(-4.05, 4.05), QPointF(-4.05, -2.7),
+                        QPointF(-0.45, -2.7)])
+        p.drawPolyline([QPointF(1.35, -4.05), QPointF(4.05, -4.05),
+                        QPointF(4.05, -1.35)])
+        p.drawLine(QPointF(-0.9, 0.9), QPointF(4.05, -4.05))
+        p.end()
+
+    def enterEvent(self, e):
+        self._hovered = True
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(e)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+        e.accept()
+
+    def mouseReleaseEvent(self, e):
+        e.accept()
+
+
 # ── Architecture Card ─────────────────────────────────────────────────────────
 
 class _ArchCard(QFrame):
@@ -1405,25 +1516,19 @@ class _ArchCard(QFrame):
             f"color:{theme_manager.theme.text};background:transparent;"
         )
 
-        # Title + "?" hug each other on the left; the stretch pushes the
-        # count badge and chevron to the right edge.
+        # Title + link icon hug each other on the left; the stretch pushes
+        # the count badge and chevron to the right edge.
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(6)
         title_row.addWidget(title_lbl)
 
-        # "?" button — opens the architecture's paper / project page.
+        # link chip — opens the architecture's paper / project page.
         info_url = ARCH_INFO_LINKS.get(arch_name)
         self._info_lbl = None
         if info_url:
-            info = QLabel("?")
-            info.setObjectName("archInfo")
-            info.setFixedSize(16, 16)
-            info.setAlignment(Qt.AlignCenter)
-            info.setCursor(Qt.PointingHandCursor)
-            info.setToolTip(f"About {display}: {info_url}")
-            self._style_info_lbl(info)
-            info.mousePressEvent = lambda ev, u=info_url: QDesktopServices.openUrl(QUrl(u))
+            info = _LinkBadge(f"About {display}")
+            info.clicked.connect(lambda u=info_url: QDesktopServices.openUrl(QUrl(u)))
             title_row.addWidget(info)
             self._info_lbl = info
 
@@ -1459,6 +1564,9 @@ class _ArchCard(QFrame):
         self._list_vl.setSpacing(0)
 
         self._has_models = False
+        # Cards for archs absent from the mvsepless zoo stay hidden until a
+        # model is registered under them (see _apply_library_visibility).
+        self._default_visible = True
         self._empty_lbl = QLabel("No models registered")
         self._empty_lbl.setStyleSheet(
             f"color:{theme_manager.theme.text_muted};font-size:9px;font-style:italic;"
@@ -1510,15 +1618,9 @@ class _ArchCard(QFrame):
         return super().eventFilter(obj, event)
 
     def _style_info_lbl(self, lbl):
-        t = theme_manager.theme
-        lbl.setStyleSheet(
-            "QLabel{"
-            f"color:{t.text_dim};border:1px solid {t.border_visible};"
-            "border-radius:8px;background:transparent;"
-            "font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;}"
-            f"QLabel:hover{{color:{theme_manager.accent};"
-            f"border-color:{theme_manager.accent};}}"
-        )
+        # The link glyph resolves its colors at paint time, so a theme
+        # switch only needs a repaint.
+        lbl.update()
 
     # ── Animation helpers ──
 
@@ -1639,7 +1741,7 @@ class _ArchCard(QFrame):
     def filter_models(self, text):
         text = text.lower().strip()
         if not text:
-            self.setVisible(True)
+            self.setVisible(self._default_visible)
             for i in range(self._list_vl.count()):
                 w = self._list_vl.itemAt(i).widget()
                 if isinstance(w, _ModelItem):
@@ -1668,7 +1770,8 @@ class _ArchCard(QFrame):
                 if match:
                     has_ckpt_match = True
 
-        card_visible = arch_match or has_ckpt_match or not self._has_models
+        card_visible = (arch_match or has_ckpt_match
+                        or (not self._has_models and self._default_visible))
         self.setVisible(card_visible)
 
         total = len(self._items)
@@ -1708,6 +1811,8 @@ class InferencePage(QWidget):
         self._selected_model = None
         self._arch_cards     = {}
         self._friendly_names = {}  # ckpt filename -> zoo full name
+        self._mvsepless_archs = None  # archs listed in the mvsepless zoo (index fetch)
+        self._library_finalized = False  # trailing stretch added to _model_layout?
         self._build_ui()
         self._names_thread = _NamesFetchThread()
         self._names_thread.done.connect(self._on_friendly_names)
@@ -1874,13 +1979,10 @@ class InferencePage(QWidget):
         self._model_layout.setSpacing(6)
 
         for arch in ARCH_TYPES:
-            card = _ArchCard(arch)
-            card.model_selected.connect(self._on_model_selected)
-            card.ckpt_settings_requested.connect(self._on_ckpt_settings_requested)
-            self._arch_cards[arch] = card
-            self._model_layout.addWidget(card)
+            self._create_arch_card(arch)
 
         self._model_layout.addStretch()
+        self._library_finalized = True
 
         scroll.setWidget(model_content)
         rl.addWidget(scroll, 1)
@@ -1961,7 +2063,7 @@ class InferencePage(QWidget):
                 "font-family:'Montserrat',sans-serif;font-size:8px;font-weight:600;"
                 "border-radius:3px;"
             )
-            # "?" info button
+            # Link info button
             if card._info_lbl is not None:
                 card._style_info_lbl(card._info_lbl)
             # Empty label
@@ -2053,18 +2155,48 @@ class InferencePage(QWidget):
 
     # ── Search ────────────────────────────────────────────────────────
 
+    def _create_arch_card(self, arch):
+        """Build a library card for an architecture. Also used at runtime for
+        archs the user registers that aren't part of the static ARCH_TYPES."""
+        card = _ArchCard(arch)
+        card.model_selected.connect(self._on_model_selected)
+        card.ckpt_settings_requested.connect(self._on_ckpt_settings_requested)
+        self._arch_cards[arch] = card
+        if self._library_finalized:
+            # Insert before the trailing stretch so dynamically added archs
+            # keep a stable position at the end of the library.
+            self._model_layout.insertWidget(max(self._model_layout.count() - 1, 0), card)
+        else:
+            self._model_layout.addWidget(card)
+        return card
+
+    def _apply_library_visibility(self):
+        """Default the library to the architectures listed in the mvsepless
+        zoo. Archs outside it stay hidden unless a model is registered under
+        them — user-added architectures always get a card. When the zoo index
+        is unavailable (_mvsepless_archs is None) everything is shown."""
+        for arch, card in self._arch_cards.items():
+            card._default_visible = (
+                self._mvsepless_archs is None
+                or arch in self._mvsepless_archs
+                or bool(card._items))
+        try:
+            txt = self._search_bar.text()
+        except RuntimeError:
+            txt = ""
+        self._filter_models(txt)
+
     def _filter_models(self, text):
-        text = text.lower().strip()
         for arch_name, card in self._arch_cards.items():
-            if not text:
-                card.filter_models("")
-            else:
-                card.filter_models(text)
+            card.filter_models(text)
 
     # ── Slots ─────────────────────────────────────────────────────────
 
     def on_model_registered(self, model: dict):
         arch = model.get("arch", "")
+        if arch and arch not in self._arch_cards:
+            # Arch label outside the static list — give it a card dynamically.
+            self._create_arch_card(arch)
         if arch in self._arch_cards:
             name = model["name"]
             display = self._friendly_names.get(os.path.basename(name).lower(), "")
@@ -2075,9 +2207,13 @@ class InferencePage(QWidget):
                 model.get("backend_module", ""),
                 model.get("custom_backend_enabled", False),
                 display=display)
+        self._apply_library_visibility()
 
     def _on_friendly_names(self, models):
         """Index arrived: cache ckpt -> full name and refresh existing rows."""
+        if models:
+            self._mvsepless_archs = {getattr(m, "arch", "") for m in models} - {""}
+            self._apply_library_visibility()
         for m in models:
             ck = os.path.basename(getattr(m, "checkpoint_url", "").split("?")[0]).lower()
             full = getattr(m, "full_name", "")
@@ -2100,6 +2236,8 @@ class InferencePage(QWidget):
     def on_model_removed(self, name: str):
         for card in self._arch_cards.values():
             card.remove_model(name)
+        # Re-hide unlisted archs whose last model was just removed.
+        self._apply_library_visibility()
 
     def _on_model_selected(self, name, ckpt, yaml_path, arch,
                            backend_module="", custom_backend_enabled=False):
@@ -2156,6 +2294,8 @@ class InferencePage(QWidget):
 
     def save_settings(self):
         return {
+            "input_files":   self._input_row.value()
+                             if isinstance(self._input_row.value(), list) else [],
             "output_folder": self._output_row.value()
                              if isinstance(self._output_row.value(), str) else "",
             "output_format": self._fmt_combo.currentText(),
@@ -2164,6 +2304,9 @@ class InferencePage(QWidget):
         }
 
     def load_settings(self, d):
+        files = d.get("input_files", [])
+        if isinstance(files, list) and files:
+            self._input_row.set_value(files)
         out = d.get("output_folder", "")
         if isinstance(out, str) and out:
             self._output_row.set_value(out)
@@ -2192,6 +2335,21 @@ class InferencePage(QWidget):
         return None
 
     def _run(self):
+        # Any error below would otherwise die silently inside this Qt slot
+        # (PySide prints to stderr, invisible in the GUI) and leave the user
+        # with a run that "does nothing". Surface it to the console instead.
+        try:
+            self._run_inner()
+        except Exception as exc:
+            import traceback as _tb
+            self.log_output.emit(f"ERROR: {exc}")
+            for ln in _tb.format_exc().splitlines():
+                self.log_output.emit(ln)
+            self.process_running.emit(False)
+            self.btn_run.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+
+    def _run_inner(self):
         from PySide6.QtWidgets import QMessageBox
         from ui.widgets.runtime_dialog import ensure_runtime
         if not ensure_runtime(self):
@@ -2348,9 +2506,13 @@ class InferencePage(QWidget):
         self.btn_stop.setEnabled(True)
 
     def _stop(self):
+        # Only announce a stop when an inference job is actually ours to stop
+        # — the console Stop button can reach this while an ensemble job (a
+        # different runner) is active, and a false process_running(False)
+        # would clear the console's job state mid-run.
         if self._runner:
             self._runner.stop()
-        self.process_running.emit(False)
+            self.process_running.emit(False)
 
     def _on_finished(self, code):
         self.btn_run.setEnabled(True)
