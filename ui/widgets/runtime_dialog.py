@@ -118,7 +118,7 @@ class RuntimeSetupDialog(QDialog):
             info = QLabel(
                 f"Detected GPU: <b style='color:{theme_manager.accent};'>{gpu_txt}</b><br>"
                 f"PyTorch to install: <b>{line_txt}</b><br><br>"
-                f"Installation will take 5-10 minutes, depending on your hardware and "
+                f"Installation will take 3-5 minutes, depending on your hardware and "
                 f"internet connection (2.5-3 GB).")
             info.setWordWrap(True)
             info.setTextFormat(Qt.RichText)
