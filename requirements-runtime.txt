@@ -24,6 +24,13 @@ Pillow>=10.0
 
 # === Model Architectures ===
 einops>=0.8.0
+# julius / asteroid-filterbanks are the only first-party Asteroid packages the
+# Bandit architecture needs at inference (`asteroid.losses`); ship them here so
+# asteroid itself can be installed with --no-deps (see runtime_setup.py) instead
+# of letting pip pull asteroid's source-only evaluation deps (pb-bss-eval -> pesq,
+# which has no prebuilt wheel and cannot compile inside the bundled runtime).
+julius>=0.2.7
+asteroid-filterbanks>=0.4.0
 rotary-embedding-torch>=0.8.0
 conformer>=0.3.0
 spafe>=0.3.0
@@ -52,9 +59,11 @@ pytorch-lightning>=2.0.0
 # resolver-impossible. pytorch-lightning accepts >=0.7, and the Bandit model
 # only uses tm.Metric / functional SDR-SNR APIs available in 0.11.
 torchmetrics>=0.11.0,<=0.11.4
-# asteroid — required by the Bandit architecture (models/bandit/core imports
-# asteroid.losses at module import time, so even inference needs it).
-asteroid>=0.7.0
+# asteroid (Bandit architecture) is NOT listed here: resolved normally, pip
+# would install every declared dep including pb-bss-eval -> pesq, a source-only
+# package with no wheel that needs Cython/MSVC and fails inside the bundled
+# runtime. Bandit only uses `asteroid.losses` (needs julius/asteroid-filterbanks
+# above). runtime_setup.py installs it as `pip install --no-deps asteroid`.
 
 # === Transformers (for UperNet segmentation models) ===
 transformers>=4.30.0

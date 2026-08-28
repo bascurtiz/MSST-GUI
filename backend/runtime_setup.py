@@ -245,8 +245,9 @@ def _run_pip(py, args, log_cb, cancel_check, line_cb=None):
         # prints a 'scripts are installed in ...Scripts which is not on
         # PATH' WARNING per console script, flooding the setup log.
         args = ["install", "--no-warn-script-location"] + args[1:]
-    cmd = [py, "-m", "pip"] + args + ["--retries", "3"]
+    cmd = [py, "-m", "pip"] + args
     log_cb(" ".join(cmd))
+    cmd += ["--retries", "3"]
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace",
@@ -308,6 +309,67 @@ _PIP_BACKOFF_S = 3
 _BENIGN_WARN = re.compile(
     r"WARNING: Skipping \S+ as it is not installed\.", re.I)
 
+# asteroid is what the Bandit architecture depends on (`asteroid.losses`) — but
+# must NOT be installed with full dependency resolution: pip would try to build
+# every declared dep, including pb-bss-eval -> pesq, a source-only package with
+# no prebuilt wheel that requires Cython + MSVC and cannot compile inside the
+# bundled runtime. Installed with --no-deps here; its real inference deps
+# (julius, asteroid-filterbanks, einops) come from requirements-runtime.txt.
+_ASTEROID_PIN = "asteroid>=0.7.0"
+
+
+def _install_asteroid_no_deps(py, log_cb, cancel_check):
+    """Install `asteroid` without its transitive evaluation deps.
+
+    asteroid hard-pins pb-bss-eval -> pesq (a source-only build with no wheel)
+    in its declared dependencies, so a normal `pip install asteroid` cannot
+    complete inside the bundled runtime. Bandit inference only imports
+    `asteroid.losses`, which needs no such transitive package, so installing
+    asteroid with --no-deps (its wheel-available deps are listed directly in
+    requirements-runtime.txt) sidesteps the build entirely. Idempotent: pip
+    treats an already-satisfied pin as a no-op."""
+    log_cb("Installing asteroid (Bandit) without transitive eval deps…")
+    return _run_pip_retries(py, ["install", "--no-deps", _ASTEROID_PIN],
+                            log_cb, cancel_check)
+
+
+def _remove_code_root_zstd_strays(log_cb):
+    """Delete stray zstd/backports packages bundled in the frozen code root.
+
+    PyInstaller pulls `backports.zstd` / `zstd` stubs (a lone `_zstd.pyd` with
+    no ``__init__`` exposing the API) into `_internal/`. The inference subprocess
+    runs with `_internal` on ``sys.path``, so fsspec (used by pytorch-lightning)
+    resolves `from backports import zstd` to that stub on Python 3.11 — it
+    imports fine but has no `ZstdFile`, raising AttributeError and preventing
+    fsspec's `zstandard` fallback. Deleting the stray dirs makes the import
+    raise ImportError so fsspec falls back to the canonical `zstandard`
+    installed in the runtime. Dev checkouts keep their normal site-packages, so
+    this is a no-op unless frozen."""
+    if not getattr(sys, "frozen", False):
+        return
+    removed = []
+    for name in ("backports", "zstd"):
+        p = os.path.join(REPO_ROOT, name)
+        try:
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+                removed.append(p)
+        except OSError:
+            pass
+    # A bare `zstd.py` in the code root is the same hazard as a stray dir.
+    for name in ("zstd.py", "backports.py"):
+        p = os.path.join(REPO_ROOT, name)
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+                removed.append(p)
+        except OSError:
+            pass
+    if removed:
+        log_cb("Removed stray bundled zstd/backports stubs (fsspec fallback):")
+        for p in removed:
+            log_cb(f"  removed {p}")
+
 
 def _run_pip_retries(py, args, log_cb, cancel_check, line_cb=None):
     """Run a pip install step, retrying failures with a short backoff.
@@ -349,10 +411,17 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
         if not req:
             return False, "requirements-runtime.txt is missing from the installation."
         log_cb("Updating runtime libraries (PyTorch already installed)…")
+        # Keep the code-root free of bundled zstd/backports stubs that would
+        # shadow the canonical `zstandard` in the runtime during inference.
+        _remove_code_root_zstd_strays(log_cb)
         rc = _run_pip_retries(py, ["install", "-r", req], log_cb, cancel_check)
         if rc != 0:
             return False, (f"Library update failed (exit code {rc}). "
                            f"Click Resume to try again — installed packages are kept.")
+        # asteroid's source-only evaluation deps (pesq) cannot build inside the
+        # runtime, so it must be added with --no-deps after the main install.
+        if _install_asteroid_no_deps(py, log_cb, cancel_check) != 0:
+            return False, "asteroid (Bandit) installation failed — installed packages are kept."
         _write_requirements_marker()
         if not runtime_ready():
             return False, "Runtime updated but 'import torch' failed."
@@ -409,9 +478,12 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
 
     # 1b. Remove known-broken zstd stub bindings: urllib3 2.6+ probes them and
     # crashes on import (AttributeError on ZstdError) when the canonical
-    # `zstandard` package isn't what it finds first.
+    # `zstandard` package isn't what it finds first. Also delete the PyInstaller
+    # stray `backports`/`zstd` dirs in `_internal/` so fsspec falls back to
+    # `zstandard` instead of resolving to the broken stub (see helper).
     _run_pip(py, ["uninstall", "-y", "backports.zstd", "zstd"],
              log_cb, cancel_check)
+    _remove_code_root_zstd_strays(log_cb)
 
     # 2. Remaining inference libraries from PyPI (torch already satisfied)
     req = _requirements_runtime_file()
@@ -423,6 +495,10 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
         if rc != 0:
             return False, (f"Library installation failed (exit code {rc}). "
                            f"Click Resume to try again — installed packages are kept.")
+        # asteroid's source-only evaluation deps (pesq) cannot build inside the
+        # runtime, so it must be added with --no-deps after the main install.
+        if _install_asteroid_no_deps(py, log_cb, cancel_check) != 0:
+            return False, "asteroid (Bandit) installation failed — installed packages are kept."
         _write_requirements_marker()
     if progress_cb:
         progress_cb(0.93)
