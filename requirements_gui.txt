@@ -43,10 +43,14 @@ wandb>=0.15.0
 auraloss>=0.4.0
 torch-log-wmse>=0.3.0
 pytorch-lightning>=2.0.0
-torchmetrics>=1.0.0
+# torchmetrics must stay <=0.11.4: asteroid (used by the Bandit architecture)
+# hard-pins torchmetrics<=0.11.4 in its metadata, so requiring >=1.0 is
+# resolver-impossible. pytorch-lightning accepts >=0.7, and the Bandit model
+# only uses tm.Metric / functional SDR-SNR APIs available in 0.11.
+torchmetrics>=0.11.0,<=0.11.4
 # asteroid — required by the Bandit architecture (models/bandit/core imports
 # asteroid.losses at module import time, so even inference needs it).
-asteroid>=0.6.0
+asteroid>=0.7.0
 
 # === Transformers (for UperNet segmentation models) ===
 transformers>=4.30.0
