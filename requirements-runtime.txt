@@ -71,6 +71,11 @@ transformers>=4.30.0
 # === Audio Augmentation ===
 audiomentations>=0.33.0
 pedalboard>=0.9.0
+# torch_audiomentations: imported unconditionally at model load time by the
+# Bandit architecture (models/bandit/core/data/augmentation.py), so it must be
+# present even though augmentors only run during training. Pulls in
+# torch-pitch-shift + primePy (pure-python wheels).
+torch_audiomentations>=0.6.0
 
 # === Networking ===
 requests>=2.31.0

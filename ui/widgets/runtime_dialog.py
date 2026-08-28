@@ -245,6 +245,12 @@ def ensure_runtime(parent=None) -> bool:
     """Gate for job-start paths. True when separation jobs can run."""
     if not getattr(sys, "frozen", False):
         return True  # dev checkout: the running venv is the runtime
+    # Always purge stray PyInstaller zstd/backports stubs from the code root
+    # before touching the runtime: fsspec (via pytorch-lightning) would resolve
+    # to the broken stub and crash inference if it ever wins over `zstandard`.
+    # Runs here too so an interrupted/rolled-back setup can't leave a poisoned
+    # install behind — cheap no-op once the dirs are gone.
+    runtime_setup._remove_code_root_zstd_strays(lambda _s: None)
     if runtime_setup.runtime_ready() and not runtime_setup.runtime_needs_repair():
         if runtime_setup.runtime_requirements_current():
             return True

@@ -1,6 +1,51 @@
 # coding: utf-8
 __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 
+# ---------------------------------------------------------------------------
+# Neutralize stray bundled zstd/backports stubs (must run BEFORE any import
+# that can pull in fsspec / pytorch_lightning / torch).
+#
+# PyInstaller bundles a broken `backports.zstd`/`zstd` stub (a lone
+# `_zstd.pyd` with no API surface) into `_internal/`. This subprocess runs
+# with `_internal` on sys.path, and fsspec (pulled in by pytorch-lightning)
+# tries `from backports import zstd` BEFORE `import zstandard`. The stub
+# imports fine but has no `ZstdFile`, so fsspec crashes with AttributeError
+# instead of falling back to the runtime's canonical `zstandard` — even
+# though `zstandard` is installed and working. Fix: (1) delete the stray dirs
+# when possible, and (2) seed sys.modules so `from backports import zstd`
+# deterministically raises ImportError, forcing the `zstandard` fallback.
+# Step (2) works even while Windows Defender / the search indexer still hold
+# the freshly-extracted .pyd open and deletion is blocked.
+import sys as _zsys
+import os as _zos
+import time as _ztime
+import shutil as _zshutil
+
+
+def _zstd_stray_guard():
+    root = _zos.path.dirname(_zos.path.abspath(__file__))
+    for name in ("backports", "zstd", "backports.py", "zstd.py"):
+        p = _zos.path.join(root, name)
+        if not (_zos.path.isdir(p) or _zos.path.isfile(p)):
+            continue
+        for _ in range(20):  # best-effort; correctness comes from the guard below
+            try:
+                if _zos.path.isdir(p):
+                    _zshutil.rmtree(p)
+                else:
+                    _zos.remove(p)
+                break
+            except OSError:
+                _ztime.sleep(0.5)
+    # None entries make `from backports import zstd` / `import zstd` raise
+    # ImportError, so fsspec falls back to the canonical `zstandard`.
+    _zsys.modules.setdefault("backports.zstd", None)
+    _zsys.modules.setdefault("zstd", None)
+
+
+_zstd_stray_guard()
+# ---------------------------------------------------------------------------
+
 import time
 import librosa
 import sys

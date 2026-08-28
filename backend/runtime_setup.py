@@ -333,6 +333,13 @@ def _install_asteroid_no_deps(py, log_cb, cancel_check):
                             log_cb, cancel_check)
 
 
+# Windows can hold a freshly-extracted bundle open for 30+ s while Defender /
+# the search indexer scan it, so the retry window must be generous (a one-time
+# delay before a job is far cheaper than a crash later). 120 x 0.5 s = 60 s.
+_ZSTD_STRAY_ATTEMPTS = 120        # up to ~60s total at 0.5s steps
+_ZSTD_STRAY_RETRY_S = 0.5
+
+
 def _remove_code_root_zstd_strays(log_cb):
     """Delete stray zstd/backports packages bundled in the frozen code root.
 
@@ -344,31 +351,53 @@ def _remove_code_root_zstd_strays(log_cb):
     fsspec's `zstandard` fallback. Deleting the stray dirs makes the import
     raise ImportError so fsspec falls back to the canonical `zstandard`
     installed in the runtime. Dev checkouts keep their normal site-packages, so
-    this is a no-op unless frozen."""
+    this is a no-op unless frozen.
+
+    Freshly-written files are often held open briefly by the OS (antivirus
+    scan / search indexer), which makes deletion raise PermissionError. So each
+    path is retried in short steps for a few seconds, and any path that stays
+    locked is reported via log_cb rather than swallowed — a hidden failure here
+    re-crashes inference later, so silence is worse than a clear warning."""
     if not getattr(sys, "frozen", False):
         return
+
+    # (path, is_dir) candidates. Dirs are removed recursively; bare .py files
+    # in the code root are the same hazard.
+    candidates = [(os.path.join(REPO_ROOT, "backports"), True),
+                  (os.path.join(REPO_ROOT, "zstd"), True),
+                  (os.path.join(REPO_ROOT, "backports.py"), False),
+                  (os.path.join(REPO_ROOT, "zstd.py"), False)]
     removed = []
-    for name in ("backports", "zstd"):
-        p = os.path.join(REPO_ROOT, name)
-        try:
-            if os.path.isdir(p):
-                shutil.rmtree(p, ignore_errors=True)
+    failed = []
+    for p, is_dir in candidates:
+        if is_dir:
+            if not os.path.isdir(p):
+                continue
+        elif not os.path.isfile(p):
+            continue
+        for attempt in range(_ZSTD_STRAY_ATTEMPTS):
+            try:
+                if is_dir:
+                    shutil.rmtree(p, ignore_errors=False)
+                else:
+                    os.remove(p)
                 removed.append(p)
-        except OSError:
-            pass
-    # A bare `zstd.py` in the code root is the same hazard as a stray dir.
-    for name in ("zstd.py", "backports.py"):
-        p = os.path.join(REPO_ROOT, name)
-        try:
-            if os.path.isfile(p):
-                os.remove(p)
-                removed.append(p)
-        except OSError:
-            pass
+                break
+            except OSError:
+                if attempt < _ZSTD_STRAY_ATTEMPTS - 1:
+                    time.sleep(_ZSTD_STRAY_RETRY_S)
+                else:
+                    failed.append(p)
     if removed:
         log_cb("Removed stray bundled zstd/backports stubs (fsspec fallback):")
         for p in removed:
             log_cb(f"  removed {p}")
+    if failed:
+        log_cb("WARNING: could not remove stray bundled zstd/backports stub "
+               "(file may be locked by another process) — fsspec may crash on "
+               "import until it is retried:")
+        for p in failed:
+            log_cb(f"  {p}")
 
 
 def _run_pip_retries(py, args, log_cb, cancel_check, line_cb=None):
