@@ -18,6 +18,8 @@ einops>=0.8.0
 rotary-embedding-torch>=0.8.0
 conformer>=0.3.0
 spafe>=0.3.0
+# PoPE positional encoding — required by PolarFormer (bs/mel roformer use_pope: True)
+pope-pytorch>=0.1.0
 
 # === Model Zoo (Demucs / Open-Unmix) ===
 demucs>=4.0.0

@@ -13,10 +13,13 @@ therefore installs the correct line per detected GPU on first use:
     else NVIDIA (5.0 – 9.0)        → CUDA 12.1 wheels (torch 2.4.1)
     no NVIDIA GPU                  → CPU wheels from PyPI
 """
+import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
+import time
 
 from backend.paths import get_app_dir, get_runtime_dir, get_runtime_python, REPO_ROOT
 
@@ -140,6 +143,51 @@ def _requirements_runtime_file():
     return None
 
 
+def _requirements_hash():
+    """SHA-256 of the shipped requirements-runtime.txt (None when absent)."""
+    req = _requirements_runtime_file()
+    if not req:
+        return None
+    try:
+        with open(req, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def _requirements_marker_path():
+    return os.path.join(get_runtime_dir(), ".requirements-hash")
+
+
+def _write_requirements_marker():
+    """Record which requirements set the runtime was provisioned with."""
+    want = _requirements_hash()
+    if not want:
+        return
+    try:
+        with open(_requirements_marker_path(), "w") as f:
+            f.write(want)
+    except OSError:
+        pass
+
+
+def runtime_requirements_current():
+    """True when the runtime was provisioned with the currently shipped
+    requirements-runtime.txt. Frozen-only concern: an app update that ships
+    new requirements (e.g. a newly required model library) must top up the
+    existing runtime before separation jobs can rely on it."""
+    if not getattr(sys, "frozen", False):
+        return True
+    want = _requirements_hash()
+    if want is None:
+        return True
+    try:
+        with open(_requirements_marker_path(), "r") as f:
+            return f.read().strip() == want
+    except OSError:
+        return False
+
+
 def _bootstrap_runtime_dir():
     """Unpack the pristine bundled runtime into the writable app dir.
 
@@ -172,6 +220,11 @@ def _run_pip(py, args, log_cb, cancel_check, line_cb=None):
     env = os.environ.copy()
     env["PIP_CONFIG_FILE"] = os.devnull
     env["PYTHONNOUSERSITE"] = "1"
+    if args and args[0] == "install":
+        # The runtime's Scripts dir is never on PATH; without this flag pip
+        # prints a 'scripts are installed in ...Scripts which is not on
+        # PATH' WARNING per console script, flooding the setup log.
+        args = ["install", "--no-warn-script-location"] + args[1:]
     cmd = [py, "-m", "pip"] + args + ["--retries", "3"]
     log_cb(" ".join(cmd))
     proc = subprocess.Popen(
@@ -180,29 +233,111 @@ def _run_pip(py, args, log_cb, cancel_check, line_cb=None):
         env=env,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    # Quiet log policy: every pip line feeds the progress counter via
+    # line_cb, but only errors/warnings and the end-of-phase summary reach
+    # the log — pip's per-package chatter (Collecting/Downloading/Using
+    # cached/Installing) floods the dialog without telling the user more
+    # than the progress bar already does.
+    in_error = False
     for raw_line in proc.stdout:
         if cancel_check and cancel_check():
             proc.terminate()
             raise RuntimeError("Setup cancelled.")
         line = raw_line.rstrip()
-        if line:
+        if not line:
+            continue
+        s = line.strip()
+        if line_cb:
+            try:
+                line_cb(s)
+            except Exception:
+                pass
+        u = s.upper()
+        if u.startswith(("ERROR", "WARNING")):
+            # Benign uninstall notices: the zstd cleanup targets stub
+            # packages that are absent by design on most machines.
+            if _BENIGN_WARN.match(s):
+                continue
+            in_error = True
             log_cb(line)
-            if line_cb:
-                try:
-                    line_cb(line.strip())
-                except Exception:
-                    pass
+        elif in_error and line[:1] in (" ", "\t"):
+            log_cb(line)  # indented error context (e.g. resolver details)
+        elif s.startswith("Successfully installed"):
+            in_error = False
+            log_cb(line)
+        else:
+            in_error = False
     proc.wait()
     return proc.returncode
 
 
-def install_runtime(log_cb=print, progress_cb=None, cancel_check=None):
+def _sleep_with_cancel(seconds, cancel_check):
+    """Sleep in short slices so Cancel stays responsive. False on cancel."""
+    end = time.time() + seconds
+    while True:
+        remaining = end - time.time()
+        if remaining <= 0:
+            return True
+        if cancel_check and cancel_check():
+            return False
+        time.sleep(min(0.25, remaining))
+
+
+_PIP_ATTEMPTS = 3
+_PIP_BACKOFF_S = 3
+_BENIGN_WARN = re.compile(
+    r"WARNING: Skipping \S+ as it is not installed\.", re.I)
+
+
+def _run_pip_retries(py, args, log_cb, cancel_check, line_cb=None):
+    """Run a pip install step, retrying failures with a short backoff.
+
+    A retry is a resume, not a restart: pip skips already-satisfied
+    requirements and reuses cached wheels, so completed work is never
+    redone."""
+    for attempt in range(1, _PIP_ATTEMPTS + 1):
+        rc = _run_pip(py, args, log_cb, cancel_check, line_cb)
+        if rc == 0:
+            return 0
+        if cancel_check and cancel_check():
+            raise RuntimeError("Setup cancelled.")
+        if attempt < _PIP_ATTEMPTS:
+            delay = _PIP_BACKOFF_S * attempt
+            log_cb(f"Step failed (exit code {rc}) — retrying in {delay}s "
+                   f"({attempt + 1}/{_PIP_ATTEMPTS}); "
+                   f"completed downloads are kept…")
+            if not _sleep_with_cancel(delay, cancel_check):
+                raise RuntimeError("Setup cancelled.")
+    return rc
+
+
+def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
+                    top_up=False):
     """Install the GPU-appropriate PyTorch build + libraries into the
     bundled runtime. Blocking; run it on a worker thread.
+
+    With top_up=True the PyTorch step is skipped and only
+    requirements-runtime.txt is (re)installed — used when an app update
+    ships new requirements (pip installs just the missing libraries).
 
     Returns (True, summary) on success, (False, error) otherwise.
     """
     py = _bootstrap_runtime_dir()
+
+    if top_up:
+        req = _requirements_runtime_file()
+        if not req:
+            return False, "requirements-runtime.txt is missing from the installation."
+        log_cb("Updating runtime libraries (PyTorch already installed)…")
+        rc = _run_pip_retries(py, ["install", "-r", req], log_cb, cancel_check)
+        if rc != 0:
+            return False, (f"Library update failed (exit code {rc}). "
+                           f"Click Resume to try again — installed packages are kept.")
+        _write_requirements_marker()
+        if not runtime_ready():
+            return False, "Runtime updated but 'import torch' failed."
+        return True, "Runtime libraries updated."
+
     gpus = detect_gpus()
     caps = [c for _, c in gpus]
     line = pick_torch_line(caps)
@@ -213,6 +348,7 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None):
                "cu121": "PyTorch (CUDA 12.1) — supports GTX 10-series through RTX 40-series",
                "cu128": "PyTorch (CUDA 12.8) — supports RTX 50-series and newer"}[line]
     log_cb(f"Selected build: {summary}")
+    log_cb("Installing PyTorch…")
 
     # Fine-grained progress: pip reports package downloads line by line, so
     # every wheel lands as a small, monotonic nudge inside the phase band.
@@ -238,15 +374,16 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None):
     torch_args = _TORCH_SPECS[line]
     torch_line_cb = _phase_counter(0.05, 0.45, cap=14)
     if line == "cpu":
-        rc = _run_pip(py, ["install", "--upgrade"] + torch_args,
-                      log_cb, cancel_check, line_cb=torch_line_cb)
+        rc = _run_pip_retries(py, ["install", "--upgrade"] + torch_args,
+                              log_cb, cancel_check, line_cb=torch_line_cb)
     else:
         index = _TORCH_CUDA_INDEX.format(line=line)
-        rc = _run_pip(py, ["install", "--upgrade"] + torch_args +
-                      ["--index-url", index],
-                      log_cb, cancel_check, line_cb=torch_line_cb)
+        rc = _run_pip_retries(py, ["install", "--upgrade"] + torch_args +
+                              ["--index-url", index],
+                              log_cb, cancel_check, line_cb=torch_line_cb)
     if rc != 0:
-        return False, f"PyTorch installation failed (exit code {rc})."
+        return False, (f"PyTorch installation failed (exit code {rc}). "
+                       f"Click Resume to try again — completed downloads are kept.")
     if progress_cb:
         progress_cb(0.55)
 
@@ -259,11 +396,14 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None):
     # 2. Remaining inference libraries from PyPI (torch already satisfied)
     req = _requirements_runtime_file()
     if req:
+        log_cb("Installing inference libraries…")
         req_line_cb = _phase_counter(0.56, 0.32, cap=40)
-        rc = _run_pip(py, ["install", "-r", req],
-                      log_cb, cancel_check, line_cb=req_line_cb)
+        rc = _run_pip_retries(py, ["install", "-r", req],
+                              log_cb, cancel_check, line_cb=req_line_cb)
         if rc != 0:
-            return False, f"Library installation failed (exit code {rc})."
+            return False, (f"Library installation failed (exit code {rc}). "
+                           f"Click Resume to try again — installed packages are kept.")
+        _write_requirements_marker()
     if progress_cb:
         progress_cb(0.93)
 
@@ -280,7 +420,8 @@ def runtime_status_text():
         ver = runtime_python_version() or "?"
         gpus = detect_gpus()
         gpu_txt = gpus[0][0] if gpus else "GPU"
-        return f"Ready — Python {ver} · {gpu_txt}"
+        extra = " · library update pending" if not runtime_requirements_current() else ""
+        return f"Ready — Python {ver} · {gpu_txt}{extra}"
     if os.path.isfile(get_runtime_python()):
         return "Runtime present but PyTorch is not installed yet."
     return "Not installed — required to run separation jobs."

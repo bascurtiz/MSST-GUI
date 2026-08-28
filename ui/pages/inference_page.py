@@ -1792,7 +1792,7 @@ class InferencePage(QWidget):
 
         # Run Inference
         ll.addWidget(_sec_hdr("Run Inference"))
-        ll.addSpacing(28)  # roomier than CONFIGURATION: buttons sit close otherwise
+        ll.addSpacing(19)  # same header-to-content rhythm as CONFIGURATION
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
