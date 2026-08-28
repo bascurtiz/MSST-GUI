@@ -32,15 +32,15 @@ MODEL_TYPE_TO_ARCH = {
     "bs_roformer": "BS Roformer Architecture",
     "mel_band_roformer": "Melband Roformer Architecture",
     "scnet": "SCNet Architecture",
-    "mdx23c": "MDX Architecture",
-    "vr": "MDX Architecture",
+    "mdx23c": "MDX23c Architecture",
+    "vr": "VR Architecture",
     "htdemucs": "Demucs Architecture",
     "bandit": "Bandit Architecture",
     "bandit_v2": "Bandit Architecture",
-    "mdxnet": "MDX Architecture",
+    "mdxnet": "MDX-Net Architecture",
     "scnet_masked": "SCNet Architecture",
     "scnet_tran": "SCNet Architecture",
-    "medley_vox": "BS Roformer Architecture",
+    "medley_vox": "Medley Vox Architecture",
 }
 
 STEM_MAP = {
@@ -162,7 +162,11 @@ def _arch_folder(arch: str) -> str:
         "BS Roformer Architecture": "bs_roformer",
         "Melband Roformer Architecture": "melband_roformer",
         "SCNet Architecture": "scnet",
-        "MDX Architecture": "mdx",
+        "MDX Architecture": "mdx",  # legacy label from before the MDX split
+        "MDX23c Architecture": "mdx",
+        "MDX-Net Architecture": "mdxnet",
+        "VR Architecture": "vr",
+        "Medley Vox Architecture": "medley_vox",
         "Demucs Architecture": "demucs",
         "Apollo Architecture": "apollo",
         "Bandit Architecture": "bandit",

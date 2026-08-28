@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QTimer, Property, QUrl, QPropertyAnimation, QEasi
 from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QPainterPath, QDesktopServices, QFont, QPixmap, QCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from ui.theme import theme_manager, FONT_FAMILY, FONT_STACK
-from ui.widgets.common import PageHeader
+from ui.widgets.common import PageHeader, add_button_hover
 from mutagen import File as _MutagenFile
 
 
@@ -2090,8 +2090,8 @@ class ConsolePage(QWidget):
             f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
             "font-family:'Montserrat',sans-serif;font-weight:600;"
             "font-size:9px;}"
-            f"QPushButton:hover{{color:{theme_manager.theme.text};border:1px solid {theme_manager.theme.border_dim};}}"
-            "QPushButton:checked{"
+            + add_button_hover()
+            + "QPushButton:checked{"
             f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
             "}"
         )
@@ -2101,15 +2101,15 @@ class ConsolePage(QWidget):
             f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
             "font-family:'Montserrat',sans-serif;font-weight:600;"
             "font-size:9px;}"
-            f"QPushButton:hover{{color:{theme_manager.theme.error};border:1px solid {_error_rgba(0.40)};}}"
+            + add_button_hover()
         )
         self._btn_copy.setStyleSheet(
             f"QPushButton{{"
             f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;border-radius:4px;"
             "font-family:'Montserrat',sans-serif;font-weight:600;"
             "font-size:9px;}"
-            f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
-            f"QPushButton:pressed{{background:{theme_manager.accent};}}"
+            + add_button_hover()
+            + f"QPushButton:pressed{{background:{theme_manager.accent};}}"
         )
 
     def _toggle_view(self, checked):
@@ -2390,8 +2390,8 @@ class ConsolePage(QWidget):
             f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;border-radius:4px;"
             "font-family:'Montserrat',sans-serif;font-weight:600;"
             "font-size:9px;}"
-            f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
-            f"QPushButton:pressed{{background:{theme_manager.accent};}}"
+            + add_button_hover()
+            + f"QPushButton:pressed{{background:{theme_manager.accent};}}"
         )
 
     def _clear(self):

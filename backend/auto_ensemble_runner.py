@@ -373,9 +373,13 @@ class AutoEnsembleRunner(QThread):
         arch = model.get("arch", "")
         mapping = {
             "MDX Architecture": "mdx23c",
+            "MDX23c Architecture": "mdx23c",
+            "MDX-Net Architecture": "mdxnet",
+            "VR Architecture": "vr",
             "Demucs Architecture": "htdemucs",
             "BS Roformer Architecture": "bs_roformer",
             "Melband Roformer Architecture": "mel_band_roformer",
+            "Medley Vox Architecture": "bs_roformer",
             "SCNet Architecture": "scnet",
             "Apollo Architecture": "apollo",
             "Bandit Architecture": "bandit",

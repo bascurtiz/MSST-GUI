@@ -10,10 +10,11 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
     QDialogButtonBox,
 )
-from PySide6.QtCore import Qt, Signal, Property, QEasingCurve, QSize, QPoint, QPropertyAnimation, QVariantAnimation, QEvent
-from PySide6.QtGui import QFont, QPainter, QPen, QColor
+from PySide6.QtCore import Qt, Signal, Property, QEasingCurve, QSize, QPoint, QPropertyAnimation, QVariantAnimation, QEvent, QUrl, QThread
+from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
 
 from backend.runner import ProcessRunner
+from backend.model_manager import fetch_model_index
 from backend.paths import REPO_ROOT, get_python_exe
 from backend.gpu_utils import list_gpus, device_ids_from_selection
 from backend import settings as settings_store
@@ -21,24 +22,66 @@ from backend.yaml_analyzer import classify_model_type, get_stems_for_type
 from ui.theme import theme_manager, UIConstants, FONT_STACK
 from ui.widgets.common import (
     ConsoleLog, SpectrogramPanel, WaveformPanel, ProcessingStatusPanel, PageHeader,
+    outline_button_ss, paint_chevron, EllipsisButton, GlyphButton,
+    _outline_icon_color, _stop_icon_color, _add_icon_color,
 )
 
 AUDIO_FILTER = ("Audio files (*.wav *.flac *.mp3 *.ogg *.aiff *.m4a *.opus *.wv);;"
                 "All files (*.*)")
 ARCH_TYPES = [
-    "MDX Architecture", "Demucs Architecture",
-    "BS Roformer Architecture", "Melband Roformer Architecture",
-    "SCNet Architecture", "Apollo Architecture", "Bandit Architecture",
+    "Apollo Architecture", "Bandit Architecture", "BS Roformer Architecture",
+    "Demucs Architecture", "MDX23c Architecture", "MDX-Net Architecture",
+    "Medley Vox Architecture", "Melband Roformer Architecture",
+    "SCNet Architecture", "VR Architecture",
 ]
 ARCH_TO_MODEL_TYPE = {
-    "MDX Architecture": "mdx23c",
+    "MDX Architecture": "mdx23c",  # legacy label from before the MDX split
+    "MDX23c Architecture": "mdx23c",
+    "MDX-Net Architecture": "mdxnet",
+    "VR Architecture": "vr",
     "Demucs Architecture": "htdemucs",
     "BS Roformer Architecture": "bs_roformer",
     "Melband Roformer Architecture": "mel_band_roformer",
+    "Medley Vox Architecture": "bs_roformer",
     "SCNet Architecture": "scnet",
     "Apollo Architecture": "apollo",
     "Bandit Architecture": "bandit",
 }
+
+# Display overrides for the MODEL LIBRARY card titles (the arch label itself
+# stays unchanged — it's used as a key for grouping / model type mapping).
+ARCH_DISPLAY_NAMES = {
+    "Apollo Architecture": "Apollo",
+    "Bandit Architecture": "Bandit",
+    "BS Roformer Architecture": "Band-Split RoFormer",
+    "Demucs Architecture": "Demucs",
+    "MDX23c Architecture": "MDX23c",
+    "MDX-Net Architecture": "MDX-Net",
+    "Medley Vox Architecture": "Medley-Vox",
+    "Melband Roformer Architecture": "Mel-Band RoFormer",
+    "SCNet Architecture": "SCNet",
+    "VR Architecture": "VR",
+}
+
+# Paper / project links shown behind the small "?" button on library cards.
+ARCH_INFO_LINKS = {
+    "Apollo Architecture": "https://arxiv.org/pdf/2409.08514",
+    "Bandit Architecture": "https://arxiv.org/pdf/2407.07275",
+    "BS Roformer Architecture": "https://arxiv.org/pdf/2309.02612",
+    "Demucs Architecture": "https://arxiv.org/pdf/2211.08553",
+    "MDX23c Architecture": "https://github.com/kuielab/sdx23/",
+    "MDX-Net Architecture": "https://arxiv.org/pdf/2111.12203",
+    "Medley Vox Architecture": "https://arxiv.org/pdf/2211.07302",
+    "Melband Roformer Architecture": "https://arxiv.org/pdf/2310.01809",
+    "SCNet Architecture": "https://arxiv.org/pdf/2401.13276",
+}
+
+
+def _arch_dot_token(arch_name):
+    """First word of an arch label, normalised onto the arch_dot_* tokens
+    (MDX-Net shares the classic MDX color; MDX23c has its own)."""
+    word = arch_name.lower().split()[0]
+    return {"mdx-net": "mdx"}.get(word, word)
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -93,7 +136,7 @@ class _SearchBar(QFrame):
 
     def __init__(self, placeholder="", parent=None):
         super().__init__(parent)
-        self.setFixedHeight(40)
+        self.setFixedHeight(32)
         self.setStyleSheet("QFrame{background:transparent;border:none;}")
 
         # The QLineEdit IS the field (same recipe as the SETTINGS search): it
@@ -123,7 +166,7 @@ class _SearchBar(QFrame):
     def sizeHint(self):
         # No layout anymore (children are overlaid on the input), so the
         # frame would otherwise collapse to zero width in its parent layout.
-        return QSize(155, 40)
+        return QSize(155, 32)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -219,45 +262,6 @@ class _FilterButton(QPushButton):
 
 
 # ── Icon widgets ──────────────────────────────────────────────────────────────
-
-class _ArrowIcon(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(20, 20)
-        self._angle = 0
-        self._anim = None
-
-    def set_down(self, down):
-        from PySide6.QtCore import QVariantAnimation, QEasingCurve
-        target = 90 if down else 0
-        if self._anim:
-            self._anim.stop()
-        self._anim = QVariantAnimation(self)
-        self._anim.setDuration(200)
-        self._anim.setEasingCurve(QEasingCurve.OutCubic)
-        self._anim.setStartValue(self._angle)
-        self._anim.setEndValue(target)
-        self._anim.valueChanged.connect(lambda v: (setattr(self, '_angle', v), self.update()))
-        self._anim.start()
-
-    def paintEvent(self, event):
-        from PySide6.QtGui import QPainter, QPainterPath, QPen, QColor
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.translate(10, 10)
-        p.rotate(self._angle)
-        p.translate(-10, -10)
-        _c = QColor(theme_manager.theme.text)
-        _c.setAlpha(120)
-        p.setPen(QPen(_c, 1.5))
-        p.setBrush(Qt.NoBrush)
-        path = QPainterPath()
-        path.moveTo(6, 5)
-        path.lineTo(14, 10)
-        path.lineTo(6, 15)
-        p.drawPath(path)
-        p.end()
-
 
 class _ComboBox(QComboBox):
     popupOpened = Signal()
@@ -471,40 +475,6 @@ def _combo_ss():
 ROW_H = 46
 
 
-class _EllipsisButton(QPushButton):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(34, 34)
-        self.setCursor(Qt.PointingHandCursor)
-        self._hovered = False
-
-    def paintEvent(self, event):
-        from PySide6.QtGui import QPainter, QColor
-        from PySide6.QtCore import QPointF
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        alpha = 170 if self._hovered else 110
-        dot_r = 1.6
-        gap = 5
-        total_w = 3 * (dot_r * 2) + 2 * gap
-        ox = (34 - total_w) / 2
-        oy = (34 - dot_r * 2) / 2
-        p.setPen(Qt.NoPen)
-        _c = QColor(theme_manager.theme.text)
-        _c.setAlpha(alpha)
-        p.setBrush(_c)
-        for i in range(3):
-            cx = ox + dot_r + i * (dot_r * 2 + gap)
-            cy = oy + dot_r
-            p.drawEllipse(QPointF(cx, cy), dot_r, dot_r)
-        p.end()
-
-    def enterEvent(self, e):
-        self._hovered = True; self.update(); super().enterEvent(e)
-    def leaveEvent(self, e):
-        self._hovered = False; self.update(); super().leaveEvent(e)
-
-
 class _BrowseRow(QFrame):
     def __init__(self, icon, label, placeholder, mode="file",
                  file_filter="All (*.*)", parent=None):
@@ -519,7 +489,9 @@ class _BrowseRow(QFrame):
         self.setStyleSheet(_row_ss())
 
         hl = QHBoxLayout(self)
-        hl.setContentsMargins(12, 0, 4, 0)
+        # right margin matches the chevron rows so the '...' dots and the '>'
+        # chevrons stack centered below each other (like SETTINGS LOCAL FILES)
+        hl.setContentsMargins(12, 0, 14, 0)
         hl.setSpacing(0)
 
         if icon is not None:
@@ -546,7 +518,7 @@ class _BrowseRow(QFrame):
         self._edit.setFixedHeight(ROW_H)
         hl.addWidget(self._edit, 1)
 
-        btn = _EllipsisButton()
+        btn = EllipsisButton()
         btn.clicked.connect(self._browse)
         hl.addWidget(btn)
 
@@ -657,7 +629,9 @@ class _ComboRow(QFrame):
         self.setCursor(Qt.PointingHandCursor)
 
         hl = QHBoxLayout(self)
-        hl.setContentsMargins(12, 0, 10, 0)
+        # right margin matches the dots rows so the '>' chevrons and the '...'
+        # dots stack centered below each other (like SETTINGS LOCAL FILES)
+        hl.setContentsMargins(12, 0, 14, 0)
         hl.setSpacing(0)
 
         if icon is not None:
@@ -676,7 +650,7 @@ class _ComboRow(QFrame):
         self.combo.setStyleSheet(_combo_ss())
         hl.addWidget(self.combo, 1)
 
-        self._arrow = _ArrowIcon()
+        self._arrow = _ExpandArrow()
         hl.addWidget(self._arrow)
         self.combo.popupOpened.connect(lambda: self._arrow.set_down(True))
         self.combo.popupClosed.connect(lambda: self._arrow.set_down(False))
@@ -986,7 +960,9 @@ class _OutputStemsRow(QFrame):
         self.setCursor(Qt.PointingHandCursor)
 
         hl = QHBoxLayout(self)
-        hl.setContentsMargins(12, 0, 10, 0)
+        # right margin matches the dots/chevron rows so everything stacks
+        # centered below each other (like SETTINGS LOCAL FILES)
+        hl.setContentsMargins(12, 0, 14, 0)
         hl.setSpacing(0)
 
         if icon is not None:
@@ -1008,7 +984,7 @@ class _OutputStemsRow(QFrame):
         )
         hl.addWidget(self._summary, 1)
 
-        self._arrow = _ArrowIcon()
+        self._arrow = _ExpandArrow()
         hl.addWidget(self._arrow)
 
     def set_stems(self, all_stems, primary_target=None):
@@ -1150,6 +1126,18 @@ class _CircleCheck(QFrame):
 
 # ── Model Item ────────────────────────────────────────────────────────────────
 
+class _NamesFetchThread(QThread):
+    """Fetches the zoo index once so ckpt filenames can be shown with their
+    friendly full names in the MODEL LIBRARY."""
+    done = Signal(list)
+
+    def run(self):
+        try:
+            self.done.emit(fetch_model_index())
+        except Exception:
+            self.done.emit([])
+
+
 class _ModelItem(QFrame):
     selected = Signal(str, str, str, str, str, bool)
     settings_requested = Signal(str, str, str, str)
@@ -1158,7 +1146,8 @@ class _ModelItem(QFrame):
         return QSize(0, 38)
 
     def __init__(self, name, ckpt="", yaml_path="", arch="", model_type="",
-                 backend_module="", custom_backend_enabled=False, parent=None):
+                 backend_module="", custom_backend_enabled=False, display="",
+                 parent=None):
         super().__init__(parent)
         self._name = name
         self._ckpt = ckpt
@@ -1186,8 +1175,11 @@ class _ModelItem(QFrame):
         self._circle.toggled.connect(self._on_circle_toggled)
         hl.addWidget(self._circle)
 
-        self._lbl = QLabel(name)
+        self._display = display or name
+        self._lbl = QLabel(self._display)
         self._lbl.setObjectName("modelItemLabel")
+        if self._display != name:
+            self._lbl.setToolTip(name)
         self._lbl.setStyleSheet(
             f"font-family:{FONT_STACK};font-size:12px;"
             "font-weight:600;letter-spacing:0.5px;"
@@ -1243,6 +1235,15 @@ class _ModelItem(QFrame):
         self._divider.setStyleSheet(
             f"background:{theme_manager.theme.border};border:none;")
         outer.addWidget(self._divider)
+
+    def set_display(self, text):
+        """Show a friendlier label (e.g. the zoo full name); the ckpt
+        filename stays in the tooltip and is still matched by search."""
+        if not text or text == self._display:
+            return
+        self._display = text
+        self._lbl.setText(text)
+        self._lbl.setToolTip(self._name if text != self._name else "")
 
     def _on_circle_toggled(self, checked):
         self._is_selected = checked
@@ -1321,18 +1322,13 @@ class _ExpandArrow(QWidget):
 
     angle = Property(float, get_angle, set_angle)
 
+    def set_down(self, down):
+        """Combo-arrow helper: point down (`v`) while the popup is open."""
+        self.set_angle(90.0 if down else 0.0)
+
     def paintEvent(self, event):
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.translate(12, 12)
-        p.rotate(self._angle)
-        _c = QColor(theme_manager.theme.text)
-        _c.setAlpha(51)
-        pen = QPen(QColor(theme_manager.accent) if self._hovered else _c, 2)
-        pen.setCapStyle(Qt.RoundCap)
-        p.setPen(pen)
-        p.drawLine(-5, -6, 0, 0)
-        p.drawLine(0, 0, -5, 6)
+        paint_chevron(p, 12, 12, self._angle, self._hovered)
         p.end()
 
     def enterEvent(self, e):
@@ -1395,19 +1391,44 @@ class _ArchCard(QFrame):
         hh.setContentsMargins(12, 0, 8, 0)
         hh.setSpacing(6)
 
-        dot_key = f"arch_dot_{arch_name.lower().split()[0]}"
+        dot_key = f"arch_dot_{_arch_dot_token(arch_name)}"
         dot_clr = getattr(theme_manager.theme, dot_key, theme_manager.theme.text_label)
         dot = QFrame()
         dot.setFixedSize(8, 8)
         dot.setStyleSheet(f"background:{dot_clr};border:none;border-radius:4px;")
         hh.addWidget(dot)
 
-        title_lbl = QLabel(arch_name.replace(" Architecture", "").upper())
+        display = ARCH_DISPLAY_NAMES.get(arch_name, arch_name.replace(" Architecture", ""))
+        title_lbl = QLabel(display.upper())
         title_lbl.setStyleSheet(
             "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:700;"
             f"color:{theme_manager.theme.text};background:transparent;"
         )
-        hh.addWidget(title_lbl, 1)
+
+        # Title + "?" hug each other on the left; the stretch pushes the
+        # count badge and chevron to the right edge.
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(6)
+        title_row.addWidget(title_lbl)
+
+        # "?" button — opens the architecture's paper / project page.
+        info_url = ARCH_INFO_LINKS.get(arch_name)
+        self._info_lbl = None
+        if info_url:
+            info = QLabel("?")
+            info.setObjectName("archInfo")
+            info.setFixedSize(16, 16)
+            info.setAlignment(Qt.AlignCenter)
+            info.setCursor(Qt.PointingHandCursor)
+            info.setToolTip(f"About {display}: {info_url}")
+            self._style_info_lbl(info)
+            info.mousePressEvent = lambda ev, u=info_url: QDesktopServices.openUrl(QUrl(u))
+            title_row.addWidget(info)
+            self._info_lbl = info
+
+        title_row.addStretch()
+        hh.addLayout(title_row, 1)
 
         self._count_lbl = QLabel("0")
         self._count_lbl.setAlignment(Qt.AlignCenter)
@@ -1482,10 +1503,22 @@ class _ArchCard(QFrame):
     def eventFilter(self, obj, event):
         if (event.type() == QEvent.MouseButtonRelease
                 and event.button() == Qt.LeftButton
-                and obj is not self._toggle_btn):
+                and obj is not self._toggle_btn
+                and obj is not self._info_lbl):
             self._toggle_expand(animated=True)
             return True
         return super().eventFilter(obj, event)
+
+    def _style_info_lbl(self, lbl):
+        t = theme_manager.theme
+        lbl.setStyleSheet(
+            "QLabel{"
+            f"color:{t.text_dim};border:1px solid {t.border_visible};"
+            "border-radius:8px;background:transparent;"
+            "font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;}"
+            f"QLabel:hover{{color:{theme_manager.accent};"
+            f"border-color:{theme_manager.accent};}}"
+        )
 
     # ── Animation helpers ──
 
@@ -1572,14 +1605,14 @@ class _ArchCard(QFrame):
                 w.set_selected(False)
 
     def add_model(self, name, ckpt="", yaml_path="", arch="", model_type="",
-                  backend_module="", custom_backend_enabled=False):
+                  backend_module="", custom_backend_enabled=False, display=""):
         if name in self._items:
             return
         if not self._has_models:
             self._empty_lbl.setVisible(False)
             self._has_models = True
         item = _ModelItem(name, ckpt, yaml_path, arch, model_type,
-                          backend_module, custom_backend_enabled)
+                          backend_module, custom_backend_enabled, display=display)
         item.selected.connect(lambda n, ck, y, a, bm, cb:
                               self.model_selected.emit(n, ck, y, a, bm, cb))
         item.settings_requested.connect(self.ckpt_settings_requested)
@@ -1629,7 +1662,8 @@ class _ArchCard(QFrame):
         for i in range(self._list_vl.count()):
             w = self._list_vl.itemAt(i).widget()
             if isinstance(w, _ModelItem):
-                match = arch_match or text in w._name.lower() or text in w._arch.lower()
+                match = (arch_match or text in w._name.lower()
+                         or text in w._display.lower() or text in w._arch.lower())
                 w.setVisible(match)
                 if match:
                     has_ckpt_match = True
@@ -1673,7 +1707,11 @@ class InferencePage(QWidget):
         self._tmp_yaml       = None
         self._selected_model = None
         self._arch_cards     = {}
+        self._friendly_names = {}  # ckpt filename -> zoo full name
         self._build_ui()
+        self._names_thread = _NamesFetchThread()
+        self._names_thread.done.connect(self._on_friendly_names)
+        self._names_thread.start()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -1701,16 +1739,17 @@ class InferencePage(QWidget):
         left.setStyleSheet(f"background:{theme_manager.theme.bg};")
         left.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         ll = QVBoxLayout(left)
-        ll.setContentsMargins(32, 32, 10, 64)
+        ll.setContentsMargins(32, 32, 10, 32)
         ll.setSpacing(0)
 
         t = theme_manager.theme
 
-        # Configuration (pushed down so it aligns with the search-bar row
-        # on the right column, where the MODEL LIBRARY header is centered)
-        ll.addSpacing(11)
+        # Configuration (pushed down so it aligns with the MODEL LIBRARY
+        # header on the right column, which is centered against its 32px
+        # search bar: column content starts at 168 + (32-18)/2 = 175)
+        ll.addSpacing(7)
         ll.addWidget(_sec_hdr("Configuration"))
-        ll.addSpacing(23)  # aligns the first INPUT row with the first model card
+        ll.addSpacing(19)  # aligns the first INPUT row with the first model card
 
         cfg = QVBoxLayout()
         cfg.setSpacing(6)
@@ -1759,24 +1798,14 @@ class InferencePage(QWidget):
         btn_row.setSpacing(8)
         btn_row.setContentsMargins(0, 0, 0, 0)
 
-        self.btn_run = QPushButton("\u25B6  Separate")
+        self.btn_run = GlyphButton("Separate", "\u25B6", _outline_icon_color,
+                                   glyph_size=18, text_size=12)
         self.btn_run.setFixedSize(170, 44)
-        self.btn_run.setStyleSheet(
-            "QPushButton{"
-            "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-            f"stop:0 {theme_manager._accent_hover},stop:1 {theme_manager.accent});"
-            f"color:{theme_manager._accent_text};border:none;border-radius:6px;"
-            "font-family:'Montserrat',sans-serif;font-weight:600;"
-            "font-size:17px;}"
-            "QPushButton:hover{"
-            "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-            f"stop:0 {theme_manager._accent_hover},stop:1 {theme_manager.accent});}}"
-            f"QPushButton:pressed{{background:{theme_manager._accent_hover};}}"
-            f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};}}"
-        )
+        self.btn_run.setStyleSheet(outline_button_ss())
         self.btn_run.clicked.connect(self._run)
 
-        self.btn_stop = QPushButton("\u25A0  Stop")
+        self.btn_stop = GlyphButton("Stop", "\u25A0", _stop_icon_color,
+                                    glyph_size=16, text_size=12)
         self.btn_stop.setFixedSize(100, 44)
         self.btn_stop.setEnabled(False)
         self.btn_stop.setStyleSheet(
@@ -1802,7 +1831,7 @@ class InferencePage(QWidget):
         right.setStyleSheet(f"background:{theme_manager.theme.bg};")
         right.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         rl = QVBoxLayout(right)
-        rl.setContentsMargins(10, 32, 32, 64)
+        rl.setContentsMargins(10, 32, 32, 32)
         rl.setSpacing(0)
 
         # Model Library header, vertically centered against the search box
@@ -1863,7 +1892,8 @@ class InferencePage(QWidget):
         add_row = QHBoxLayout()
         add_row.setContentsMargins(0, 0, 14, 7)
         add_row.addStretch()
-        self._add_btn = QPushButton("+  Add")
+        self._add_btn = GlyphButton("Add", "+", _add_icon_color,
+                                    glyph_size=18, text_size=9)
         self._add_btn.setCursor(Qt.PointingHandCursor)
         self._add_btn.setFixedSize(70, 30)
         self._add_btn.setStyleSheet(
@@ -1908,7 +1938,7 @@ class InferencePage(QWidget):
                 f"border:1px solid {theme_manager.accent};"
                 f"background:{theme_manager._accent_soft};}}"
             )
-            dot_key = f"arch_dot_{arch_name.lower().split()[0]}"
+            dot_key = f"arch_dot_{_arch_dot_token(arch_name)}"
             dot_clr = getattr(t, dot_key, t.text_label)
             for child in card.findChildren(QFrame):
                 if child.objectName() == "cardHdr":
@@ -1931,6 +1961,9 @@ class InferencePage(QWidget):
                 "font-family:'Montserrat',sans-serif;font-size:8px;font-weight:600;"
                 "border-radius:3px;"
             )
+            # "?" info button
+            if card._info_lbl is not None:
+                card._style_info_lbl(card._info_lbl)
             # Empty label
             card._empty_lbl.setStyleSheet(
                 f"color:{t.text_muted};font-size:9px;font-style:italic;"
@@ -2005,19 +2038,7 @@ class InferencePage(QWidget):
                 pass  # summary label uses its own style
 
         # Update run/stop buttons
-        self.btn_run.setStyleSheet(
-            "QPushButton{"
-            "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-            f"stop:0 {theme_manager._accent_hover},stop:1 {theme_manager.accent});"
-            f"color:{theme_manager._accent_text};border:none;border-radius:6px;"
-            "font-family:'Montserrat',sans-serif;font-weight:600;"
-            "font-size:17px;}"
-            "QPushButton:hover{"
-            "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-            f"stop:0 {theme_manager._accent_hover},stop:1 {theme_manager.accent});}}"
-            f"QPushButton:pressed{{background:{theme_manager._accent_hover};}}"
-            f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};}}"
-        )
+        self.btn_run.setStyleSheet(outline_button_ss())
         self.btn_stop.setStyleSheet(
             "QPushButton{"
             f"background:{t.surface};color:{t.text_muted};"
@@ -2045,12 +2066,36 @@ class InferencePage(QWidget):
     def on_model_registered(self, model: dict):
         arch = model.get("arch", "")
         if arch in self._arch_cards:
+            name = model["name"]
+            display = self._friendly_names.get(os.path.basename(name).lower(), "")
             self._arch_cards[arch].add_model(
-                model["name"], model.get("ckpt", ""),
+                name, model.get("ckpt", ""),
                 model.get("yaml", ""), arch,
                 model.get("type", ""),
                 model.get("backend_module", ""),
-                model.get("custom_backend_enabled", False))
+                model.get("custom_backend_enabled", False),
+                display=display)
+
+    def _on_friendly_names(self, models):
+        """Index arrived: cache ckpt -> full name and refresh existing rows."""
+        for m in models:
+            ck = os.path.basename(getattr(m, "checkpoint_url", "").split("?")[0]).lower()
+            full = getattr(m, "full_name", "")
+            if ck and full:
+                self._friendly_names.setdefault(ck, full)
+        for card in self._arch_cards.values():
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem):
+                    w.set_display(self._friendly_names.get(
+                        os.path.basename(w._name.lower()), ""))
+        # Re-apply an active search so rows now match by their new label
+        try:
+            txt = self._search_bar.text()
+        except RuntimeError:
+            txt = ""
+        if txt and txt.strip():
+            self._filter_models(txt)
 
     def on_model_removed(self, name: str):
         for card in self._arch_cards.values():

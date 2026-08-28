@@ -20,9 +20,10 @@ from backend.model_manager import install_model, ModelInfo
 
 
 ARCH_TYPES = [
-    "MDX Architecture", "Demucs Architecture",
-    "BS Roformer Architecture", "Melband Roformer Architecture",
-    "SCNet Architecture", "Apollo Architecture", "Bandit Architecture",
+    "Apollo Architecture", "Bandit Architecture", "BS Roformer Architecture",
+    "Demucs Architecture", "MDX23c Architecture", "MDX-Net Architecture",
+    "Medley Vox Architecture", "Melband Roformer Architecture",
+    "SCNet Architecture", "VR Architecture",
 ]
 
 MODEL_TYPES = [

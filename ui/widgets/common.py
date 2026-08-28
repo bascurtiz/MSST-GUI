@@ -2,11 +2,215 @@
 import os, time
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
-    QFileDialog, QSizePolicy, QLabel, QFrame, QTextEdit,
+    QFileDialog, QSizePolicy, QLabel, QFrame, QTextEdit, QComboBox,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QTextCursor
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent
+from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor
 from ui.theme import theme_manager
+
+
+def paint_chevron(painter, cx, cy, angle=0.0, hovered=False):
+    """Draw the app's standard chevron — the MODEL LIBRARY arrow: a
+    two-segment, round-capped `>` at rest, rotated by `angle` degrees.
+    Rest color is a faint theme-text tint (alpha 51); accent blue when
+    hovered. Shared by every chevron in the GUI so they all match."""
+    painter.save()
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.translate(cx, cy)
+    painter.rotate(angle)
+    _c = QColor(theme_manager.theme.text)
+    _c.setAlpha(51)
+    pen = QPen(QColor(theme_manager.accent) if hovered else _c, 2)
+    pen.setCapStyle(Qt.RoundCap)
+    painter.setPen(pen)
+    painter.drawLine(-5, -6, 0, 0)
+    painter.drawLine(0, 0, -5, 6)
+    painter.restore()
+
+
+def _outline_icon_color(btn):
+    """Icon color for outline buttons (Separate / Run Ensemble / Register /
+    Download): accent at rest, light text while hovered (button fills), muted
+    when disabled."""
+    t = theme_manager.theme
+    if not btn.isEnabled():
+        return t.disabled_text
+    return theme_manager._accent_text if btn._hovered else theme_manager.accent
+
+
+def _stop_icon_color(btn):
+    """Icon color for the Stop buttons: red once enabled, muted when off."""
+    t = theme_manager.theme
+    return t.error if btn.isEnabled() else t.text_muted
+
+
+def _add_icon_color(btn):
+    """Icon color for the inference '+ Add' button."""
+    t = theme_manager.theme
+    return t.text if btn._hovered else t.text_dim
+
+
+def _addfile_icon_color(btn):
+    """Icon color for the manual-ensemble '+ Add File' button."""
+    t = theme_manager.theme
+    return theme_manager.accent if btn._hovered else t.text_muted
+
+
+class GlyphButton(QPushButton):
+    """QPushButton whose leading glyph icon (play / stop / plus) renders at a
+    larger size than the button text, which keeps its own small font. Both are
+    placed in one centered, mouse-transparent container: a QHBoxLayout centers
+    them on the same vertical line, so the icon sits right next to the text
+    with no gap and no baseline offset. `icon_color` is called with the button
+    to pick the color so the icon and text follow hover / enabled states."""
+
+    def __init__(self, text, glyph, icon_color, glyph_size=18, text_size=12,
+                 parent=None):
+        super().__init__("", parent)
+        self._hovered = False
+        self._glyph_size = glyph_size
+        self._text_size = text_size
+        self._icon_color_cb = icon_color
+        self._content = QWidget(self)
+        self._content.setAttribute(Qt.WA_TransparentForMouseEvents)
+        # own transparent background: page columns use bare `background:`
+        # stylesheets that cascade into descendants — without this the
+        # container paints an opaque box behind the icon/text.
+        self._content.setStyleSheet("background:transparent;")
+        h = QHBoxLayout(self._content)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(6)
+        self._glyph_lbl = QLabel(glyph)
+        self._text_lbl = QLabel(text)
+        h.addWidget(self._glyph_lbl)
+        h.addWidget(self._text_lbl)
+        self._content.raise_()
+        self._refresh_icon()
+
+    def _refresh_icon(self):
+        # own transparent backgrounds: page containers use bare `background:`
+        # stylesheets that cascade into descendants — without these the labels
+        # would paint opaque boxes behind the icon/text.
+        c = self._icon_color_cb(self)
+        base = ("background:transparent;border:none;"
+                "font-family:'Montserrat',sans-serif;"
+                f"color:{c};")
+        self._glyph_lbl.setStyleSheet(base + f"font-size:{self._glyph_size}px;")
+        self._text_lbl.setStyleSheet(base + f"font-size:{self._text_size}px;")
+        self._layout_icon()
+
+    def _layout_icon(self):
+        self._content.adjustSize()
+        self._content.move((self.width() - self._content.width()) // 2,
+                           (self.height() - self._content.height()) // 2)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_icon()
+
+    def enterEvent(self, e):
+        self._hovered = True
+        self._refresh_icon()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hovered = False
+        self._refresh_icon()
+        super().leaveEvent(e)
+
+    def changeEvent(self, e):
+        if e.type() == QEvent.Type.EnabledChange:
+            self._refresh_icon()
+        super().changeEvent(e)
+
+
+def add_button_hover():
+    """The '+ Add' hover rule (shared by Log / Clear / Copy Log / Check For
+    Updates buttons): soft accent background, accent border and regular text
+    color."""
+    t = theme_manager.theme
+    return (
+        f"QPushButton:hover{{background:{theme_manager._accent_soft};"
+        f"color:{t.text};border:1px solid {theme_manager.accent};}}"
+    )
+
+
+class EllipsisButton(QPushButton):
+    """The '\u00b7\u00b7\u00b7' browse button used in SETTINGS (LOCAL FILES):
+    a three-dot text button that tints accent on hover. Shared with the
+    INFERENCE page's Input/Output rows so every browse button matches."""
+
+    def __init__(self, parent=None):
+        super().__init__("\u00b7\u00b7\u00b7", parent)
+        self.setFixedSize(26, 26)
+        self.setCursor(Qt.PointingHandCursor)
+        t = theme_manager.theme
+        _c = QColor(theme_manager.accent)
+        self.setStyleSheet(
+            f"QPushButton{{background:transparent;color:{t.text_dim};"
+            f"border:none;font-size:14px;font-weight:600;border-radius:4px;}}"
+            f"QPushButton:hover{{color:{theme_manager.accent};"
+            f"background:rgba({_c.red()},{_c.green()},{_c.blue()},0.12);}}"
+        )
+
+
+class ChevronCombo(QComboBox):
+    """QComboBox with the app's standard chevron painted over its right edge
+    (same shape/colors as the MODEL LIBRARY arrow; the native arrow is hidden
+    by the combo's stylesheet). Rotates to point down while the popup is open
+    and turns accent blue on hover."""
+
+    popupOpened = Signal()
+    popupClosed = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._angle = 0.0
+        self.popupOpened.connect(self._on_popup_opened)
+        self.popupClosed.connect(self._on_popup_closed)
+
+    def showPopup(self):
+        super().showPopup()
+        self.popupOpened.emit()
+
+    def hidePopup(self):
+        super().hidePopup()
+        self.popupClosed.emit()
+
+    def _on_popup_opened(self):
+        self._angle = 90.0
+        self.update()
+
+    def _on_popup_closed(self):
+        self._angle = 0.0
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        r = self.rect()
+        paint_chevron(p, r.right() - 18, r.center().y(), self._angle, self.underMouse())
+        p.end()
+
+
+def outline_button_ss(font_size=12):
+    """Primary action-button stylesheet matching the ENSEMBLE Select button:
+    Montserrat 600 at the same size, accent outline + accent text by default,
+    filling solid with the accent (light text) on hover. Shared by the primary
+    action buttons across pages so they all match in font and look."""
+    t = theme_manager.theme
+    return (
+        "QPushButton{"
+        "background:transparent;"
+        f"border:1px solid {theme_manager.accent};border-radius:8px;"
+        f"color:{theme_manager.accent};"
+        "font-family:'Montserrat',sans-serif;font-weight:600;"
+        f"font-size:{font_size}px;}}"
+        f"QPushButton:hover{{background:{theme_manager.accent};color:{theme_manager._accent_text};}}"
+        f"QPushButton:pressed{{background:{theme_manager._accent_hover};color:{theme_manager._accent_text};}}"
+        f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};border:1px solid {t.border};}}"
+    )
+
 
 class FilePicker(QWidget):
     path_changed = Signal(str)

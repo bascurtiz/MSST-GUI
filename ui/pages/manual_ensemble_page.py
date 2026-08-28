@@ -17,7 +17,11 @@ import soundfile as sf
 from backend.runner import ProcessRunner
 from backend.paths import REPO_ROOT, get_python_exe
 from ui.theme import theme_manager, UIConstants
-from ui.widgets.common import PageHeader
+from ui.widgets.common import (
+    PageHeader, outline_button_ss, ChevronCombo, GlyphButton, EllipsisButton,
+    _outline_icon_color, _stop_icon_color, _addfile_icon_color,
+)
+from ui.pages.inference_page import _ComboBox, _ExpandArrow
 
 AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".ogg", ".aiff", ".m4a", ".opus", ".wv"}
 AUDIO_FILTER = "Audio files (*.wav *.flac *.mp3 *.ogg *.aiff *.m4a *.opus *.wv);;All files (*.*)"
@@ -71,10 +75,8 @@ def _combo_ss():
     return (
         "QComboBox{background:transparent;border:none;"
         f"font-family:'Montserrat';font-size:11px;color:{t.text_sec};padding:0 4px;}}"
-        "QComboBox::drop-down{border:none;width:24px;}"
-        "QComboBox::down-arrow{border-left:4px solid transparent;"
-        f"border-right:4px solid transparent;border-top:5px solid {t.text_muted};"
-        "width:0;height:0;margin-right:8px;}"
+        "QComboBox::drop-down{border:none;width:0;}"
+        "QComboBox::down-arrow{width:0;height:0;border:none;}"
         "QComboBox QAbstractItemView{"
         f"background:{t.surface_alt};"
         f"border:1px solid {t.border_dim};"
@@ -951,16 +953,7 @@ class ManualEnsemblePage(QWidget):
 
         for w in self.findChildren(QPushButton):
             if w is self.btn_run:
-                w.setStyleSheet(
-                    "QPushButton{"
-                    f"background:{theme_manager.accent};"
-                    f"color:{theme_manager._accent_text};border:none;border-radius:4px;"
-                    "font-family:'Montserrat',sans-serif;font-weight:600;"
-                    "font-size:12px;}"
-                    f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
-                    f"QPushButton:pressed{{background:{theme_manager.accent};}}"
-                    f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};}}"
-                )
+                w.setStyleSheet(outline_button_ss())
             elif w is self.btn_stop:
                 w.setStyleSheet(
                     f"QPushButton{{"
@@ -1058,21 +1051,14 @@ class ManualEnsemblePage(QWidget):
         btn_row.setSpacing(8)
         btn_row.setContentsMargins(0, 0, 0, 0)
 
-        self.btn_run = QPushButton("\u25B6  Run Ensemble")
+        self.btn_run = GlyphButton("Run Ensemble", "\u25B6", _outline_icon_color,
+                                   glyph_size=18, text_size=12)
         self.btn_run.setFixedSize(240, 44)
-        self.btn_run.setStyleSheet(
-            "QPushButton{"
-            f"background:{theme_manager.accent};"
-            f"color:{theme_manager._accent_text};border:none;border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:600;"
-            "font-size:12px;}"
-            f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
-            f"QPushButton:pressed{{background:{theme_manager.accent};}}"
-            f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};}}"
-        )
+        self.btn_run.setStyleSheet(outline_button_ss())
         self.btn_run.clicked.connect(self._run)
 
-        self.btn_stop = QPushButton("\u25A0  Stop")
+        self.btn_stop = GlyphButton("Stop", "\u25A0", _stop_icon_color,
+                                    glyph_size=16, text_size=12)
         self.btn_stop.setFixedSize(110, 44)
         self.btn_stop.setEnabled(False)
         self.btn_stop.setStyleSheet(
@@ -1131,7 +1117,9 @@ class ManualEnsemblePage(QWidget):
         type_row.setFixedHeight(ROW_H)
         type_row.setStyleSheet(_row_ss())
         tr_hl = QHBoxLayout(type_row)
-        tr_hl.setContentsMargins(14, 0, 10, 0)
+        # right margin matches the OUTPUT row so the '>' chevron and the '...'
+        # dots stack centered below each other (like SETTINGS LOCAL FILES)
+        tr_hl.setContentsMargins(14, 0, 14, 0)
         tr_hl.setSpacing(0)
 
         tr_ic = QLabel("\u25C8")
@@ -1152,11 +1140,16 @@ class ManualEnsemblePage(QWidget):
         tr_hl.addWidget(sep)
         tr_hl.addSpacing(10)
 
-        self._type_combo = QComboBox()
+        self._type_combo = _ComboBox()
         for et in ENSEMBLE_TYPES:
             self._type_combo.addItem(et, ENSEMBLE_DESC.get(et, ""))
         self._type_combo.setStyleSheet(_combo_ss())
         tr_hl.addWidget(self._type_combo, 1)
+
+        self._type_arrow = _ExpandArrow()
+        tr_hl.addWidget(self._type_arrow)
+        self._type_combo.popupOpened.connect(lambda: self._type_arrow.set_down(True))
+        self._type_combo.popupClosed.connect(lambda: self._type_arrow.set_down(False))
         cfg.addWidget(type_row)
 
         out_row = QFrame()
@@ -1164,7 +1157,9 @@ class ManualEnsemblePage(QWidget):
         out_row.setFixedHeight(ROW_H)
         out_row.setStyleSheet(_row_ss())
         or_hl = QHBoxLayout(out_row)
-        or_hl.setContentsMargins(14, 0, 4, 0)
+        # right margin matches the TYPE row so the '...' dots and the '>'
+        # chevron stack centered below each other (like SETTINGS LOCAL FILES)
+        or_hl.setContentsMargins(14, 0, 14, 0)
         or_hl.setSpacing(0)
 
         or_ic = QLabel("\u2193")
@@ -1195,13 +1190,7 @@ class ManualEnsemblePage(QWidget):
         self._output_edit.setFixedHeight(ROW_H)
         or_hl.addWidget(self._output_edit, 1)
 
-        or_btn = QPushButton("\u00b7\u00b7\u00b7")
-        or_btn.setFixedSize(34, 34)
-        or_btn.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{t.text_label};"
-            "border:none;font-size:14px;font-weight:600;border-radius:4px;}"
-            f"QPushButton:hover{{color:{theme_manager.accent};background:{theme_manager._accent_soft};}}"
-        )
+        or_btn = EllipsisButton()
         or_btn.clicked.connect(self._browse_output)
         or_hl.addWidget(or_btn)
         cfg.addWidget(out_row)
@@ -1230,7 +1219,8 @@ class ManualEnsemblePage(QWidget):
         hdr_row.addWidget(sub2)
         hdr_row.addStretch()
 
-        self._btn_add = QPushButton("+ Add File")
+        self._btn_add = GlyphButton("Add File", "+", _addfile_icon_color,
+                                    glyph_size=16, text_size=8)
         self._btn_add.setFixedSize(100, 26)
         self._btn_add.setStyleSheet(
             f"QPushButton{{background:transparent;color:{t.text_muted};"

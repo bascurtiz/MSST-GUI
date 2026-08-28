@@ -18,7 +18,10 @@ from PySide6.QtCore import Qt, Signal, QThread, QTimer, QPoint, QEvent
 from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath
 from ui.theme import theme_manager, UIConstants
 from backend import update_checker as uc
-from ui.widgets.common import PageHeader
+from ui.widgets.common import (
+    PageHeader, outline_button_ss, ChevronCombo, EllipsisButton, add_button_hover,
+    GlyphButton, _outline_icon_color,
+)
 
 from backend.downloader import HuggingFaceDownloader
 from backend.yaml_analyzer import classify_model_type
@@ -27,7 +30,7 @@ from backend.model_manager import (
     is_installed, ModelInfo, MODEL_TYPE_TO_ARCH,
 )
 from ui.pages.model_manager_dialog import ModelInstallDialog
-from ui.pages.inference_page import _ExpandArrow
+from ui.pages.inference_page import _ExpandArrow, _SearchBar
 
 
 class _ClickableFrame(QFrame):
@@ -99,9 +102,10 @@ def _relative_time(iso_str: str) -> str:
 
 
 ARCH_TYPES = [
-    "MDX Architecture", "Demucs Architecture",
-    "BS Roformer Architecture", "Melband Roformer Architecture",
-    "SCNet Architecture", "Apollo Architecture", "Bandit Architecture",
+    "Apollo Architecture", "Bandit Architecture", "BS Roformer Architecture",
+    "Demucs Architecture", "MDX23c Architecture", "MDX-Net Architecture",
+    "Medley Vox Architecture", "Melband Roformer Architecture",
+    "SCNet Architecture", "VR Architecture",
 ]
 
 MODEL_TYPES = [
@@ -125,10 +129,14 @@ MODEL_TYPES = [
 ]
 
 ARCH_TO_MODEL_FOLDER = {
-    "MDX Architecture": "models/mdx",
+    "MDX Architecture": "models/mdx",  # legacy label from before the MDX split
+    "MDX23c Architecture": "models/mdx",
+    "MDX-Net Architecture": "models/mdxnet",
+    "VR Architecture": "models/vr",
     "Demucs Architecture": "models/demucs",
     "BS Roformer Architecture": "models/bs_roformer",
     "Melband Roformer Architecture": "models/melband_roformer",
+    "Medley Vox Architecture": "models/medley_vox",
     "SCNet Architecture": "models/scnet",
     "Apollo Architecture": "models/apollo",
     "Bandit Architecture": "models/bandit",
@@ -241,45 +249,6 @@ def _section_hdr(text):
     return l
 
 
-class _ArrowIcon(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(20, 20)
-        self._angle = 0
-        self._anim = None
-
-    def set_down(self, down):
-        from PySide6.QtCore import QVariantAnimation, QEasingCurve
-        target = 90 if down else 0
-        if self._anim:
-            self._anim.stop()
-        self._anim = QVariantAnimation(self)
-        self._anim.setDuration(200)
-        self._anim.setEasingCurve(QEasingCurve.OutCubic)
-        self._anim.setStartValue(self._angle)
-        self._anim.setEndValue(target)
-        self._anim.valueChanged.connect(lambda v: (setattr(self, '_angle', v), self.update()))
-        self._anim.start()
-
-    def paintEvent(self, event):
-        from PySide6.QtGui import QPainter, QPainterPath, QPen, QColor
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.translate(10, 10)
-        p.rotate(self._angle)
-        p.translate(-10, -10)
-        _c = QColor(theme_manager.theme.text)
-        _c.setAlpha(64)
-        p.setPen(QPen(_c, 1.5))
-        p.setBrush(Qt.NoBrush)
-        path = QPainterPath()
-        path.moveTo(6, 5)
-        path.lineTo(14, 10)
-        path.lineTo(6, 15)
-        p.drawPath(path)
-        p.end()
-
-
 class _ComboBox(QComboBox):
     popupOpened = Signal()
     popupClosed = Signal()
@@ -318,17 +287,18 @@ class _InputField(QFrame):
         hl.addWidget(self.edit, 1)
 
         if browse:
-            self.btn = QPushButton("\u00b7\u00b7\u00b7")
-            self.btn.setFixedSize(26, 26)
-            self.btn.setCursor(Qt.PointingHandCursor)
-            self.btn.setStyleSheet(
-                f"QPushButton{{background:transparent;color:{theme_manager.theme.text_dim};"
-                f"border:none;font-size:14px;font-weight:600;border-radius:4px;}}"
-                f"QPushButton:hover{{color:{theme_manager.accent};background:{_rgba_str(theme_manager.accent, 0.12)};}}"
-            )
+            self.btn = EllipsisButton()
             hl.addWidget(self.btn)
         else:
             self.btn = None
+            # Invisible spacer the same size as the EllipsisButton keeps this
+            # field's sizeHint/minimumSizeHint identical to the browse
+            # variant. Otherwise the two modes' fields get different layout
+            # shares when the column is squeezed, shifting every field 1px.
+            self._dummy = QWidget()
+            self._dummy.setStyleSheet("background:transparent;")
+            self._dummy.setFixedSize(26, 26)
+            hl.addWidget(self._dummy)
 
     def value(self):
         return self.edit.text().strip()
@@ -340,27 +310,9 @@ class _InputField(QFrame):
         self.edit.clear()
 
 
-class _DialogCombo(QComboBox):
-    """QComboBox with a theme-aware chevron painted over its right edge
-    (the native arrow is hidden so it stays readable on dark surfaces)."""
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        r = self.rect()
-        cx = r.right() - 18
-        cy = r.center().y()
-        _c = QColor(theme_manager.theme.text)
-        _c.setAlpha(160)
-        p.setPen(QPen(_c, 1.6))
-        p.setBrush(Qt.NoBrush)
-        path = QPainterPath()
-        path.moveTo(cx - 5, cy - 3)
-        path.lineTo(cx, cy + 3)
-        path.lineTo(cx + 5, cy - 3)
-        p.drawPath(path)
-        p.end()
+class _DialogCombo(ChevronCombo):
+    """The app's standard chevron combo, used in the Edit Model Type dialog
+    (the native arrow is hidden by the dialog's stylesheet)."""
 
 
 class _EditTypeDialog(QDialog):
@@ -1108,28 +1060,6 @@ class _FolderManagerWidget(QWidget):
         lo.setContentsMargins(0, 0, 0, 0)
         lo.setSpacing(10)
 
-        # Header with search (folders expand inline, no drill-down navigation)
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(8)
-        header.addStretch()
-
-        self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText("Search folders...")
-        self._search_edit.setFixedHeight(34)
-        self._search_edit.setMaximumWidth(220)
-        self._search_edit.setStyleSheet(
-            f"QLineEdit{{background:{theme_manager.theme.surface_alt};"
-            f"border:1px solid {theme_manager.theme.border};border-radius:8px;"
-            f"color:{theme_manager.theme.text_dim};font-family:'Montserrat';font-size:11px;padding:0 10px;}}"
-            f"QLineEdit:hover{{background:{theme_manager.theme.input_hover};}}"
-            f"QLineEdit:focus{{border:1px solid {theme_manager.accent};}}"
-        )
-        self._search_edit.textChanged.connect(self._on_search)
-        header.addWidget(self._search_edit)
-
-        lo.addLayout(header)
-
         # Loading
         self._load_lbl = QLabel("Loading models from HuggingFace...")
         self._load_lbl.setAlignment(Qt.AlignCenter)
@@ -1242,6 +1172,7 @@ class _FolderManagerWidget(QWidget):
                 self._model_type_map[key] = []
                 self._folder_order.append(key)
             self._model_type_map[key].append(m)
+        self._folder_order.sort()  # alphabetical, like the MODEL LIBRARY
         self._render()
 
     def _on_error(self, msg):
@@ -1317,7 +1248,9 @@ class _FolderManagerWidget(QWidget):
 
     # ──── Search ────
 
-    def _on_search(self, text):
+    def set_search_text(self, text):
+        """Filter folders by name (driven by the page-level search field,
+        which sits on the same row as the REGISTER MODEL header)."""
         self._render(text.lower().strip())
 
     # ──── Render ────
@@ -1440,13 +1373,32 @@ class _FolderManagerWidget(QWidget):
                 pass
         return (not is_new, model_date)
 
+    def _model_sort_ts(self, info):
+        """Newest-first sort key: the latest last-commit timestamp among the
+        model's files. Returns 0.0 when no date is known, which keeps undated
+        models at the bottom in manifest order."""
+        ts = 0.0
+        for url in (info.checkpoint_url, info.config_url, info.backend_script_url):
+            if not url:
+                continue
+            fname = url.split("/")[-1].split("?")[0]
+            dstr = self._folder_file_dates.get(fname)
+            if not dstr:
+                continue
+            try:
+                ts = max(ts, datetime.fromisoformat(
+                    dstr.replace("Z", "+00:00")).timestamp())
+            except Exception:
+                pass
+        return ts
+
     def _render_inside(self, folder_key, search_term=""):
         models = self._model_type_map.get(folder_key, [])
         if search_term:
             models = [m for m in models
                       if search_term in m.full_name.lower()
                       or search_term in m.key.lower()]
-        models = sorted(models, key=lambda m: self._model_new_and_date(m, folder_key))
+        models = sorted(models, key=lambda m: self._model_sort_ts(m), reverse=True)
 
         container = QWidget()
         container.setStyleSheet("background:transparent;")
@@ -1634,9 +1586,10 @@ class SettingsPage(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 32, 32, 68)
-        # 43px gap under the page header so the section headers sit on the
-        # same line as the INFERENCE page's (CONFIGURATION / MODEL LIBRARY)
-        root.setSpacing(43)
+        # 32px gap under the page header (the columns then carry the usual
+        # +1px, so the content lands at 168px — the exact same y as the
+        # INFERENCE page's MODEL LIBRARY row).
+        root.setSpacing(32)
 
         # Updates — docked at the right of the page header, on the headliner
         # line (same pattern as the LOG button in CONSOLE).
@@ -1649,8 +1602,8 @@ class SettingsPage(QWidget):
             f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
             "font-family:'Montserrat',sans-serif;font-weight:600;font-size:9px;"
             "padding:0 14px;}"
-            f"QPushButton:hover{{color:{theme_manager.theme.text};}}"
-            f"QPushButton:disabled{{color:{theme_manager.theme.disabled_text};}}")
+            + add_button_hover()
+            + f"QPushButton:disabled{{color:{theme_manager.theme.disabled_text};}}")
         self._update_btn.clicked.connect(self._check_updates)
         self._update_status = QLabel(
             f"Current version {uc.app_version()}")
@@ -1660,9 +1613,10 @@ class SettingsPage(QWidget):
         update_w = QWidget()
         update_w.setStyleSheet("background:transparent;")
         uw = QHBoxLayout(update_w)
-        # pushes the docked row down from the header's vertical centre onto
-        # the headliner (subtitle) line
-        uw.setContentsMargins(0, 35, 0, 0)
+        # no top margin: a margin here would make the header taller than the
+        # other pages' headers (dead space under the subtitle), pushing the
+        # section below further down. Centered like the LOG button in CONSOLE.
+        uw.setContentsMargins(0, 0, 0, 0)
         uw.setSpacing(12)
         uw.addWidget(self._update_btn)
         uw.addWidget(self._update_status)
@@ -1683,9 +1637,35 @@ class SettingsPage(QWidget):
         left.setStyleSheet("background:transparent;")
         ll = QVBoxLayout(left)
         ll.setContentsMargins(0, 0, 0, 0)
-        ll.setSpacing(24)
+        # 20px instead of 24: the column content is ~33px taller than the
+        # available page height, which made Qt squeeze and round the group
+        # heights (1px mode differences). With fixed 65px groups this fits.
+        ll.setSpacing(20)
 
-        ll.addWidget(_section_hdr("Register Model"))
+        # Search folders sits on the same row as the REGISTER MODEL header,
+        # right-aligned and styled like the MODEL LIBRARY search bar.
+        reg_hdr = QHBoxLayout()
+        # right margin matches the folder cards' 8px margin below, so the
+        # search box right edge aligns with the cards' right edge
+        reg_hdr.setContentsMargins(0, 0, 8, 0)
+        reg_hdr.setSpacing(8)
+        # centered against the search box, exactly like the INFERENCE page's
+        # MODEL LIBRARY header row
+        reg_hdr.addWidget(_section_hdr("Register Model"))
+        reg_hdr.addStretch()
+        self._folder_search = _SearchBar("Search folders\u2026")
+        self._folder_search.setMaximumWidth(155)
+        self._folder_search.setVisible(False)  # shown in MODEL MANAGER mode
+        reg_hdr.addWidget(self._folder_search)
+
+        # Invisible placeholder that keeps the row's height when the search
+        # field is hidden (URL / LOCAL FILES modes), so everything below
+        # stays on the same height across modes.
+        self._folder_search_ph = QWidget()
+        self._folder_search_ph.setFixedSize(155, 32)
+        self._folder_search_ph.setVisible(False)
+        reg_hdr.addWidget(self._folder_search_ph)
+        ll.addLayout(reg_hdr)
         ll.addSpacing(4)
 
         mode_row = QHBoxLayout()
@@ -1706,12 +1686,20 @@ class SettingsPage(QWidget):
         ll.addLayout(mode_row)
 
         def _field_group(label, field):
-            g = QVBoxLayout()
+            # Fixed-height container: the column squeezes/rounds flexible
+            # items when the content is taller than the page, which shifted
+            # the LOCAL FILES vs DOWNLOAD FROM URL fields 1px apart. A fixed
+            # group can't be redistributed, so every mode lines up exactly.
+            w = QWidget()
+            w.setStyleSheet("background:transparent;")
+            w.setFixedHeight(65)
+            g = QVBoxLayout(w)
             g.setContentsMargins(0, 0, 0, 0)
             g.setSpacing(6)
             g.addWidget(label)
+            field.setFixedHeight(48)
             g.addWidget(field)
-            return g
+            return w
 
         self._ckpt_label = QLabel("CHECKPOINT")
         self._ckpt_label.setStyleSheet(
@@ -1723,7 +1711,8 @@ class SettingsPage(QWidget):
         self._ckpt.btn.clicked.connect(lambda: self._browse(
             self._ckpt, "Checkpoint (*.ckpt *.bin *.th *.chpt);;All (*.*)"
         ))
-        ll.addLayout(_field_group(self._ckpt_label, self._ckpt))
+        self._grp_ckpt = _field_group(self._ckpt_label, self._ckpt)
+        ll.addWidget(self._grp_ckpt)
 
         self._yaml_label = QLabel("CONFIG YAML")
         self._yaml_label.setStyleSheet(
@@ -1735,29 +1724,28 @@ class SettingsPage(QWidget):
         self._yaml.btn.clicked.connect(lambda: self._browse(
             self._yaml, "Config (*.yaml *.yml *.json);;All (*.*)"
         ))
-        ll.addLayout(_field_group(self._yaml_label, self._yaml))
+        self._grp_yaml = _field_group(self._yaml_label, self._yaml)
+        ll.addWidget(self._grp_yaml)
 
         self._ckpt_url_label = QLabel("CHECKPOINT")
         self._ckpt_url_label.setStyleSheet(
             f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;"
             f"color:{theme_manager.theme.text_label};background:transparent;letter-spacing:1px;"
         )
-        self._ckpt_url_label.setVisible(False)
 
         self._ckpt_url = _InputField("Checkpoint", "Paste HuggingFace checkpoint URL...")
-        self._ckpt_url.setVisible(False)
-        ll.addLayout(_field_group(self._ckpt_url_label, self._ckpt_url))
+        self._grp_ckpt_url = _field_group(self._ckpt_url_label, self._ckpt_url)
+        ll.addWidget(self._grp_ckpt_url)
 
         self._yaml_url_label = QLabel("CONFIG YAML")
         self._yaml_url_label.setStyleSheet(
             f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;"
             f"color:{theme_manager.theme.text_label};background:transparent;letter-spacing:1px;"
         )
-        self._yaml_url_label.setVisible(False)
 
         self._yaml_url = _InputField("Config File", "Paste HuggingFace config URL (.yaml .json)...")
-        self._yaml_url.setVisible(False)
-        ll.addLayout(_field_group(self._yaml_url_label, self._yaml_url))
+        self._grp_yaml_url = _field_group(self._yaml_url_label, self._yaml_url)
+        ll.addWidget(self._grp_yaml_url)
 
         self._arch_label = QLabel("ARCHITECTURE")
         self._arch_label.setStyleSheet(
@@ -1777,7 +1765,7 @@ class SettingsPage(QWidget):
             f"QComboBox QAbstractItemView{{background:{theme_manager.theme.input_bg};border:1px solid {theme_manager.theme.border_visible};"
             f"color:{theme_manager.theme.text};selection-background-color:{theme_manager.accent};selection-color:{theme_manager._accent_text};}}"
         )
-        self._arch_arrow = _ArrowIcon()
+        self._arch_arrow = _ExpandArrow()
         self._arch_combo.popupOpened.connect(lambda: self._arch_arrow.set_down(True))
         self._arch_combo.popupClosed.connect(lambda: self._arch_arrow.set_down(False))
         self._arch_w = QWidget()
@@ -1792,7 +1780,8 @@ class SettingsPage(QWidget):
         arch_h.setSpacing(10)
         arch_h.addWidget(self._arch_combo, 1)
         arch_h.addWidget(self._arch_arrow)
-        ll.addLayout(_field_group(self._arch_label, self._arch_w))
+        self._grp_arch = _field_group(self._arch_label, self._arch_w)
+        ll.addWidget(self._grp_arch)
 
         self._type_label = QLabel("TYPE")
         self._type_label.setStyleSheet(
@@ -1812,7 +1801,7 @@ class SettingsPage(QWidget):
             f"QComboBox QAbstractItemView{{background:{theme_manager.theme.input_bg};border:1px solid {theme_manager.theme.border_visible};"
             f"color:{theme_manager.theme.text};selection-background-color:{theme_manager.accent};selection-color:{theme_manager._accent_text};}}"
         )
-        self._type_arrow = _ArrowIcon()
+        self._type_arrow = _ExpandArrow()
         self._type_combo.popupOpened.connect(lambda: self._type_arrow.set_down(True))
         self._type_combo.popupClosed.connect(lambda: self._type_arrow.set_down(False))
         self._type_w = QWidget()
@@ -1827,7 +1816,8 @@ class SettingsPage(QWidget):
         type_h.setSpacing(10)
         type_h.addWidget(self._type_combo, 1)
         type_h.addWidget(self._type_arrow)
-        ll.addLayout(_field_group(self._type_label, self._type_w))
+        self._grp_type = _field_group(self._type_label, self._type_w)
+        ll.addWidget(self._grp_type)
 
         # Local mode: Backend Script file picker
         self._backend_script_label = QLabel("BACKEND SCRIPT (.PY)")
@@ -1841,7 +1831,8 @@ class SettingsPage(QWidget):
         self._backend_script.btn.clicked.connect(lambda: self._browse(
             self._backend_script, "Python (*.py);;All (*.*)"
         ))
-        ll.addLayout(_field_group(self._backend_script_label, self._backend_script))
+        self._grp_backend_script = _field_group(self._backend_script_label, self._backend_script)
+        ll.addWidget(self._grp_backend_script)
 
         # URL mode: Backend Script URL
         self._backend_url_label = QLabel("BACKEND SCRIPT (.PY URL)")
@@ -1849,25 +1840,18 @@ class SettingsPage(QWidget):
             f"font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;"
             f"color:{theme_manager.theme.text_label};background:transparent;letter-spacing:1px;"
         )
-        self._backend_url_label.setVisible(False)
-
         self._backend_url = _InputField("Backend Script URL",
             "Paste HuggingFace bs_roformer.py URL...")
-        self._backend_url.setVisible(False)
-        ll.addLayout(_field_group(self._backend_url_label, self._backend_url))
+        self._grp_backend_url = _field_group(self._backend_url_label, self._backend_url)
+        ll.addWidget(self._grp_backend_url)
 
         ll.addSpacing(8)
 
-        self._reg_btn = QPushButton("+  Register Model")
+        self._reg_btn = GlyphButton("Register Model", "+", _outline_icon_color,
+                                    glyph_size=18, text_size=12)
         self._reg_btn.setFixedHeight(44)
         self._reg_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self._reg_btn.setStyleSheet(
-            f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;"
-            f"border-radius:6px;}}"
-            f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
-            f"QPushButton:pressed{{background:{theme_manager.accent};}}"
-        )
+        self._reg_btn.setStyleSheet(outline_button_ss())
         self._reg_btn.clicked.connect(self._register)
         ll.addWidget(self._reg_btn)
 
@@ -1878,15 +1862,11 @@ class SettingsPage(QWidget):
         dl.setContentsMargins(0, 0, 0, 0)
         dl.setSpacing(12)
 
-        self._download_btn = QPushButton("+  Download Model")
+        self._download_btn = GlyphButton("Download Model", "+", _outline_icon_color,
+                                         glyph_size=18, text_size=12)
         self._download_btn.setFixedHeight(44)
         self._download_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self._download_btn.setStyleSheet(
-            f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;"
-            f"border-radius:6px;}}"
-            f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.text_muted};}}"
-        )
+        self._download_btn.setStyleSheet(outline_button_ss())
         self._download_btn.clicked.connect(self._start_download)
         dl.addWidget(self._download_btn)
 
@@ -1895,6 +1875,7 @@ class SettingsPage(QWidget):
         self._model_mgr = _FolderManagerWidget()
         self._model_mgr.model_installed.connect(self._refresh_registered)
         self._model_mgr.setVisible(False)
+        self._folder_search.textChanged.connect(self._model_mgr.set_search_text)
         ll.addWidget(self._model_mgr, 2)
 
         # No trailing stretch: the manager panel stretches to the bottom so
@@ -1908,6 +1889,9 @@ class SettingsPage(QWidget):
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(24)
 
+        # 7px push so REGISTERED MODELS sits on the same line as the
+        # REGISTER MODEL / MODEL LIBRARY / CONFIGURATION headers (y 175)
+        rl.addSpacing(7)
         rl.addWidget(_section_hdr("Registered Models"))
         rl.addSpacing(4)
 
@@ -1965,29 +1949,25 @@ class SettingsPage(QWidget):
 
         visible_local = is_local
         visible_url = is_url
-        self._ckpt.setVisible(visible_local)
-        self._yaml.setVisible(visible_local)
-        self._ckpt_label.setVisible(visible_local)
-        self._yaml_label.setVisible(visible_local)
-        self._backend_script_label.setVisible(visible_local)
-        self._backend_script.setVisible(visible_local)
+        # toggle the fixed-height group containers (they hide their labels
+        # and fields with them)
+        self._grp_ckpt.setVisible(visible_local)
+        self._grp_yaml.setVisible(visible_local)
+        self._grp_backend_script.setVisible(visible_local)
         self._reg_btn.setVisible(visible_local)
 
-        self._ckpt_url_label.setVisible(visible_url)
-        self._ckpt_url.setVisible(visible_url)
-        self._yaml_url_label.setVisible(visible_url)
-        self._yaml_url.setVisible(visible_url)
-        self._backend_url_label.setVisible(visible_url)
-        self._backend_url.setVisible(visible_url)
+        self._grp_ckpt_url.setVisible(visible_url)
+        self._grp_yaml_url.setVisible(visible_url)
+        self._grp_backend_url.setVisible(visible_url)
         self._download_section.setVisible(visible_url)
 
         self._model_mgr.setVisible(is_manager)
+        self._folder_search.setVisible(is_manager)
+        self._folder_search_ph.setVisible(not is_manager)
 
         show_arch_type = not is_manager
-        self._arch_label.setVisible(show_arch_type)
-        self._arch_w.setVisible(show_arch_type)
-        self._type_label.setVisible(show_arch_type)
-        self._type_w.setVisible(show_arch_type)
+        self._grp_arch.setVisible(show_arch_type)
+        self._grp_type.setVisible(show_arch_type)
 
         if is_local:
             self._ckpt.edit.setFocus()

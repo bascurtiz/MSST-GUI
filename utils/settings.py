@@ -461,6 +461,17 @@ def get_model_from_config(model_type: str, config_path: str,
     elif model_type == 'moises_light':
         from moises_light import MoisesLight
         model = MoisesLight(**dict(config.model))
+    elif model_type == 'vr':
+        from models.vr_arch import VRNet
+        model = VRNet(config)
+        # VR configs don't ship chunk_size/num_overlap (the band-split
+        # pipeline windows internally); inject sensible defaults so the
+        # generic chunked demixing loop works.
+        inf = config.inference
+        if not hasattr(inf, 'chunk_size'):
+            inf.chunk_size = 44100 * 50
+        if not hasattr(inf, 'num_overlap'):
+            inf.num_overlap = 2
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
