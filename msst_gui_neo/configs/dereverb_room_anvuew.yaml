@@ -1,0 +1,132 @@
+audio:
+  chunk_size: 384000
+  dim_f: 1024
+  dim_t: 801 # don't work (use in model)
+  hop_length: 441 # don't work (use in model)
+  n_fft: 2048
+  num_channels: 1
+  sample_rate: 44100
+  min_mean_abs: 0.000
+
+model:
+  dim: 128
+  depth: 16
+  stereo: false
+  num_stems: 1
+  time_transformer_depth: 1
+  freq_transformer_depth: 1
+  linear_transformer_depth: 0
+  freqs_per_bands: !!python/tuple
+    - 2
+    - 2
+    - 2
+    - 2
+    - 2
+    - 2
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 4
+    - 4
+    - 4
+    - 4
+    - 4
+    - 5
+    - 5
+    - 5
+    - 5
+    - 6
+    - 6
+    - 6
+    - 6
+    - 7
+    - 7
+    - 7
+    - 8
+    - 8
+    - 8
+    - 9
+    - 9
+    - 10
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+    - 22
+    - 23
+    - 24
+    - 25
+    - 27
+    - 29
+    - 31
+    - 33
+    - 35
+    - 37
+    - 39
+    - 41
+    - 43
+    - 45
+    - 48
+    - 52
+    - 57
+    - 64
+  dim_head: 16
+  heads: 8
+  attn_dropout: 0.0
+  ff_dropout: 0.0
+  flash_attn: true
+  dim_freqs_in: 1025
+  stft_n_fft: 2048
+  stft_hop_length: 512
+  stft_win_length: 2048
+  stft_normalized: False
+  mask_estimator_depth: 3
+  multi_stft_resolution_loss_weight: 1.0
+  multi_stft_resolutions_window_sizes: !!python/tuple
+  - 4096
+  - 2048
+  - 1024
+  - 512
+  - 256
+  multi_stft_hop_size: 147
+  multi_stft_normalized: False
+  mlp_expansion_factor: 4
+  use_torch_checkpoint: True 
+  skip_connection: False 
+
+
+training:
+  batch_size: 4
+  gradient_accumulation_steps: 1
+  grad_clip: 1000.0
+  instruments: ['noreverb', 'reverb']
+  lr: 5.0e-5
+  patience: 5
+  reduce_factor: 0.75
+  target_instrument: noreverb
+  num_epochs: 1000
+  num_steps: 1000
+  q: 0.95
+  coarse_loss_clip: true
+  ema_momentum: 0.999
+  optimizer: adam
+  
+  other_fix: False # it's needed for checking on multisong dataset if other is actually instrumental
+  use_amp: true # enable or disable usage of mixed precision (float16) - usually it must be true
+
+
+
+inference:
+  batch_size: 1
+  dim_t: 871
+  num_overlap: 2

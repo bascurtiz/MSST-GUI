@@ -1,0 +1,68 @@
+audio:
+  sample_rate: 44100
+inference:
+  aggression: 5
+  batch_size: 1
+  enable_post_process: false
+  high_end_process: false
+  post_process_threshold: 0.2
+  window_size: 512
+model:
+  is_vr5: false
+  model_params:
+    band:
+      1:
+        crop_start: 0
+        crop_stop: 186
+        hl: 128
+        lpf_start: 37
+        lpf_stop: 73
+        n_fft: 1024
+        res_type: polyphase
+        sr: 11025
+      2:
+        crop_start: 4
+        crop_stop: 185
+        hl: 128
+        hpf_start: 36
+        hpf_stop: 18
+        lpf_start: 93
+        lpf_stop: 185
+        n_fft: 512
+        res_type: polyphase
+        sr: 11025
+      3:
+        crop_start: 46
+        crop_stop: 186
+        hl: 256
+        hpf_start: 93
+        hpf_stop: 46
+        lpf_start: 164
+        lpf_stop: 186
+        n_fft: 512
+        res_type: polyphase
+        sr: 22050
+      4:
+        crop_start: 121
+        crop_stop: 382
+        hl: 512
+        hpf_start: 138
+        hpf_stop: 123
+        n_fft: 768
+        res_type: sinc_medium
+        sr: 44100
+    bins: 768
+    pre_filter_start: 740
+    pre_filter_stop: 768
+    reduction_bins: 668
+    sr: 44100
+    unstable_bins: 7
+  nn_arch_size: 31191
+  nout: null
+  nout_lstm: null
+training:
+  instruments:
+  - Drums
+  - Other
+  target_instrument: null
+  use_amp: true
