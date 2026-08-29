@@ -1270,8 +1270,6 @@ class _FolderManagerWidget(QWidget):
 
     def _render_root(self, search_term=""):
         folders = self._folder_order[:]
-        if search_term:
-            folders = [f for f in folders if search_term in f.lower()]
 
         if not folders:
             lbl = QLabel("No folders found")
@@ -1283,6 +1281,15 @@ class _FolderManagerWidget(QWidget):
             return
 
         for fk in folders:
+            # When searching, skip folders with no matching models
+            if search_term:
+                models_here = self._model_type_map.get(fk, [])
+                matching = [m for m in models_here
+                            if search_term in m.full_name.lower()
+                            or search_term in m.key.lower()]
+                if not matching:
+                    continue
+
             entry_count = len(self._model_type_map[fk])
             installed_count = sum(1 for m in self._model_type_map[fk] if is_installed(m))
 
@@ -1353,7 +1360,8 @@ class _FolderManagerWidget(QWidget):
                 overlay.raise_()
                 card.installEventFilter(self)
 
-            if fk in self._expanded:
+            show = fk in self._expanded or bool(search_term)
+            if show:
                 self._list_layout.addWidget(self._render_inside(fk, search_term))
 
     def _model_new_and_date(self, info, folder_key=""):
