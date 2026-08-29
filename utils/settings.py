@@ -33,6 +33,7 @@ import numpy as np
 import torch
 import argparse
 import socket
+import inspect
 from typing import Dict, List, Tuple, Union
 from omegaconf import OmegaConf
 from ml_collections import ConfigDict
@@ -356,20 +357,40 @@ def _load_custom_backend(model_type, config, custom_backend):
                         'experimental_mdx23c_stht'):
         model = model_class(config)
     elif model_type == 'apollo':
-        model = model_class.apollo(**config.model)
+        model = model_class.apollo(**_fit_model_kwargs(model_class.apollo, dict(config.model)))
     elif model_type == 'bandit':
-        model = model_class(**config.model)
+        model = model_class(**_fit_model_kwargs(model_class, dict(config.model)))
     elif model_type == 'conformer':
         from models.conformer_model import NeuralModel
         model = model_class(
-            core=NeuralModel(**config.model),
+            core=NeuralModel(**_fit_model_kwargs(NeuralModel, dict(config.model))),
             n_fft=config.stft.n_fft,
             hop_length=config.stft.hop_length,
             win_length=getattr(config.stft, 'win_length', config.stft.n_fft),
             center=config.stft.center)
     else:
-        model = model_class(**dict(config.model))
+        model = model_class(**_fit_model_kwargs(model_class, dict(config.model)))
     return model, config
+
+
+def _fit_model_kwargs(cls, kwargs: dict) -> dict:
+    """Drop config keys a model constructor doesn't accept.
+
+    The model library ships newer YAML configs than the bundled model code
+    sometimes supports (e.g. `sage_attention`, added in a later upstream
+    revision). Passing those straight through crashes with an "unexpected
+    keyword argument" TypeError. Filtering to the constructor's signature
+    makes the frozen app resilient to such config/model version drift — the
+    extras are optional features that simply default off. If the signature
+    can't be read or the class accepts **kwargs, the config is passed as-is.
+    """
+    try:
+        params = inspect.signature(cls.__init__).parameters
+    except (TypeError, ValueError):
+        return kwargs
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return kwargs
+    return {k: v for k, v in kwargs.items() if k in params}
 
 
 def get_model_from_config(model_type: str, config_path: str,
@@ -422,56 +443,84 @@ def get_model_from_config(model_type: str, config_path: str,
         model = Torchseg_Net(config)
     elif model_type == 'mel_band_roformer':
         from models.bs_roformer import MelBandRoformer
-        model = MelBandRoformer(**dict(config.model))
+        model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, dict(config.model)))
     elif model_type == 'mel_band_conformer':
         from models.bs_roformer import MelBandConformer
-        model = MelBandConformer(**dict(config.model))
+        model = MelBandConformer(**_fit_model_kwargs(MelBandConformer, dict(config.model)))
     elif model_type == 'mel_band_roformer_experimental':
         from models.bs_roformer.mel_band_roformer_experimental import MelBandRoformer
-        model = MelBandRoformer(**dict(config.model))
+        model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, dict(config.model)))
     elif model_type == 'bs_roformer':
-        from models.bs_roformer import BSRoformer
-        model = BSRoformer(**dict(config.model))
+        from models.bs_roformer import BSRoformer, BSConformer
+        from models.bs_roformer.bs_roformer_sw import BSRoformerSW
+        # BS-Conformer configs set a top-level `conformer: true`; BS-roformer
+        # "SW" (super-wideband) configs set a top-level `sw: true`; the sibling
+        # "Logic" 6-stem model has no flag but shares the shifted-bias,
+        # per-attention-rope architecture. All three register under the same
+        # "BS Roformer Architecture" group, so detect by their distinguishing
+        # markers and load the right class.
+        _model_cfg = dict(config.model)
+        if getattr(config, 'conformer', None) is True:
+            model = BSConformer(**_fit_model_kwargs(BSConformer, _model_cfg))
+        elif getattr(config, 'sw', None) is True:
+            fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
+            model = BSRoformerSW(position_mode='learned', **fit)
+        elif _model_cfg.get('num_stems', 1) == 6:
+            # shared-bias 6-stem (Logic) configs have no top-level flag
+            fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
+            model = BSRoformerSW(position_mode='rope', **fit)
+        else:
+            model = BSRoformer(**_fit_model_kwargs(BSRoformer, _model_cfg))
     elif model_type == 'bs_conformer':
         from models.bs_roformer import BSConformer
-        model = BSConformer(**dict(config.model))
+        model = BSConformer(**_fit_model_kwargs(BSConformer, dict(config.model)))
     elif model_type == 'bs_roformer_experimental':
         from models.bs_roformer.bs_roformer_experimental import BSRoformer
-        model = BSRoformer(**dict(config.model))
+        model = BSRoformer(**_fit_model_kwargs(BSRoformer, dict(config.model)))
     elif model_type == 'bs_mamba2':
         from models.bs_mamba2_code.bs_mamba2 import BSMamba2Model
-        model = BSMamba2Model(**dict(config.model))
+        model = BSMamba2Model(**_fit_model_kwargs(BSMamba2Model, dict(config.model)))
     elif model_type == 'swin_upernet':
         from models.upernet_swin_transformers import Swin_UperNet_Model
         model = Swin_UperNet_Model(config)
     elif model_type == 'bandit':
-        from models.bandit.core.model import MultiMaskMultiSourceBandSplitRNNSimple
-        model = MultiMaskMultiSourceBandSplitRNNSimple(**config.model)
+        # Bandit v2 configs are laid out differently from v1: they have a
+        # top-level `cls: Bandit` and a `kwargs:` section (no `model:`). The
+        # GUI resolves both v1 and v2 to arch "Bandit Architecture" -> model_type
+        # "bandit", so detect the v2 layout here and load the correct class
+        # (reads config.kwargs) instead of crashing on the missing config.model.
+        if getattr(config, 'kwargs', None):
+            from models.bandit_v2.bandit import Bandit
+            model = Bandit(**_fit_model_kwargs(Bandit, dict(config.kwargs)))
+        else:
+            from models.bandit.core.model import MultiMaskMultiSourceBandSplitRNNSimple
+            model = MultiMaskMultiSourceBandSplitRNNSimple(
+                **_fit_model_kwargs(MultiMaskMultiSourceBandSplitRNNSimple, dict(config.model)))
     elif model_type == 'bandit_v2':
         from models.bandit_v2.bandit import Bandit
-        model = Bandit(**config.kwargs)
+        model = Bandit(**_fit_model_kwargs(Bandit, dict(config.kwargs)))
     elif model_type == 'scnet_unofficial':
         from models.scnet_unofficial import SCNet
-        model = SCNet(**config.model)
+        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
     elif model_type == 'scnet':
         from models.scnet import SCNet
-        model = SCNet(**config.model)
+        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
     elif model_type == 'scnet_tran':
         from models.scnet.scnet_tran import SCNet_Tran
-        model = SCNet_Tran(**config.model)
+        model = SCNet_Tran(**_fit_model_kwargs(SCNet_Tran, dict(config.model)))
     elif model_type == 'apollo':
         from models.look2hear.models import BaseModel
-        model = BaseModel.apollo(**config.model)
+        model = BaseModel.apollo(**_fit_model_kwargs(BaseModel.apollo, dict(config.model)))
     elif model_type == 'experimental_mdx23c_stht':
         from models.mdx23c_tfc_tdf_v3_with_STHT import TFC_TDF_net
         model = TFC_TDF_net(config)
     elif model_type == 'scnet_masked':
         from models.scnet.scnet_masked import SCNet
-        model = SCNet(**config.model)
+        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
     elif model_type == 'conformer':
         from models.conformer_model import ConformerMSS, NeuralModel
         model = ConformerMSS(
-            core=NeuralModel(**config.model),
+            core=NeuralModel(**_fit_model_kwargs(NeuralModel, dict(config.model))),
             n_fft=config.stft.n_fft,
             hop_length=config.stft.hop_length,
             win_length=getattr(config.stft, 'win_length', config.stft.n_fft),
@@ -479,10 +528,10 @@ def get_model_from_config(model_type: str, config_path: str,
         )
     elif model_type == 'mel_band_conformer':
         from models.mel_band_conformer import MelBandConformer
-        model = MelBandConformer(**config.model)
+        model = MelBandConformer(**_fit_model_kwargs(MelBandConformer, dict(config.model)))
     elif model_type == 'moises_light':
         from moises_light import MoisesLight
-        model = MoisesLight(**dict(config.model))
+        model = MoisesLight(**_fit_model_kwargs(MoisesLight, dict(config.model)))
     elif model_type == 'vr':
         from models.vr_arch import VRNet
         model = VRNet(config)

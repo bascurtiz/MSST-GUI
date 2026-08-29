@@ -385,6 +385,7 @@ class _ThemeToggle(QFrame):
 
     _SUN = "sun"
     _MOON = "moon"
+    _REST_OPACITY = 0.6   # dimmed when idle; full opacity returns on hover
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -393,10 +394,15 @@ class _ThemeToggle(QFrame):
         self.setToolTip("Switch light / dark theme")
         self._hovered = None
         self._pressed = None
+        self._hov = 0.0   # 0 = idle dimmed, 1 = hovered (full opacity)
         self._anim = QVariantAnimation(self)
         self._anim.setDuration(160)
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
         self._anim.valueChanged.connect(self._on_anim)
+        self._fade = QVariantAnimation(self)
+        self._fade.setDuration(180)
+        self._fade.setEasingCurve(QEasingCurve.OutCubic)
+        self._fade.valueChanged.connect(self._on_fade)
         self._sel_t = 0.0 if theme_manager.mode == "light" else 1.0
         theme_manager.theme_changed.connect(self._slide)
 
@@ -411,23 +417,33 @@ class _ThemeToggle(QFrame):
         self._sel_t = float(value)
         self.update()
 
+    def _on_fade(self, value):
+        self._hov = float(value)
+        self.update()
+
+    def _set_hover(self, on):
+        self._fade.stop()
+        self._fade.setStartValue(self._hov)
+        self._fade.setEndValue(1.0 if on else 0.0)
+        self._fade.start()
+
     def _half_at(self, pos):
         return self._SUN if pos.x() < self.width() / 2.0 else self._MOON
 
     def enterEvent(self, event):
         self._hovered = self._half_at(event.position())
-        self.update()
+        self._set_hover(True)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         self._hovered = None
         self._pressed = None
-        self.update()
+        self._set_hover(False)
         super().leaveEvent(event)
 
     def mouseMoveEvent(self, event):
         self._hovered = self._half_at(event.position())
-        self.update()
+        self._set_hover(True)
         super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event):
@@ -452,6 +468,10 @@ class _ThemeToggle(QFrame):
         p.setRenderHint(QPainter.Antialiasing)
         t = theme_manager.theme
         dark = theme_manager.mode == "dark"
+
+        # Dim the whole switch when idle; ease back to full opacity on hover.
+        p.setOpacity(self._REST_OPACITY
+                     + (1.0 - self._REST_OPACITY) * self._hov)
 
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         radius = r.height() / 2.0

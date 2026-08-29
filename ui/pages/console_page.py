@@ -41,6 +41,7 @@ _STEM_COLORS = {
     "other": "#10B981",
     "guitar": "#C1090B",
     "piano": "#485FAB",
+    "effects": "#FFFFFF",
 }
 _REST_COLOR = "#9A9FB3"
 
@@ -50,6 +51,13 @@ _STEM_ALIASES = {
     "no_vocals": "instrumental",
     "no-vocals": "instrumental",
     "accompaniment": "instrumental",
+    "noreverb": "other",
+    "no reverb": "other",
+    "no_reverb": "other",
+    "speech": "vocals",
+    "music": "instrumental",
+    "sfx": "effects",
+    "sound effects": "effects",
 }
 
 

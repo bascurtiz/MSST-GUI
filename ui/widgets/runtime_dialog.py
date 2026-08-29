@@ -10,6 +10,7 @@ PyTorch build into the bundled runtime.
 """
 import os
 import sys
+import threading
 
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -241,24 +242,107 @@ class RuntimeSetupDialog(QDialog):
         return self._result[0]
 
 
+# Session-scoped runtime verdict, probed in the BACKGROUND so the job-start
+# gate never blocks the UI thread. The frozen runtime's readiness checks are
+# expensive: `runtime_ready()` cold-imports torch + requests in a fresh
+# subprocess (can take a minute under Windows Defender on a huge bundle), and
+# `_remove_code_root_zstd_strays` retries a locked .pyd for up to ~60 s. Neither
+# changes between jobs in a session, so probe once and read the cached verdict.
+_RUNTIME_STATE = {
+    "lock": threading.Lock(),
+    "started": False,
+    # pending | ready | topup | repair | broken
+    "state": "pending",
+}
+
+
+def _runtime_state():
+    return _RUNTIME_STATE["state"]
+
+
+def prime_runtime_check():
+    """Start (once) a background probe of the frozen runtime state.
+
+    Called at app startup so that by the time the user clicks a job button,
+    ensure_runtime() reads a cached verdict instead of cold-importing torch on
+    the UI thread. No-op in dev checkouts and when already started.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    with _RUNTIME_STATE["lock"]:
+        if _RUNTIME_STATE["started"]:
+            return
+        _RUNTIME_STATE["started"] = True
+
+    def _work():
+        try:
+            ready = runtime_setup.runtime_ready()
+            if not ready:
+                verdict = "broken"
+            elif runtime_setup.runtime_needs_repair():
+                verdict = "repair"
+            elif not runtime_setup.runtime_requirements_current():
+                verdict = "topup"
+            else:
+                verdict = "ready"
+        except Exception:
+            verdict = "broken"
+        with _RUNTIME_STATE["lock"]:
+            _RUNTIME_STATE["state"] = verdict
+
+    threading.Thread(target=_work, daemon=True).start()
+
+
+def _start_background_zstd_purge():
+    """Best-effort hygiene in a daemon thread.
+
+    The inference subprocess carries a sys.modules guard that makes the stray
+    zstd/backports stub harmless even when deletion is blocked, so we never
+    wait on the (potentially ~60 s) lock-retry loop on the UI thread.
+    """
+    threading.Thread(
+        target=runtime_setup._remove_code_root_zstd_strays,
+        args=(lambda _s: None,),
+        daemon=True,
+    ).start()
+
+
 def ensure_runtime(parent=None) -> bool:
-    """Gate for job-start paths. True when separation jobs can run."""
+    """Gate for job-start paths. True when separation jobs can run.
+
+    Never blocks the UI thread on heavy checks: the zstd purge runs in the
+    background, and the runtime verdict is a cached read of the background
+    preflight (computed once per session at startup).
+    """
     if not getattr(sys, "frozen", False):
         return True  # dev checkout: the running venv is the runtime
-    # Always purge stray PyInstaller zstd/backports stubs from the code root
-    # before touching the runtime: fsspec (via pytorch-lightning) would resolve
-    # to the broken stub and crash inference if it ever wins over `zstandard`.
-    # Runs here too so an interrupted/rolled-back setup can't leave a poisoned
-    # install behind — cheap no-op once the dirs are gone.
-    runtime_setup._remove_code_root_zstd_strays(lambda _s: None)
-    if runtime_setup.runtime_ready() and not runtime_setup.runtime_needs_repair():
-        if runtime_setup.runtime_requirements_current():
-            return True
+    _start_background_zstd_purge()
+    state = _runtime_state()
+    if state == "ready":
+        return True
+    if state == "pending":
+        # The background probe hasn't finished yet (very first fast click after
+        # launch). Runtime was confirmed ready at install/previous use and the
+        # probe flips the verdict for the next run, so proceed optimistically —
+        # the subprocess guard keeps the zstd stray harmless either way.
+        prime_runtime_check()
+        return True
+    if state == "topup":
         # An app update shipped new runtime requirements — quick top-up
         # (installs only the missing libraries; PyTorch stays untouched).
         dlg = RuntimeSetupDialog(parent, top_up=True)
         dlg.exec()
-        return dlg.succeeded and runtime_setup.runtime_ready()
+        return _post_install_gate(dlg)
     dlg = RuntimeSetupDialog(parent)
     dlg.exec()
+    return _post_install_gate(dlg)
+
+
+def _post_install_gate(dlg) -> bool:
+    """After an install dialog, re-probe in the background so the next job
+    click reads the fresh state instead of this stale verdict."""
+    with _RUNTIME_STATE["lock"]:
+        _RUNTIME_STATE["started"] = False
+        _RUNTIME_STATE["state"] = "pending"
+    prime_runtime_check()
     return dlg.succeeded and runtime_setup.runtime_ready()

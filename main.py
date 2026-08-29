@@ -163,6 +163,13 @@ def main():
 
     window = MainWindow()
     window.show()
+
+    # Kick off the background runtime probe immediately so the job-start gate
+    # reads a cached verdict instead of cold-importing torch on the UI thread
+    # the first (and every) time the user hits a job button.
+    from ui.widgets.runtime_dialog import prime_runtime_check
+    prime_runtime_check()
+
     sys.exit(app.exec())
 
 
