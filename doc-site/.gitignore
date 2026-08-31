@@ -1,0 +1,18 @@
+# Credentials (never commit)
+auth.json
+client_secret*.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+serve.log
+serve.err
+
+# Generated site (will be rebuilt by GitHub Actions)
+_site/
+
+# OS files
+.DS_Store
+Thumbs.db

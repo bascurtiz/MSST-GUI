@@ -45,6 +45,49 @@ _STEM_COLORS = {
 }
 _REST_COLOR = "#9A9FB3"
 
+# Distinct fallback palette for unrecognized stem names. Known stems keep
+# their fixed `_STEM_COLORS`; any other name is colored from here, assigned in
+# first-seen order so each distinct stem in a job gets its own color (up to
+# 72 unique, well above the largest 53-stem split). Colors are evenly spaced
+# around the hue wheel so they never repeat or look identical at a glance.
+_FALLBACK_PALETTE = None
+_FALLBACK_BY_LABEL = {}
+
+
+def _build_fallback_palette(count=72):
+    """Return `count` mutually-distinct hex colors.
+
+    Hues follow the golden angle so *consecutive* indices land far apart on the
+    color wheel (alphabetically-adjacent unrecognized stems won't look alike),
+    and the value alternates between two levels so any close hues still differ
+    in brightness. `count` comfortably exceeds the largest 53-stem split.
+    """
+    palette = []
+    for i in range(count):
+        hue = (i * 137.5077640502 + 15.0) % 360
+        value = 235 if i % 2 == 0 else 200
+        c = QColor()
+        c.setHsv(int(hue), 185, value)
+        palette.append(c.name())
+    return palette
+
+
+def _resolve_stem_color(label):
+    """Fixed color for a known stem, otherwise a stable distinct palette color
+    for the (unrecognized) label, unique per label per app session."""
+    key = _normalize_stem(label)
+    if key in _STEM_COLORS:
+        return _STEM_COLORS[key]
+    global _FALLBACK_PALETTE
+    if _FALLBACK_PALETTE is None:
+        _FALLBACK_PALETTE = _build_fallback_palette()
+    if key not in _FALLBACK_BY_LABEL:
+        _FALLBACK_BY_LABEL[key] = _FALLBACK_PALETTE[
+            len(_FALLBACK_BY_LABEL) % len(_FALLBACK_PALETTE)
+        ]
+    return _FALLBACK_BY_LABEL[key]
+
+
 # Common aliases -> canonical stem key.
 _STEM_ALIASES = {
     "no vocals": "instrumental",
@@ -83,11 +126,11 @@ def _stem_display_rank(label):
 
 
 def _stem_color(label):
-    return _STEM_COLORS.get(_normalize_stem(label), _REST_COLOR)
+    return _resolve_stem_color(label)
 
 
 def _stem_bg_color(label):
-    base = _STEM_COLORS.get(_normalize_stem(label), _REST_COLOR)
+    base = _resolve_stem_color(label)
     c = QColor(base)
     h, _, _, _ = c.getHsvF()
     bg = QColor()

@@ -73,6 +73,37 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+def _bitsandbytes_stub():
+    """Install no-op stubs so `torch.load` can unpickle checkpoints whose
+    training state references `bitsandbytes` optimizers (e.g. Lightning LR
+    schedulers holding an `AdamW8bit` handle). bitsandbytes is training-only;
+    inference discards the optimizer/scheduler state entirely, so a plain
+    object that accepts the pickled state is enough."""
+    import types
+    if "bitsandbytes" in sys.modules:
+        return
+    bnb = types.ModuleType("bitsandbytes")
+    optim = types.ModuleType("bitsandbytes.optim")
+    adamw = types.ModuleType("bitsandbytes.optim.adamw")
+
+    class AdamW8bit:
+        def __init__(self, *a, **k):
+            pass
+
+        def __setstate__(self, state):
+            self.__dict__.update(state or {})
+
+        def __getstate__(self):
+            return self.__dict__
+
+    adamw.AdamW8bit = AdamW8bit
+    optim.adamw = adamw
+    bnb.optim = optim
+    sys.modules["bitsandbytes"] = bnb
+    sys.modules["bitsandbytes.optim"] = optim
+    sys.modules["bitsandbytes.optim.adamw"] = adamw
+
+
 def run_folder(
     model: "torch.nn.Module",
     args: "argparse.Namespace",
@@ -321,7 +352,33 @@ def proc_folder(dict_args):
     if 'model_type' in config.training:
         args.model_type = config.training.model_type
     if args.start_check_point:
+        _bitsandbytes_stub()
         checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
+        # SCNet has "masked" and "tran" variants that the GUI routes to the
+        # same `scnet` model_type: the masked one adds `pos_embed_f`/`mask_layer`,
+        # and tran swaps the LSTM dual-path for transformer (`time_layer`/
+        # `freq_layer` + `first_conv`). Detect the variant from the checkpoint.
+        if args.model_type == 'scnet':
+            _sd = checkpoint
+            for _k in ('state', 'state_dict', 'model_state_dict'):
+                if isinstance(_sd, dict) and _k in _sd:
+                    _sd = _sd[_k]
+            if isinstance(_sd, dict):
+                _keys = _sd.keys()
+                if ('pos_embed_f' in _keys or
+                        any(k.startswith('mask_layer') for k in _keys)):
+                    from utils.settings import _fit_model_kwargs
+                    from models.scnet.scnet_masked import SCNet as SCNetMasked
+                    model = SCNetMasked(**
+                        _fit_model_kwargs(SCNetMasked, dict(config.model)))
+                elif any(k == 'first_conv.weight' or
+                         (k.startswith('separation_net.dp_modules.') and
+                          ('.time_layer.' in k or '.freq_layer.' in k))
+                         for k in _keys):
+                    from utils.settings import _fit_model_kwargs
+                    from models.scnet.scnet_tran import SCNet_Tran
+                    model = SCNet_Tran(**
+                        _fit_model_kwargs(SCNet_Tran, dict(config.model)))
         load_start_checkpoint(args, model, checkpoint, type_='inference')
 
     print("Instruments: {}".format(config.training.instruments))

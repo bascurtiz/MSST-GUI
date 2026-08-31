@@ -499,6 +499,11 @@ def get_model_from_config(model_type: str, config_path: str,
     elif model_type == 'bandit_v2':
         from models.bandit_v2.bandit import Bandit
         model = Bandit(**_fit_model_kwargs(Bandit, dict(config.kwargs)))
+    elif model_type in ('medley_vox', 'conv_tasnet_stft'):
+        # Medley-Vox: conv-tasnet + STFT built on asteroid primitives. The
+        # GUI maps arch "Medley Vox Architecture" -> model_type "medley_vox".
+        from models.medley_vox.medley_vox import build_medley_vox
+        model = build_medley_vox(config)
     elif model_type == 'scnet_unofficial':
         from models.scnet_unofficial import SCNet
         model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))

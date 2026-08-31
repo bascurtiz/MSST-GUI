@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supporting AMD and Intel GPUs acceleration but no Roformers yet — Google Doc</title>
+<link rel="stylesheet" href="assets/style.css">
+<script>(function(){var t;try{t=localStorage.getItem("doc-theme");}catch(e){}document.documentElement.setAttribute("data-theme",t||"dark");})();</script>
+</head>
+<body>
+<header class="topbar">
+<button id="nav-toggle" aria-label="Toggle navigation">☰</button>
+<a class="brand" href="index.html">Google Doc</a>
+<input id="search" type="search" placeholder="Search this document…" autocomplete="off">
+<button id="theme-toggle" aria-label="Toggle color theme" title="Toggle light/dark theme">☾</button>
+</header>
+<div class="layout">
+<nav class="sidebar"><div class="sidebar-inner"><a class="sidebar-brand" href="index.html">Google Doc</a><ul class="toc"><li class="toc-group"><span class="toc-tab">Google Doc</span><ul><li class="toc-item"><div class="toc-head"><button class="toc-caret open" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="edit-280826.html">edit. 28.08.26</a></div><ul class="toc-subs open"><li><a class="toc-sub" href="edit-280826-last-updates-and-news.html">Last updates and news</a></li><li><a class="toc-sub" href="edit-280826-bsmel-roformer-uvr-beta-patch-for-gpu-accelerati.html">- BS/Mel-Roformer UVR beta patch For GPU acceleration, UVR currently supports: a) CUDA (NVIDIA GPUs) b) DirectML (AMD and Intel GPUs; previously misnamed as OpenCL) c) MPS (Mac M1 [ARM]/x86-64) And even old CPUs are supported (AMD A6-9225 Dual-Core or Intel Core 2 Quad [models with SSE4.1 tested]), but for at least MDX-Net HQ (v2) models speeds will be good on such CPUs without GPU acceleration. DirectML acceleration is not supported for Apollo, Bandit (also incompatible with MPS), SCNet and probably Demucs 2 archs - CPU will be used automatically. Minimum reasonably good enough NVIDIA GPU for Roformers might be: desktop RTX 3050 6GB, 2304 CUDA cores (at best 8GB variant with more 2560 CUDA). E.g. Colab’s Tesla T4 11GB (older RTX 2000 gen) has 2560 (which without TTA [not implemented for Roformers in UVR] is just alright - see separation times). The old 980 Ti 6GB with 2816 CUDA will be rather slower than these due to older architecture. I'd refrain from getting a mobile RTX 3050 - the Ti variant has 2560 CUDA cores, but both Ti and regular have 4GB, and using shared memory is slower - Roformers generally use more than that. In FP16 inference, if we “convert” CUDA cores performance to match the Blackwell: RTX 5060 Ti 4608 | 4608 | 100% RTX 4070 Ti 7680 | ~4800-5120 | ~105-110% RTX 3080 8704 | ~3200-3500 | ~70-75% Plus, you can always convert current Roformers to FP16 if some model uses FP32 (more below). Performance comparisons: 1 | 2 | 3 | 4 Using CUDA, even with currently the biggest 2GB size inst model, Rifforge, doesn’t reach 6GB VRAM usage on RTX 2000 (but its separation time on T4 using TTA in Colab takes a long 36 minutes for a 5 minute file), so consider min. 6GB VRAM as bare minimum for reasonable separation times with around 2560 CUDA cores on at least RTX 2000 (newer gens should have faster cores in inferencing). Unless you want to use the 53 stem model. For AMD/Intel GPUs, if you want to use default high chunk_size with certain models, 16GB VRAM is recommended, so you won’t have to decrease it manually (DirectML is way less memory-efficient than CUDA). Minimum AMD GPU capable for Roformers using DirectML might be RX 6600 XT or RX 7600 (might be even faster than 3050, DML will probably use its new RDNA3 AI cores).</a></li><li><a class="toc-sub" href="edit-280826-directml-is-slow-nevertheless-so-if-you-want-som.html">DirectML is slow nevertheless, so if you want some serious GPU acceleration boost on AMD GPUs, use MSST/pymms with ROCm instead. DirectML gives tremendous overhead over CUDA. For older GPUs than AMD Vega (which doesn't support ROCm PyTorch or only potentially with ZLUDA with modded libs) or Intel GPUs with Vulkan support, instead of MSST use: https://github.com/chenmozhijin/BSRoformer.cpp (CLI, C++ ready build, model conversion required besides Deux and FV6, allows quantization for faster separation, Vulkan backend faster than ROCm 5+ZLUDA on Windows) or also: https://github.com/pymss-project/pymss-mnn (CLI, requires building and also model conversion, Vulkan backend too, potentially a bit slower)</a></li><li><a class="toc-sub" href="edit-280826-full-list-of-model-architectures-supported-by-uv.html">Full list of model architectures supported by UVR: MDX-Net (a.k.a. v2), MDX23C (archs by kuielab), VR (voice-remover by tsurumeso, versions: 4, 5 [UVR fork], and 5.1), Demucs (by Meta; v. 1-4, only models trained on OG code, not MSST ones), BS-Roformer, Mel-Roformer (arch by Bytedance &amp; implementation from paper by lucidrains; issues on Linux explained later), SCNet, Apollo (in Tools; for upscaling, no DirectML acceleration), BandIt (SFX, no DirectML support). It has also a feature of ensembling models of various archs. If some models don't appear on the ensemble list reach the appropriate section below (or rich the document outline in options). Demudder functionality added in newer UVR patches (currently not on Linux and MacOS).</a></li><li><a class="toc-sub" href="edit-280826-models-for-roformersscnetbandit-arch-are-located.html">Models for Roformers/SCNet/Bandit arch are located altogether in the MDX-Net menu.</a></li><li><a class="toc-sub" href="edit-280826-ensembling-impossible---model-not-visible-in-voc.html">Ensembling impossible - model not visible in vocal splitter in UVR</a></li><li><a class="toc-sub" href="edit-280826-if-user-imported-roformers-arent-recognized-in-i.html">- If user-imported Roformers aren't recognized in "instrumental/vocals" in ensemble or in vocal splitter, but are in "multi-stem ensemble": “The .yaml associated with the model usually needs to be updated to match UVR's stem naming conventions. For example, if your config shows the instruments as "other" and "vocals", it will need to be updated to "Instrumental" and "Vocals" (case-sensitive)” - Anjok</a></li><li><a class="toc-sub" href="edit-280826-memory-issues---chunk-size-table-for-combatting.html">Memory issues - chunk_size table for combatting “RuntimeError”</a></li><li><a class="toc-sub" href="edit-280826-use-amp-key-error.html">'use_amp' “Key error”</a></li><li><a class="toc-sub" href="edit-280826-norm-attributeerror-using-eg-unwa-beta-5e-model.html">“”’norm’”” attributeError using e.g. unwa beta 5e model in UVR</a></li><li><a class="toc-sub" href="edit-280826-layers-errors---general.html">Layers errors - general</a></li><li><a class="toc-sub" href="edit-280826-typeerror-freqs-per-bands.html">TypeError: (...) freqs_per_bands</a></li><li><a class="toc-sub" href="edit-280826-mlp-expansion-facfor.html">mlp_expansion_facfor</a></li><li><a class="toc-sub" href="edit-280826-the-size-of-tensor-a-484864-must-match-the-size.html">"The size of tensor a (484864) must match the size of tensor b (485100) at non-singleton dimension 2"</a></li><li><a class="toc-sub" href="edit-280826-skip-connection.html">skip_connection</a></li><li><a class="toc-sub" href="edit-280826-torch-dynamopolyfillsfx.html">torch._dynamo.polyfills.fx</a></li><li><a class="toc-sub" href="edit-280826-winerror-2-the-system-cannot-find-the-file-speci.html">[WinError 2] The system cannot find the file specified</a></li><li><a class="toc-sub" href="edit-280826-num-bands.html">num_bands</a></li><li><a class="toc-sub" href="edit-280826-system-error-file-not-found.html">System error / file not found</a></li><li><a class="toc-sub" href="edit-280826-python39dll.html">Python39.dll</a></li><li><a class="toc-sub" href="edit-280826-runtimeerror.html">RuntimeError: ""</a></li><li><a class="toc-sub" href="edit-280826-stable-56-opencl-directml-version-of-uvr-5-gui-f.html">- Stable 5.6 OpenCL (DirectML) version of UVR 5 GUI for Windows</a></li><li><a class="toc-sub current" href="edit-280826-supporting-amd-and-intel-gpus-acceleration-but-n.html">Supporting AMD and Intel GPUs acceleration but no Roformers yet</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---sup.html">- (no longer necessary) Fork of UVR GUI and How to install - support for AMD and Intel GPUs appeared (works only for VR and MDX architectures), Besides W11, also W10 confirmed working, MDX achieves speeds of i5-4460s using 6700 XT, while for VR, speeds are v. fast and comparable to CUDA, so CPU processing might be slower in VR, but for MDX you might want to stick with the official UVR5 GUI.</a></div><ul class="toc-subs"><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-2.html">The best models</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html">for specific stems</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-4.html">- Advanced chain processing chart (image)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-5.html">Chained separation order</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-6.html">Plugins (different types of noise)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-7.html">“UVR BVE v2 model [currently on x-minus] is actually full band. There is, however, a small nuance. This model uses MDX VocFT preprocessing, which is not full band. MDX VocFT model is rebalancing the song. The music is slightly mixed with the vocals (25% music + 100% vocals). This mix is then processed by the BVE model. A small amount of music can help the model better understand the context (it's important for harmony separation). We train the model on a rebalanced dataset. It contains 25% of music.” aufr33</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-8.html">MDX settings &amp; ens. explanations in UVR5 (and also Demucs/VR/MDX v2/23C inferencing parameters)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-9.html">&gt;&gt;Tips to enhance separation results&lt;&lt;</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install-10.html">24. arigato78 method for lead vocal acapella</a></li></ul></li><li class="toc-item"><a class="toc-section" href="sdr-leaderboard-explanation.html">SDR leaderboard &amp; explanation</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="bleedness-and-fullness-leaderboard-python-evaluation-script.html">Bleedness and fullness leaderboard Python evaluation script by jarredou (prob. mirror), Torch version (with Bas Curtiz), used on Quality Checker</a></div><ul class="toc-subs"><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-2.html">50 models sorted by SDR</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-3.html">UVR5 GUI (MDX, VR, Demucs 2-4 and UVR team models)</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-4.html">GUI FAQ &amp; troubleshooting for UVR (PT. 2)</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-5.html">- Chunks may alter separation results</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-6.html">Manual ensemble</a></li></ul></li><li class="toc-item"><a class="toc-section" href="uvrs-vr-architecture-models.html">UVR’s VR architecture models</a></li><li class="toc-item"><a class="toc-section" href="first-vocal-models-trained-by-uvr-for-mdx-net-arch.html">First vocal models trained by UVR for MDX-Net arch:</a></li><li class="toc-item"><a class="toc-section" href="9703-model-is-uvr-mdx-net-1-uvr-mdx-net-2-is-uvr-mdxnet-2-96.html">9.703 model is UVR-MDX-NET 1, UVR-MDX-NET 2 is UVR_MDXNET_2_9682, NET 3 is 9662, all trained at 14.7kHz</a></li><li class="toc-item"><a class="toc-section" href="demucs-3.html">Demucs 3</a></li><li class="toc-item"><a class="toc-section" href="demucs-4-colab-4-6-stem.html">Demucs 4 (+ Colab) (4, 6 stem)</a></li><li class="toc-item"><a class="toc-section" href="gsep-now-gaudio-2-4-5-6-stem-karaoke.html">Gsep (now GAudio) (2, 4, 5, 6 stem, karaoke)</a></li><li class="toc-item"><a class="toc-section" href="dangoai.html">dango.ai</a></li><li class="toc-item"><a class="toc-section" href="musicai.html">music.ai</a></li><li class="toc-item"><a class="toc-section" href="iterative-ensemble-colab-by-introc.html">Iterative Ensemble Colab by IntroC</a></li><li class="toc-item"><a class="toc-section" href="mdx23-by-zfturbo-jarredou-fork---2-4-stems.html">MDX23 by ZFTurbo (jarredou fork) - 2, 4 stems</a></li><li class="toc-item"><a class="toc-section" href="karafan-by-captain-flam.html">KaraFan by Captain FLAM</a></li><li class="toc-item"><a class="toc-section" href="ripplecapcutsami-bytedancevolcenginebs-roformer-2-4-stem.html">Ripple/Capcut/SAMI-Bytedance/Volcengine/BS-RoFormer (2-4 stem)</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="drumsep---single-percussion-instruments-separation.html">&gt;Drumsep - single percussion instruments separation</a></div><ul class="toc-subs"><li><a href="drumsep---single-percussion-instruments-separation.html#h.aowhgo4swnk4">Mel-Roformer MVSEP drumsep models</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.ofipsjc35vaq">SCNet MVSEP drumsep models</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.67bx3lypshg7">(newer) MDX23C 5 stem drumsep by jarredou</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.2u19k7ty9b00">(older) MDX23C 6 stem drumsep by jarredou/Aufr33</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.swkhktenzm58">BS-Roformer MVSEP 4 stems</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.jmjab44ryjjo">Older drumsep by Inagoy</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.p1lb0lkwo8dk">Moises.ai drumsep</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.cz4j2d3uf48s">FactorSynth</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.buopqcmi0inj">Regroover</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.n8a91zv9lor0">UnMixingStation</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.f067glwjzyi4">LarsNet</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.ftdzxgety1hd">VirtualDJ 2023/Stems 2.0 (kick, hi-hat)</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.1bm9wmdv6hpf">RipX DeepAudio (-||-) (6 stems [piano, guitar])</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.404qq7uhcrx5">Spectralayers 10</a></li></ul></li><li class="toc-item"><a class="toc-section" href="uss-bytedance-any-esp-sfx.html">USS-Bytedance (any; esp. SFX)</a></li><li class="toc-item"><a class="toc-section" href="zero-shot-any-sample-esp-instruments.html">Zero Shot (any sample; esp. instruments)</a></li><li class="toc-item"><a class="toc-section" href="sam-audio.html">SAM-Audio</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="audiosep.html">AudioSep</a></div><ul class="toc-subs"><li><a href="audiosep.html#h.s4sjh68fo1sw">Medley Vox (different vocalists)</a></li><li><a href="audiosep.html#h.z0rg2bewgfed">real-time</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="sources-of-flacs-for-the-best-quality-for-separation-process.html">__Sources of FLACs for the best quality for separation process__</a></div><ul class="toc-subs"><li><a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.ueeiwv6i39ca">Dolby Atmos ripping</a></li><li><a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.konra76mukwf">360 Reality Audio FAQ</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="ai-mastering-services.html">___AI mastering services___</a></div><ul class="toc-subs"><li><a href="ai-mastering-services.html#h.tu3sw6pao8fp">___Best quality on YouTube for your audio uploads____</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="best-quality-from-youtube-and-soundcloud---how-to-squeeze-ou.html">___Best quality from YouTube and Soundcloud - how to squeeze out the most from the music taken from YT for separation___</a></div><ul class="toc-subs"><li><a href="best-quality-from-youtube-and-soundcloud---how-to-squeeze-ou.html#h.k3cm3bvgsf4j">Repository of stems/multitracks from music to create your own dataset</a></li></ul></li><li class="toc-item"><a class="toc-section" href="list-of-cloud-services-with-a-lot-of-space.html">List of cloud services with a lot of space</a></li><li class="toc-item"><a class="toc-section" href="or-for-temporary-storage.html">or for temporary storage</a></li><li class="toc-item"><a class="toc-section" href="ai-killing-tracks---difficult-ones-to-get-instrumentals-or-v.html">AI-killing tracks - difficult ones to get instrumentals (or vocals) - a lot of e.g. vocal (or instrumental) leftovers in current models</a></li><li class="toc-item"><a class="toc-section" href="training-models-guides.html">Training models guides</a></li></ul></li></ul><div class="sidebar-foot"><a href="index.html">Index</a> · <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit">Google Doc ↗</a></div></div></nav>
+<main class="content"><nav class="crumbs"><a href="index.html">Google Doc</a> › <span>Google Doc</span> › <a href="edit-280826.html">edit. 28.08.26</a></nav>
+<h1>Supporting AMD and Intel GPUs acceleration but no Roformers yet</h1>
+<p class="meta">Page 24 of 65 · <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit?tab=t.0#heading=h.ych3p8fftzi0" target="_blank" rel="noopener">Edit this page in Google Docs ↗</a></p>
+<div class="doc">
+<p><a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.6/UVR_v5.6.0_setup_directml_old.exe"><span style="color:#1155cc">https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.6/UVR_v5.6.0_setup_directml_old.exe</span></a></p>
+<p>Mac: <a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/"><span style="color:#1155cc">https://github.com/Anjok07/ultimatevocalremovergui/releases/</span></a></p>
+<p>(newer <a href="edit-280826-bsmel-roformer-uvr-beta-patch-for-gpu-accelerati.html#h.6y2plb943p9v"><span style="color:#1155cc">beta Roformer</span></a> [with “roformer” in the installer name] supports both DirectML and CUDA out of the box already; for Mac M1 <a href="https://discord.com/channels/708579735583588363/767947630403387393/1224923138958299146"><span style="color:#1155cc">click</span></a>).</p>
+<p>- For CUDA (NVIDIA GPUs) - non-OpenCL installer in the name from here:</p>
+<p><a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.6/UVR_v5.6.0_setup.exe"><span style="color:#1155cc">https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.6/UVR_v5.6.0_setup.exe</span></a></p>
+<p>(Following based on previous OpenCL build)</p>
+<p>8GB VRAM for 3:00/3:30 tracks using MDX23C HQ model with 12GB VRAM probably enough for 5:00 track which is more than in CUDA.</p>
+<p>Now the issue should be mitigated, and less memory crashes should occur.</p>
+<p>Ensembles might require more memory due to memory allocation issues not met in CUDA before. Also, VRAM is fully freed only after closing the application.</p>
+<p>Acceleration for only Demucs 2 (and 1?) arch on AMD is not supported. All others archs should work.</p>
+<p>- Be aware that there was also full MPS (GPU) acceleration introduced for Mac M1 for all MDX-NET Original Models (HQ3, etc.), all MDX23C Models, all Demucs v4 models (no VR models acceleration on GPU). So don’t use Windows in VM to run UVR anymore, but separate using dmg installer from <a href="https://github.com/anjok07/ultimatevocalremovergui/releases"><span style="color:#1155cc">releases</span></a> section (ARM). GPU acceleration is 3x faster than separation took on CPU before.</p>
+<p>____</p>
+<p>- “MDX23C-InstVoc HQ 2 is out as a VIP model [for UVR 5]! It's a slightly fine-tuned version of MDX23C-InstVoc HQ. The SDR is a tiny bit lower, but I found that it leaves less vocal bleeding.” ~Anjok</p>
+<p>It’s not always the case, sometimes it can be even the opposite, but as always, all can depend on specific song.</p>
+<p>- jarredou’s MDX23 <a href="https://colab.research.google.com/github/jarredou/MVSEP-MDX23-Colab_v2/blob/v2.2/MVSep-MDX23-Colab.ipynb">2.2</a> Colab should allow separating faster, and also longer files now (tech <a href="https://github.com/jarredou/MVSEP-MDX23-Colab_v2/pull/2#issuecomment-1763052970">details</a>)</p>
+<p>- All-in ensemble added for premium users of MVSEP - it has vocals, vocals lead, vocals back, drums, bass, piano, guitar, other. Basically 8 stems (and from drums stem you can further separate single percussion instruments using <a href="drumsep---single-percussion-instruments-separation.html#h.jmjab44ryjjo">drumsep</a> - up to 4 instruments, so it will give 10 stems in total).</p>
+<p>- <a href="https://www.capcut.cn/"><span style="color:#1155cc">https://www.capcut.cn/</span></a> (outdated section: <a href="ripplecapcutsami-bytedancevolcenginebs-roformer-2-4-stem.html#h.f0orpif22rll"><span style="color:#1155cc">read</span></a>)</p>
+<p>Is a new Windows app which contains Ripple/SAMI-Bytedance inst/vocal model (not 4 stems like in Ripple).</p>
+<p>“At the moment the separation is only available in Chinese version which is jianyingpro, download at capcut.cn [probably <a href="https://www.capcut.cn/?ts=1697285758505">here</a> - it’s where you’re redirected after you click “Alternate download link” on the main page, where download might not work at all]</p>
+<p>Separation doesn't require sign up/login, but exporting does, and requires VIP.</p>
+<p>Separated vocal file is encrypted and located in C:\Users\yourusername\AppData\Local\JianyingPro\User Data\Cache\audioWave”</p>
+<p>The unencrypted audio file in AAC format is located at \JianyingPro Drafts\yourprojectname\Resources\audioAlg (ends with download.aac)</p>
+<p>Drag and drop it in Audacity or convert to WAV (<a href="https://cloudconvert.com/aac-to-wav">https://cloudconvert.com/aac-to-wav</a>)</p>
+<p>“To get the full playable audio in mp3 format a trick that you can do is drag and drop the download.aac file into capcut and then go to export and select mp3. It will output the original file without randomisation or skipping parts”</p>
+<p>“Trying out Capcut, the quality seems the same as the Ripple app (low bitrate mp3 quality)</p>
+<p>at least the voice leftover bug is fixed, lol”</p>
+<p>Random vocal pops from Ripple are fixed here.</p>
+<p>Also, it still has the same clicks every 25 seconds as before in Ripple.</p>
+<p>Some people cannot find the settings on <a href="https://media.discordapp.net/attachments/875539590373572648/1163477679736102932/image.png?ex=653fb807&amp;is=652d4307&amp;hm=567a1806a464224601faa2e16b43ba2ff856d8a70355e3926d116869cefb1360">this </a>screen in order to separate. Maybe it’s due to lack of Chinese IP, or Chinese regional settings in Windows, but logging wasn’t necessary from what someone told.</p>
+<p>- Looks like the guitar model on MVSEP can pick up piano better than the available there piano model in lots of cases (isling)</p>
+<h6 id="h.tvbntqdvkn9n">- AudioSep has been released</h6>
+<p><a href="https://github.com/Audio-AGI/AudioSep"><span style="color:#1155cc">https://github.com/Audio-AGI/AudioSep</span></a></p>
+<p>(separate anything you describe)</p>
+<p><a href="https://replicate.com/cjwbw/audiosep?prediction=j7dsrvtbyxfm3gjax3vfzbf7py"><span style="color:#1155cc">https://replicate.com/cjwbw/audiosep?prediction=j7dsrvtbyxfm3gjax3vfzbf7py</span></a></p>
+<p>(use short fragments as input)</p>
+<p><a href="https://colab.research.google.com/github/badayvedat/AudioSep/blob/main/AudioSep_Colab.ipynb"><span style="color:#1155cc">https://colab.research.google.com/github/badayvedat/AudioSep/blob/main/AudioSep_Colab.ipynb</span></a> (basic Colab)</p>
+<p><a href="https://huggingface.co/spaces/badayvedat/AudioSep"><span style="color:#1155cc">https://huggingface.co/spaces/badayvedat/AudioSep</span></a> (it’s down)</p>
+<p>"so far it's ranged from mediocre to absolutely horrible from samples I've tried"</p>
+<p>"So far[,] it does [a] great job with crowd noise/cheering."</p>
+<p>Didn't pick piano.</p>
+<p>Output is mono 32kHz. Where input is 30s, the output can be 5s.</p>
+<p>- UVR started to process slower for some people using Nvidia 532 and 535 drivers (at least Studio ones on at least W11). <a href="https://github.com/vladmandic/automatic/discussions/1285"><span style="color:#1155cc">More</span></a> about the issue. Consider rolling back to 531.79.</p>
+<p>“Took 10 seconds to run Karaoke 2 on a full song (~5[]mins), with the latest drivers it took like 20 minutes”. The problem may occur once you reboot your system.</p>
+<p>- AMD GPU acceleration has been introduced in the official UVR repo under a new branch on GH. Beta as exe patch will be released in the following days. Currently, it supports only MDX-Net, but not MDX23C, and Demucs 4 models (not 3) and VR arch (5.0, but not 5.1).</p>
+<p>Currently, GPU memory is not clearing, so you need a lot of VRAM in order to use ensembles.</p>
+<p>- (x-minus) "Added additional download buttons when using UVR BVE model.**</p>
+<p>Now you can download:</p>
+<p>- song without backing vocals</p>
+<p>- backing vocals</p>
+<p>- instrumental without vocals</p>
+<p>- all vocals" Anjok</p>
+<p>- MacOS UVR versions should be fixed now - redownload the latest 5.6 patches. GPU processing on M1 is fully functioning with MacOS min. Monterey 12.3/7 (only VR models will crash with GPU processing). It’s very fast for the latest MDX23C fullband model - 11 minutes vs 1 hour on CPU previously.</p>
+<p>- Cyrus version of MedleyVox Colab with chunking introduced, so you don't need to perform this step manually</p>
+<p><a href="https://colab.research.google.com/drive/1StFd0QVZcv3Kn4V-DXeppMk8Zcbr5u5s?usp=sharing"><span style="color:#1155cc">https://colab.research.google.com/drive/1StFd0QVZcv3Kn4V-DXeppMk8Zcbr5u5s?usp=sharing</span></a></p>
+<p>“Run the 1st cell, upload song to folder infer_file, run 2nd cell, get results from folder results = profit” </p>
+<p>“one annoying thing is that is always converts the output to mono 28k”</p>
+<p>- Separation times since the UVR 5.6 update increased double for some people. Almost the same goes to RAM usage. </p>
+<p>Having lots of space on your system disk or additional partition assigned for pagefile can be vital in fixing some crashes, especially for long tracks. Be aware that CPU processing tends to crash less, but it's much slower in most cases.</p>
+<p>"I realized that with 2-3h long audio files, I was able to use Demucs, after I added another 32GB of RAM. In total my system got 64GB and I increased the swap file to 128GB, which is located on an NVMe drive... so just in case the 64GB RAM are not enough, which I experienced with the "Winds" model, it's not crashing UVR, instead using the SWAP."</p>
+<p>- Segments set to default 256 instead of 512 is ⅓ faster for the new MDX23C fullband model at least for 4GB cards. But it's still very slow on such RTX 3050 mobile variant (20 minutes for 3:40 song).</p>
+<p>- Sometimes inverting vocals with mixture using MDX23C instead of using instrumental output can give better results and vice versa.</p>
+<p>“Differences were more significant with D1581 [than fullband], but secondary vocals stem has "a bit" higher score” (<a href="https://cdn.discordapp.com/attachments/767947630403387393/1158828208028926022/image.png?ex=651daa5e&amp;is=651c58de&amp;hm=47ee7874240d427aee4ba65ed953678597004d2223a4d21bfaddb5e5136aa5b5&amp;"><span style="color:#1155cc">click</span></a>). Generally inversion of these MDX23C models (but not spectral) was giving sometimes better results.</p>
+<p>- MedleyVox <a href="https://colab.research.google.com/drive/17G3BPOPBPcwQdXwFiJGo0pKrz-kZ4SdU"><span style="color:#1155cc">Colab</span></a> preconfigured to use with Cyrus model</p>
+<p>Newer model epochs can be found here:</p>
+<p><a href="https://huggingface.co/Cyru5/MedleyVox/tree/main"><span style="color:#1155cc">https://huggingface.co/Cyru5/MedleyVox/tree/main</span></a></p>
+<p>Q: What is isrnet?</p>
+<p>A: It's basically just another model that builds on top of what I've built so far that performs better. That's the surface level explanation, at least.</p>
+<p>- Settings for v2.2.2 Colab</p>
+<p><a href="https://colab.research.google.com/github/jarredou/MVSEP-MDX23-Colab_v2/blob/v2.2/MVSep-MDX23-Colab.ipynb"><span style="color:#1155cc">https://colab.research.google.com/github/jarredou/MVSEP-MDX23-Colab_v2/blob/v2.2/MVSep-MDX23-Colab.ipynb</span></a></p>
+<p>If you stuffer from some vocal residues, try out these settings</p>
+<p>BigShifts_MDX: 0</p>
+<p>overlap_MDX: 0.65</p>
+<p>overlap_MDXv3: 10</p>
+<p>overlap demucs: 0.96</p>
+<p>output_format: float</p>
+<p>vocals_instru_only: disabled</p>
+<p>Also, you can manipulate with weights.</p>
+<p>E.g. different weight balance, with less MDXv3 and more VOC-FT.</p>
+<p>- As an addition to <a href="ai-killing-tracks---difficult-ones-to-get-instrumentals-or-v.html#h.37hhz9rnw7s8"><span style="color:#1155cc">AI-killing tracks</span></a> section, and in response to deletion of "your poor results" channel, there was recently created a <a href="https://docs.google.com/spreadsheets/d/1umHpYbh1NzXIkoLj_7aM2tFwX5SHFMdaxJnhe75j8bA/edit?usp=sharing"><span style="color:#1155cc">Gsheet</span></a> with your problematic tracks to fill in. It is open to everyone to contribute.</p>
+<p>- Video <a href="https://youtu.be/VbM4qp0VP80"><span style="color:#1155cc">tutorial</span></a> by Bas Curtiz how to install MedleyVox (based on Vinctekan fixed source). Cyrus trained a model. MD serves to separation of various singers from a track. It sometimes does a better job than BVE models in general. </p>
+<p>Sadly, it has 24kHz output sample rate, but AudioSR works pretty good for upscaling the results.</p>
+<p><a href="https://github.com/haoheliu/versatile_audio_super_resolution"><span style="color:#1155cc">https://github.com/haoheliu/versatile_audio_super_resolution</span></a></p>
+<p><a href="https://replicate.com/nateraw/audio-super-resolution"><span style="color:#1155cc">https://replicate.com/nateraw/audio-super-resolution</span></a></p>
+<p><a href="https://colab.research.google.com/drive/1ILUj1JLvrP0PyMxyKTflDJ--o2Nrk8w7?usp=sharing"><span style="color:#1155cc">https://colab.research.google.com/drive/1ILUj1JLvrP0PyMxyKTflDJ--o2Nrk8w7?usp=sharing</span></a></p>
+<p>Be aware that it may not work with full length songs - you might need to divide them into smaller 30 seconds pieces.</p>
+<p>- "Ensemble 4/8 algorithms were updated on MVSep with new VitLarge23 model. All quality metrics were increased:</p>
+<p>Multisong Vocals: 10.26 -&gt; 10.32</p>
+<p>Multisong Instrumental: 16.52 -&gt; 16.63</p>
+<p>Synth Vocals: 12.42 -&gt; 12.67</p>
+<p>Synth Instrumental 12.12 -&gt; 12.38</p>
+<p>MDX23 Leaderboard: 11.063 -&gt; 11.098</p>
+<p>I added Ensemble All-In algorithm which includes additionally piano, guitar, lead/back vocals. Piano and guitar has better metrics comparing to standard models, because they are extracted from high quality "other" stem. Lead/back vocals also has slightly better metrics.</p>
+<p>piano: 7.31 -&gt; 7.69</p>
+<p>guitar: 7.77 -&gt; 8.95" ZFTurbo </p>
+<p>- New vocal model added on MVSEP:</p>
+<p>"VitLarge23" it's based on new transformers arch. SDR wise (9.78 vs 10.17) it's not better than MDX23C, but works "great" for ensemble consisting of two models with weights 2, 1.</p>
+<p>- MVSEP-MDX23-Colab fork v2.2.2 is out.</p>
+<p>It is now using the new InstVocHQ model instead of D1581:</p>
+<p><a href="https://github.com/jarredou/MVSEP-MDX23-Colab_v2/"><span style="color:#1155cc">https://github.com/jarredou/MVSEP-MDX23-Colab_v2/</span></a> (dead)</p>
+<p>Memory issues with 5:33 songs fixed (even 19 minutes long with 500K chunks supported)</p>
+<p>It should be slightly faster than the previous version, as the extra processing for the fullband trick is not needed anymore with the new model.</p>
+<p>Q: Why is "overlap_MDX" set to 0.0 by default in MVSEP-MDX23-Colab_v2 ? </p>
+<p>A: because it's a "doublon" with MDX BigShifts (that is better)</p>
+<p>- Stable final version of UVR v5.6.0 has been released along with MDX23C fullband model (the same as on MVSEP) - SDR is 10.17 for vocals &amp; 16.48 for instrumentals. </p>
+<p>It’s called MDX23C-InstVoc HQ.</p>
+<p><a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/"><span style="color:#1155cc">https://github.com/Anjok07/ultimatevocalremovergui/releases/</span></a></p>
+<p>Be aware it’s taking much more time to process a song with it, then all previous models. Also, it doesn’t require volume compensation set. It can leave more vocal residues than HQ_3 models for some songs. On the other hand, it can give very good results with song with “super dense mix like Au5 - Snowblind” but also for older tracks like Queen - March Of The Black Queen (always caused issues, but it gave the best result so far, although still lot of BV is missed).</p>
+<p>Performance:</p>
+<p>- 3:30 track with HQ_3 takes up to 24 minutes on i3-3217u while the new model takes 737 minutes (precisely 1:34 vs 41:00 for 15 seconds song).</p>
+<p>- RTX 3060 12 GB - takes around 15 minutes to process a 25 minutes file with the new model. </p>
+<p>- GTX 1080 Ti took about 4 minutes to process, about a 5 min 30 song</p>
+<p>- If you upgraded from beta, Matchering might not work correctly. In order to fix the error:</p>
+<p>Go to the Align tool.</p>
+<p>Select another option under "Volume Adjustment", it can be anything.</p>
+<p>Now, matchering should work. The fix may not apply for Linux installations.</p>
+<p>- KaraFan <a href="https://colab.research.google.com/github/Captain-FLAM/KaraFan/blob/master/KaraFan.ipynb"><span style="color:#1155cc">original</span></a> Colab seems to work now (v. 3.1) but one track with default settings takes 30 minutes for 3:37 track on free T4 (the last files processed are called Final) and it can get you disconnected from runtime quick (especially if you miss some multiple captcha prompts). V. 3.1 can have more vocal residues than in 1.x version and even more than in HQ_3 model on its own.</p>
+<p>You might want to consider using older versions of KF with <a href="https://colab.research.google.com/github/kubinka0505/colab-notebooks/blob/master/Notebooks/AI/Audio_Separation/KaraFan.ipynb"><span style="color:#1155cc">Kubinka</span></a> Colab.</p>
+<p>- Now 3.2 version was released with less vocal residues.</p>
+<p>As mentioned before, after runtime disconnection error, output folder still constantly populated with new files, while progress bar is not being refreshed after clicking close or even after closing your tab with Colab opened.</p>
+<p>- "Image-Line the company that made Fl Studio 21 took to instagram announcing a beta build that allows the end users to separate stems from the actual program itself, this is in beta and isn’t final product"</p>
+<p>People say it's Demucs 4, but maybe not ft model and/or with low parameters applied or/and it's their own model.</p>
+<p>"Nothing spectacular, but not bad."</p>
+<p>"- FL Studio bleeds beats, just like Demucs 4 FT</p>
+<p>- FL Studio sounds worse than Demucs 4 FT</p>
+<p>- Ripple clearly wins"</p>
+<p>- Org. KaraFan <a href="https://colab.research.google.com/github/Captain-FLAM/KaraFan/blob/master/KaraFan.ipynb"><span style="color:#1155cc">Colab</span></a> with v. 3.0 should work with the large GPU option disabled (now done by default).</p>
+<p>- You may be experiencing issues with KaraFan 3.0 alpha (e.g. lack of 5_F-music with which the result was better before), and using <a href="https://colab.research.google.com/github/kubinka0505/colab-notebooks/blob/master/Notebooks/AI/Audio_Separation/KaraFan.ipynb"><span style="color:#1155cc">Kubinka Colab</span></a> which uses the older version for now has some problems with GPU acceleration. Maybe the previous KF commit will work or even the one before (2.x is used <a href="https://discord.com/channels/708579735583588363/708579735583588366/1153747778938359909"><span style="color:#1155cc">here</span></a>).</p>
+<p>- New UVR beta patches for Windows/Mac/M1 at the bottom of the release note</p>
+<p><a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/"><span style="color:#1155cc">https://github.com/Anjok07/ultimatevocalremovergui/releases/</span></a></p>
+<p>Usually check for newer versions above, but this one currently fixes long error on using the new BVE model</p>
+<p><a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.5.0/UVR_Patch_9_20_23_20_40_BETA.exe"><span style="color:#1155cc">https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.5.0/UVR_Patch_9_20_23_20_40_BETA.exe</span></a></p>
+<p>- “The new BVE (Background Vocal Extractor) model [in UVR 5 GUI] has been released!</p>
+<p>To use the BVE model, please make sure you use the <a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.5.0/UVR_Patch_9_18_23_18_50_BETA.exe"><span style="color:#1155cc">UVR_Patch_9_18_23_18_50_BETA</span></a> patch (<a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.5.0/Ultimate_Vocal_Remover_v5.BETA.9_19_23_16_57_MacOS_arm64.dmg"><span style="color:#1155cc">Mac</span></a>). Remember, it's designed to be used in a chain ensemble, not on its own. It's better to utilize it via "Vocal Splitter Options". ~Anjok”</p>
+<p>Using Lead vocal placement  = stereo 80% is still only available on X-Minus only. UVR GUI doesn't support this yet - it’s for the situation when your main vocals are confused with backing vocals.</p>
+<p>- In the latest UVR GUI beta patch, vocal stems of MDX instrumental models have polarity flipped. You might want to flip it back in your DAW.</p>
+<p>- Investigating KaraFan shapes issue &gt; <a href="https://discord.com/channels/708579735583588363/708579735583588366/1153747778938359909"><span style="color:#1155cc">link</span></a></p>
+<p>- New piano and guitar models added on MVSEP. Use other stem from e.g. “Ensemble 8 models” or <a href="https://colab.research.google.com/github/jarredou/MVSEP-MDX23-Colab_v2/blob/v2.2/MVSep-MDX23-Colab.ipynb"><span style="color:#1155cc">MDX23 Colab</span></a> or htdemucs_ft for better results.</p>
+<p>- To separate electric and acoustic guitar, you can run a song (e.g. other stem) through the Demucs guitar model and then process the guitar stem with GSEP (or MVSEP model instead of one of these).</p>
+<p>Gsep only can separate electric guitar so far, so the acoustic one will stay in the "other" stem.</p>
+<p>- New UVR beta patch implements chain ensemble from x-minus for splitting backing and lead vocals. To use it: </p>
+<p>1. Enable "Help Hints" (so you can see a description of the options), </p>
+<p>2. Go to any option menu </p>
+<p>3. Click the "*Vocal Splitter Options*"</p>
+<p>4. From there you will see the new chain ensemble options.</p>
+<p><a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.5.0/UVR_Patch_9_15_23_6_35_BETA.exe"><span style="color:#1155cc">Patch</span></a> (patching from the app may cause startup issues)</p>
+<p>- "New MDX23C model improved on [MVSEP] Leaderboard from 10.858 up to 11.042"</p>
+<p>- "For those of you who were running into errors related to missing *"msvcp140d.dll"* and *"VCRUNTIME140D.dll"* after installing the latest patch, it's been fixed." -Anjok</p>
+<p><a href="https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.5.0/UVR_Patch_9_13_23_17_17_BETA.exe"><span style="color:#1155cc">UVR_Patch_9_13_23_17_17_BETA</span></a></p>
+<p>- The UVR's latest beta 9 patch causes startup issue for lots of people on even clean Windows 10. No fix for it. Copying libraries manually or installing all possible redistributables doesn't work. In such case, use beta 8 patch.</p>
+<p>- If you see an error that you're disconnected from KaraFan Colab, it can still separate files in the background and consume free "credits" till you click Environment&gt;Terminate session. It happens even if you close the Colab.</p>
+<p>So, you can see your GDrive output folder still constantly populated with new files, while progress bar is not being refreshed after error of runtime disconnection or even after Closing your tab with Colab.</p>
+<p>- KaraFan got updated to 1.2 (eg. model picking was added). Deleting your old KaraFan folder on GDrive can be necessary to avoid an error now in Colab.</p>
+<p>- KaraFun - next version of MDX23 fork (originally developed by ZFTurbo, enhanced and forked by jarredou) has been created by Captain FLAM (with jarredou’s assistance on tweaks).</p>
+<p>Official <a href="https://colab.research.google.com/github/Captain-FLAM/KaraFan/blob/master/KaraFan.ipynb"><span style="color:#1155cc">Colab</span></a> (video <a href="https://youtu.be/XZAF2rzc2Q4"><span style="color:#1155cc">guide</span></a> in case of problems)</p>
+<p><a href="https://colab.research.google.com/github/kubinka0505/colab-notebooks/blob/master/Notebooks/AI/Audio_Separation/KaraFan.ipynb"><span style="color:#1155cc">Colab</span></a> forked by Kubinka (can show error now after 1.2 update)</p>
+<p>GUI for offline use: <a href="https://github.com/Captain-FLAM/KaraFan/tree/master"><span style="color:#1155cc">https://github.com/Captain-FLAM/KaraFan/tree/master</span></a></p>
+<p>It gives very clean instrumentals with much less of consistent vocal residues than in MDX23 2.0-2.2 and Ripple/Bytedance.</p>
+<p>(might have been changed) You can also disable SRS there to get a bit cleaner result, but in cost of more vocal residues. How detestable it will be without SRS, depends on a track - e.g. if it has heavy compressed modern vocals and lots of places with not busy mix (when not a lot of instruments play). Disabled SRS adds a substantial amount of information above 17.7kHz.</p>
+<p>One of our users had problems caused seemingly by empty Colab Notebooks folder which he needed to delete. Could have been something else they did too, though.</p>
+<p>- New epoch of new BVE model has been added to x-minus</p>
+<p>“In some parts the new BVE is better, in some it's worse. Still a great model”</p>
+<p>&gt; To get better results, you can downmix the result to mono and repeat the separation</p>
+<p>- For people having issues with Boosty x-minus payment:</p>
+<p><a href="https://boosty.to/uvr/posts/5d88402e-9eb1-4046-a00a-cf8b09e27561"><span style="color:#1155cc">https://boosty.to/uvr/posts/5d88402e-9eb1-4046-a00a-cf8b09e27561</span></a></p>
+<p>- Sometimes for instrumental residues in vocals, AIs for voice recorded with home microphone can be used (e.g. Goyo [now Supertone Clear], or even Krisp, RTX Voice, AMD Noise Suppression, Elgato Wave Link 3.0 Voice Focus or Adobe Podcast as a last resort) it all depends on type of vocals and how destructive the AI can get.</p>
+<p>- Izotope Ozone 11 has been released. It’s 1200$ for Advanced Edition. It’s the only version possessing Spectral Recovery. Music Rebalance is said to have Demucs instead of Spleeter now.</p>
+<p><a href="https://www.izotope.com/en/products/ozone.html"><span style="color:#1155cc">https://www.izotope.com/en/products/ozone.html</span></a></p>
+<p>- Acon Digital has released <a href="https://acondigital.com/products/remix"><span style="color:#1155cc">Remix</span></a>, their first plug-in capable of real-time separation to five stems: Vocals, Piano, Bass, Drums, and Other.</p>
+<p>“Just listened to the demo, not great but still”</p>
+<h6 id="h.713q0eyar6o3">- <a href="https://huggingface.co/spaces/mattricesound/RemFx"><span style="color:#1155cc">RemFX</span></a> for detection and removal of the following effects: chorus, delay, distortion, dynamic range compression, and reverb. <a href="https://huggingface.co/spaces/mattricesound/RemFx"><span style="color:#1155cc">Huggingface</span></a> (currently stopped working) | <a href="https://csteinmetz1.github.io/RemFX/"><span style="color:#1155cc">Samples</span></a></h6>
+<p>The <a href="https://colab.research.google.com/drive/1LoLgL1YHzIQfILEayDmRUZzDZzJpD6rD"><span style="color:#1155cc">Colab</span></a> is slow while downloading <a href="https://github.com/mhrice/RemFx/blob/main/scripts/download_ckpts.sh"><span style="color:#1155cc">checkpoints</span></a> from zenodo (400KB/s for 1GB file out of 6), later it stopped working.</p>
+<p>Outputs in at least Huggingface are mono, may not work in every case, the website in general doesn't work well with big files, keep them short, 0-30 seconds.<br>Sometimes 30 seconds is still not enough on Colab and it throws OutOfMemoryError.</p>
+<p>It's not better than our dereverb model in UVR.</p>
+<p>To fix Colab:</p>
+<p>“speechbrain lib API was totally changed in recent 1.0.0 version, it's working if you downgrade it:<br>!pip install speechbrain==0.5.16”<br>OG <a href="https://github.com/mhrice/RemFx"><span style="color:#1155cc">repo</span></a> for running locally.</p>
+<p>- Beta UVR patch also released for x86_64 &amp; M1 Macs:</p>
+<p><a href="https://github.com/TRvlvr/model_repo/releases/download/uvr_update_patches/UVR_Patch_8_28_23_2_9_BETA_MacOS_x86_64.zip"><span style="color:#1155cc">https://github.com/TRvlvr/model_repo/releases/download/uvr_update_patches/UVR_Patch_8_28_23_2_9_BETA_MacOS_x86_64.zip</span></a></p>
+<p>“If you have any trouble running the application, and you've already followed the "MacOS Users: Having Trouble Opening UVR?" instructions here, try the following:</p>
+<p>Right-click the "Ultimate Vocal Remover" file and select "Show Package Contents".</p>
+<p>Go to -&gt; Contents -&gt; MacOS -&gt;</p>
+<p>Open the "UVR" binary file.”</p>
+<p>In case of further issues, check this out:<br><a href="https://www.youtube.com/watch?v=HQsazeOd2Iw&amp;feature=youtu.be"><span style="color:#1155cc">https://www.youtube.com/watch?v=HQsazeOd2Iw&amp;feature=youtu.be</span></a></p>
+<p>Looks like e.g. with Denoise Lite models it can ask for parameters. Set 4band_v3 and 16 channels, press yes on empty window.</p>
+<p>“The Mac beta is not stable yet.” - Anjok</p>
+<p>-"The new beta [UVR] patch has been released! I made a lot of changes and fixed a ton of bugs. A public release that includes the newest MDX23 model will be released very soon. Please see the change log via the following message - <a href="https://discord.com/channels/708579735583588363/785664354427076648/1145622961039101982"><span style="color:#1155cc">https://discord.com/channels/708579735583588363/785664354427076648/1145622961039101982</span></a>"</p>
+<p>Patch:</p>
+<p><a href="https://github.com/TRvlvr/model_repo/releases/download/uvr_update_patches/UVR_Patch_8_28_23_2_9_BETA.exe"><span style="color:#1155cc">https://github.com/TRvlvr/model_repo/releases/download/uvr_update_patches/UVR_Patch_8_28_23_2_9_BETA.exe</span></a></p>
+<p>-"I found a way to bypass the free sample limits of Dango.ai. With VPN and incognito, when the limit appears, change the date on the computer or other device (I set the next day) and close and re-open the incognito tab. Sometimes it can show network error, in such case restart the VPN and re-enter in incognito again" Tachoe Bell</p>
+<p>- Bas' guide to change region to US for Ripple on iOS</p>
+<p><a href="https://media.discordapp.net/attachments/708595418400817162/1146727313963237406/Ripple_iOS_iPad_mini_2_-_demo.mp4"><span style="color:#1155cc">https://media.discordapp.net/attachments/708595418400817162/1146727313963237406/Ripple_iOS_iPad_mini_2_-_demo.mp4</span></a></p>
+<p>- Another way to use Ripple without Apple device</p>
+<p>Sign up at <a href="https://saucelabs.com/sign-up"><span style="color:#1155cc">https://saucelabs.com/sign-up</span></a></p>
+<p>Verify your email, upload this as the IPA: <a href="https://decrypt.day/app/id6447522624/dl/cllm55sbo01nfoj7yjfiyucaa"><span style="color:#1155cc">https://decrypt.day/app/id6447522624/dl/cllm55sbo01nfoj7yjfiyucaa</span></a></p>
+<p>Rotating puzzle captcha for TikTok account can be tasking due to low framerate. Some people can do it after two tries, others will sooner run out of credits, or completely unable to do it.</p>
+<p>- Every 8 seconds there is an artifact of chunking in Ripple. Heal feature in Adobe Audition works really well for it:</p>
+<p><a href="https://www.youtube.com/watch?v=Qqd8Wjqtx-8"><span style="color:#1155cc">https://www.youtube.com/watch?v=Qqd8Wjqtx-8</span></a></p>
+<p>-The same explained on RX 10 example and its Declick feature:</p>
+<p><a href="https://www.youtube.com/watch?v=pD3D7f3ungk"><span style="color:#1155cc">https://www.youtube.com/watch?v=pD3D7f3ungk</span></a></p>
+<p>- Ripple/SAMI Bytedance's API was found. If you're Chinese, you can go through it easier.</p>
+<p>The sami-api-bs-4track (the one with 10.8696 SDR Vocals) - you need to pass the Volcengine facial/document recognition apparently only available to Chinese people</p>
+<p><a href="https://www.volcengine.com/docs/6489/72011"><span style="color:#1155cc">https://www.volcengine.com/docs/6489/72011</span></a></p>
+<p>We already evaluated its <a href="https://mvsep.com/quality_checker/entry/4750"><span style="color:#1155cc">SDR</span></a>, and it even scored a bit better than Ripple itself.</p>
+<p>This is the Ripple audio uploading API:</p>
+<p><a href="https://github.com/bitelchux/TikTokUploder/blob/2a0f0241a91b558a7574e6689f39f9dd9c39e295/uploader.py"><span style="color:#1155cc">https://github.com/bitelchux/TikTokUploder/blob/2a0f0241a91b558a7574e6689f39f9dd9c39e295/uploader.py</span></a></p>
+<p>there's a sample script on the volcengine SAMI page</p>
+<p>"API from volcengine only return 1 stem result from 1 request, and it offers vocal+inst only, other stems not provided. So making a quality checker result on vocal + instrument will cost 2x of its API charging</p>
+<p>something good is that volcengine API offers 100 min free for new users"</p>
+<p>API is paid 0.2 CNY per minute.</p>
+<p>It takes around 30 seconds for one song.</p>
+<p>It was 1.272 USD for separating 1 stem out MVSEP's multisong dataset (100 tracks x 1 minute).</p>
+<p>- (outdated) Using Ripple on an M1 remote machine turned out to be successful but very convoluted.</p>
+<p><a href="https://discord.com/channels/708579735583588363/708579735583588366/1143710971798507520"><span style="color:#1155cc">https://discord.com/channels/708579735583588363/708579735583588366/1143710971798507520</span></a></p>
+<p>-It is possible that "a particular song that an older version of mdx23 (mdx23cmodel3.ckpt) has a much better extraction than D1581 and the current 4 model ensemble on MVSEP for preserving the instruments (also organ-like instruments)"</p>
+<p>-Seems like Google raised Colab limit for free users from 1 hour to 5 hours. It depends on a session, but in most cases you should be able to perform tasks taking above 4 hours now.</p>
+<p>-How to change region to US in Apple App Store to make "<a href="https://apps.apple.com/us/app/ripple-music-creation-tool/id6447522624"><span style="color:#1155cc">Ripple - Music Creation Tool</span></a>" (SAMI-Bytedance) work.</p>
+<p><a href="https://support.apple.com/en-gb/HT201389"><span style="color:#1155cc">https://support.apple.com/en-gb/HT201389</span></a></p>
+<p><a href="https://www.bestrandoms.com/random-address-in-us"><span style="color:#1155cc">https://www.bestrandoms.com/random-address-in-us</span></a></p>
+<p>Or use <a href="https://media.discordapp.net/attachments/708579735583588366/1143659641277010033/20230822_233327.jpg"><span style="color:#1155cc">this</span></a> Walmart address in Texas, the number belongs to an airport.</p>
+<p>Do it in App Store (where you have the person-icon in top right).</p>
+<p>You don't have to fill credit cards details, when you are rejected,</p>
+<p>reboot, check region/country... and it can be set to the US already.</p>
+<p>Although, it can happen for some users that it won't let you download anything forcing your real country.</p>
+<p>"I got an error because the zip code was wrong (I did enter random numbers) and it got stuck even after changing it.</p>
+<p>So I started from the beginning, typed in all the correct info, and voilà"</p>
+<p>If ''you have a store credit balance; you must spend your balance before you can change stores''.</p>
+<p>It needs (an old?) a sim card to log your old account out if necessary.</p>
+<p>- Long awaited app made by Bytedance with one of their SAMI variants from MDX23 competition which holds top of our MVSEP leaderboard was published on iOS and for US region only</p>
+<p>(with separate possibility to sign up for beta testing, also not for people outside US, and the app is in the official store already anyway, but it was before official release - at the end of June, so it's older news).</p>
+<p>It's a multifunctional app for audio editing, which also contains a separation model. </p>
+<p>It's free, called:</p>
+<p>"Ripple - Music Creation Tool"</p>
+<p><a href="https://apps.apple.com/us/app/ripple-music-creation-tool/id6447522624"><span style="color:#1155cc">https://apps.apple.com/us/app/ripple-music-creation-tool/id6447522624</span></a></p>
+<p>The app requires iOS 14.1</p>
+<p>(it's only for iOS).</p>
+<p>Output files are 4 stems 256kbps M4A (320 max).</p>
+<p>Currently, the best <a href="https://mvsep.com/quality_checker/entry/4744"><span style="color:#1155cc">SDR</span></a> for public model/AI, but it gives the best results for vocals in general. For instrumentals, it rather doesn’t beat paid Dango.ai (and rather not KaraFan too).</p>
+<p>"My only thought is trying an iOS Emulator, but every single free one I've tried isn't far-fetched where you can actually download apps, or import files that is"</p>
+<p>Sideloading of this mobile iOS app is possible on at least M1 Macs.</p>
+<p>"If you're desperate, you can rent an M1 Mac on Scaleway and run the app through that for $0.11 an hour using this <a href="https://github.com/PlayCover/PlayCover"><span style="color:#1155cc">https://github.com/PlayCover/PlayCover</span></a>"</p>
+<p>IPA file:</p>
+<p><a href="https://www.dropbox.com/s/z766tfysix5gt04/com.ripple.ios.appstore_1.9.1_und3fined.ipa?dl=0"><span style="color:#1155cc">https://www.dropbox.com/s/z766tfysix5gt04/com.ripple.ios.appstore_1.9.1_und3fined.ipa?dl=0</span></a></p>
+<p>"been working like a dream for me on an M1 Pro… I've separated 20+ songs in the last hour"</p>
+<p>"bitrise.com claims to have M1s and has a free trial"</p>
+<p>Scaleway method:<br><a href="https://cdn.discordapp.com/attachments/708579735583588366/1146136170342920302/image.png"><span style="color:#1155cc">https://cdn.discordapp.com/attachments/708579735583588366/1146136170342920302/image.png</span></a></p>
+<p>“keep in mind that the vm has to be up for 24 hours before you can remove it, so it'll be a couple bucks in total to use it”</p>
+<p>"I used decrypted ipa + sideloadly</p>
+<p>seems that it doesn't have internet access or something"</p>
+<p>So far, Ripple didn't beat voc_ft (although there might be cases when it's better) and Dango. Samples we got months ago are very similar to those from the app, also *.models files have SAMI header and MSS in model files (which use their own encryption), although processing is probably fully reliable on external servers as the app doesn't work offline (also model files are suspiciously small - few megabytes, although it's specific for mobilenet models). It's probably not the final iteration of their model, as they allegedly told someone they were afraid that their model will leak, but better than the first iteration judging by SDR with even lossy input files.</p>
+<p>Later they told that it’s different model than the one they previously evaluated, and that time it was trained with lossy 128kbps files due to some “copyright issues”.</p>
+<p>Most importantly, it's the good for vocals, also cleaning vocal inverts, and surprisingly good for e.g. Christmas songs, (it handled hip-hop, e.g. Drake pretty well). It's better for vocals than instrumentals due to residues in other stem - bass is “so” good, drums also decent. Vocals can be used for inversion to get instrumentals, and it may sound clean, but rather not as good as what 2 stem option or 3 stem mixdown gives.</p>
+<p>Other stem residues appear due to the fact they told the other stem is taken from the difference of all remaining stems - they didn’t train the other stem model to save on separation time.</p>
+<p>"One thing you will notice is that in the Strings &amp; Other stem there is a good chunk of residue/bleed from the other stems, the drum/vocal/bass stems all have very little to no residue/bleed" doesn't exist in all songs.</p>
+<p>It's fully server-based, so they may be afraid of heavy traffic publishing the app worldwide, and it's not certain that it will happen.</p>
+<p>Thanks to Jorashii, Chris, Cyclcrclicly, anvuew and Bas.</p>
+<p>Press information:</p>
+<p><a href="https://twitter.com/AppAdsai/status/1675692821603549187/photo/1"><span style="color:#1155cc">https://twitter.com/AppAdsai/status/1675692821603549187/photo/1</span></a></p>
+<p><a href="https://techcrunch.com/2023/06/30/tiktok-parent-bytedance-launches-music-creation-audio-editing-app/"><span style="color:#1155cc">https://techcrunch.com/2023/06/30/tiktok-parent-bytedance-launches-music-creation-audio-editing-app/</span></a></p>
+<p>Beta testing</p>
+<p><a href="https://www.ripple.club/"><span style="color:#1155cc">https://www.ripple.club/</span></a></p>
+<p>- Following models added on MVSep:</p>
+<p>UVR-De-Echo-Aggressive</p>
+<p>UVR-De-Echo-Normal</p>
+<p>UVR-DeNoise</p>
+<p>UVR-DeEcho-DeReverb</p>
+<p>They are all available under the "Ultimate Vocal Remover HQ (vocals, music)" option (MDX FoxJoy MDX Reverb Removal model is available as a separate category). </p>
+<p>- If you looked for possibility to pay for Dango using Alipay - they recently introduced the possibility to link foreign cards, and if that option fails (sometimes does), you can open 6 months “tourcard”, and open new later if necessary, but only Visa, Mastercard, Diners Club and JCB cards are supported to top tourcard up</p>
+<p><a href="https://ltl-beijing.com/alipay-for-foreigners/"><span style="color:#1155cc">https://ltl-beijing.com/alipay-for-foreigners/</span></a></p>
+<p> </p>
+<p>- Dango no longer supports Gmail email accounts</p>
+<p>- New piano model added on MVSEP. SDR-wise it’s better than GSep, but GSep is probably also using some kind of processing in order to get better separation results, but e.g. Dango instrumentals can be inverted to get just vocals despite the fact they claim to use some recovery technology.</p>
+<p>- <a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install-10.html#h.vktvthhthrvh"><span style="color:#1155cc">arigato78 method</span></a> for main vocals</p>
+<p>-Captain Curvy method for instrumentals added in instrumentals models list section (the top link)</p>
+<p>- For canceling room reverb check out:</p>
+<p>Reverb HQ</p>
+<p>then</p>
+<p>De-echo model (J2)</p>
+<p>- Sometimes vox_ft can pick up SFX</p>
+<p>- Install UVR5 GUI only in the default location picked by the installer. Otherwise, you might get python39.dll error on startup. If you see that error after installing the beta patch, reinstall the whole app.</p>
+<p>- Few of our users finally evaluated sonically new dango.ai 9.0 models. Turns out the models are not UVR's (or no longer), and actually give pretty close results to original instrumentals, but not so good vocals. </p>
+<p>"It's slightly better but still voc_ft keeps more reverb/delays</p>
+<p>but again, it's 99% close, Dango has maybe more noise reduction" maybe even less instrumental residues (can be a result of noise reduction).</p>
+<p>"A bit cleaner than voc_ft in terms of having synths/instruments, but they do sound a bit filtered at times. [In] overall it's close tho"</p>
+<p>"I discovered Dango's conservative mode keeps instrumentals even fuller, but might introduce some background vocals</p>
+<p>still quite better than what we have.</p>
+<p>I'm still surprised how it's so clean, as if not having vocal residues like any other MDX model. Sometimes the Dango sounds like a blend of VR's architecture, but I'm probably wrong, it could be the recovery technology" - becruily</p>
+<p><a href="https://tuanziai.com/vocal-remover/upload"><span style="color:#1155cc">https://tuanziai.com/vocal-remover/upload</span></a></p>
+<p>You must use the built-in site translate option in e.g. Google Chrome, because it's Chinese.</p>
+<p>On Android, it may not work correctly. In case of further issues, use Google Translate or one of Yandex apps with image to text translators.</p>
+<p>You are able to pay for it using Alipay outside China.</p>
+<p>Dango redirects to Tuanziai site - it's the same.</p>
+<p><a href="https://tuanziai.com/encouragement"><span style="color:#1155cc">https://tuanziai.com/encouragement</span></a></p>
+<p>Here you might get 30 free points (for 2 samples) and 60 paid points (for 1 full songs) "easily".</p>
+<p>Dango.ai scores bad in SDR leaderboards due to recovery algorithms applied. Similar situation probably like in GSep.</p>
+<p>- New BVE model on X-Minus for premium users. One of, if not the best so far. It uses voc_ft as a preprocessor. </p>
+<p>"BVE sounds good for now but being an (u)vr model the vocals are soft (it doesn’t extract hard sounds like K, T, S etc. very well)"</p>
+<p>"Pretty good, if still [in] training. Seems to begin a phrase with a bit of confusion between lead and backing, but then kicks in with better separation later in the phrase. Might just be the sample I used, though."</p>
+<p>- Jarredou published the final <a href="https://colab.research.google.com/github/jarredou/MVSEP-MDX23-Colab_v2/blob/v2.2/MVSep-MDX23-Colab.ipynb"><span style="color:#1155cc">2.2 version</span></a> of MDX23 Colab (don't confuse it with MDX23C single models v3 arch) - gives more vocal residues than 2.0/2.1, but better SDR. Now it has SRS trick, bigshifts, new fine-tuning, separated overlap parameters for MDX, MDXv3 and Demucs models, and also possess one narrowband MDX23C model D1581 among other MDX ones, which states a new set of models now (also said to use VOC-FT Fullband SRS instead of UVR-MDX-Instr-HQ3, although HQ3 is still listed during processing). You can also use faster optional 2 stem only output (demucs_ft vocal stem is used here only). Float parameter returns WAV 32-bit. Don’t set overlap v3 to more than 10, or you’ll get error. It can be way more frequent with odd values. </p>
+<p>Changing weights added: “For residues, I would first try a different weight balance, with less MDXv3 and more VOC-FT, as model D1581, and current MDXv3 models in general tend to have more residues than VOC-FT.”</p>
+<p>- New "8K FFT full band" model published on MVSEP. Currently, a better score than only 2.2 Colab above from commonly available solutions, although more vocal residues than current default on MVSEP at least in some cases, and “voice sounded more natural [in default] than the new 10 SDR model” but in some problematic songs it can even give the best results so far.</p>
+<p>"Sometimes 8K FFT model is false detect the vocals, in the vocal stem synth was treated as vocal. On instrumental stem, mostly are blur result compared with 12K FFT. But 12K FFT seems to be some vocal residue but very less heard (like a whisper) and happened for several songs, not all songs."</p>
+<p>- "The karaoke ensemble works best with isolated vocals rather than the full track itself" Kashi</p>
+<p>- Center isolation method further explained in Tips to enhance separation, step 19</p>
+<p>- VR Kara models freeze on files over ~6 minutes in UVR beta 2 (GTX 1080).</p>
+<p>&gt;Divide your song into two parts.</p>
+<p>- New public dataset published by Moises (<a href="https://developer.moises.ai/blog/moises-news/introducing-moisesdb-the-ultimate-multitrack-dataset-for-source-separation-beyond-4-stems"><span style="color:#1155cc">MoisesDB</span></a>). There are some problems with downloading it now, and it’s 82,7GB and link expires during downloading after 600 seconds. Not enough for 30MB/s, but good for 10Gbps one. Moises team works on the issue. Probably it's fixed already.</p>
+<p>- RipX inside the app uses UVR for gathering stems now. Consider also comparing its stem cleanup feature to RX 10 debleed in RX Editor.</p>
+<p>- “RipX is badass for removing residues and harmonics from vocals. The ability to remove harmonics &amp; BGVs using RipX is amazing but is very tedious but so far so good” (Kashi)</p>
+<p>- Sometimes using vocal model like voc_ft on the result from instrumental model might give less vocal residues or sometimes even none (Henry)</p>
+<p>- mvsep1.ru from now on, contains a content of mvsep.com, so without MDX23/C and login features, while mvsep.com has the richer content of mvsep1.ru</p>
+<p>The old leaderboard link has changed and is now:</p>
+<p><a href="https://mvsep1.ru/quality_checker/leaderboard2.php?sort=instrum"><span style="color:#1155cc">https://mvsep1.ru/quality_checker/leaderboard2.php?sort=instrum</span></a></p>
+<p>- old domain is also fixed now, redirecting leaderboard links.</p>
+<p>If you’re uploading in quality checker is stopped, clear your browser and start over.</p>
+<p>- Dereverb and denoiser for VR arch is not compatible with any VR Colab and manual installation of such model will fail with errors. It requires modifying nets and layers. <a href="https://discord.com/channels/708579735583588363/708595418400817162/1116150594512625686"><span style="color:#1155cc">More</span></a></p>
+<p>- New best ensemble (all Avg/Avg) </p>
+<p>(read entries details on the <a href="https://mvsep.com/quality_checker/multisong_leaderboard?sort=instrum"><span style="color:#1155cc">chart</span></a> for settings - they can have very time-consuming parameters and differ in that aspect)</p>
+<p>#1 MDX23C_D1581 + Voc FT | #2 MDX23C_D1581 + Inst HQ3 + Voc FT  | #3</p>
+<p>MDX23C_D1581 + Inst HQ3 + Voc FT</p>
+<p>Be aware that above can sound noisy/have vocal leaks at times; consider using HQ_3 or kim inst then, also: </p>
+<p>- The best ensembles so far in Kashi's testing for general use:</p>
+<p>Kim Vocal 2 + Kim FT other + Inst Main + 406 + 427 + htdemucs_ft avg/avg, or:</p>
+<p>Voc FT, inst HQ3, and Kim FT other (kim inst)</p>
+<p>“This one's much faster than the first ensemble and sometimes produces better results”</p>
+<p>It all depends on a song. Also, sometimes "running one model after another in the right order can yield much better results than ensembling them".</p>
+<p>- Disable "stem combining" for vocal inverted against the source. Might be less muddy, possibly better SDR.</p>
+<p>It's there in MDX23C because now the new arch supports multiple stems separation in one model file.</p>
+<p>- Disabling "match freq cutoff" in advanced MDX settings seems to fix issues with 10kHz cutoff in vocals of HQ3 model.</p>
+<p>- New explanations on Demucs parameters added in Demucs 4 section</p>
+<p>(shifts 0, overlap 0.99 <a href="https://mvsep.com/quality_checker/entry/3848"><span style="color:#1155cc">won</span></a> in SDR <a href="https://mvsep.com/quality_checker/entry/3772"><span style="color:#1155cc">vs</span></a> shifts 1, overlap 0.99 and <a href="https://mvsep.com/quality_checker/entry/435"><span style="color:#1155cc">even</span></a> shifts 10, overlap 0.95)</p>
+<p>- "Last update of Neutone VST plugin has now a Demucs model to use in realtime in a DAW</p>
+<p>(it's a 'light' version of Demucs_mmi)</p>
+<p><a href="https://neutone.space/models/1a36cd599cd0c44ec7ccb63e77fe8efc/"><span style="color:#1155cc">https://neutone.space/models/1a36cd599cd0c44ec7ccb63e77fe8efc/</span></a></p>
+<p>It doesn't use GPU, and it's configured to be fast with very low parameters, also the model is not the best on its own. It doesn't give decent results, so it's better to stick to other realtime alternatives (see document outline)</p>
+<p>- Turns out that with a GPU with lots of VRAM e.g. 24GB, you can run two instances of UVR, so the processing will be faster. You only need to use 4096 segmentation instead of 8192.</p>
+<p>SDR difference between overlap 0.95 and 0.99 for voc_ft MDX model in (new/beta) UVR is 0.02.</p>
+<p>0.8 seems to be the best point for ensembles</p>
+<p>12K segmentation performed worse than 4K SDR-wise</p>
+<p>- Recommended balanced values between quality and time for 6GB graphic cards in the latest beta:</p>
+<p>VR Architecture:</p>
+<p>Window Size: 320</p>
+<p>MDX-Net: </p>
+<p>Segment Size: 2752 (1024 if it’s taking too long)</p>
+<p>Overlap: 0.7-/0.8</p>
+<p>Demucs: </p>
+<p>Segment: Default</p>
+<p>Shifts: 2 (def)</p>
+<p>Overlap: 0.5 </p>
+<p>(exp. 0.75, </p>
+<p>def. 0.25)</p>
+<p>"Overlap can reduce/remove artifacts at audio chunks/segments boundaries, and improve a little bit the results the same way the shift trick works (merging multiple passes with slightly different results, each with good and bad).</p>
+<p>But it can't fix the model flaws or change its characteristics"</p>
+<p>“Best SDR is a hair more SDR and a shitload of more time.</p>
+<p>In case of Voc_FT it's more nuanced... there it seems to make a substantial difference SDR-wise.</p>
+<p>The question is: how long do u wanna wait vs. quality (SDR-based quality, tho)”</p>
+<p>- A script with guide for <a href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-2.html#h.ak53injalbkf"><span style="color:#1155cc">separating multiple speakers</span></a> in a recording added</p>
+<p>- If you're stuck at 5% of separation in UVR beta, try to divide your audio into smaller pieces (that's beta's regression)</p>
+<p>- A new separation site appeared, giving seemingly better results than Audioshake:</p>
+<p><a href="https://stemz.mwm.io/"><span style="color:#1155cc">https://stemz.mwm.io/</span></a></p>
+<p>“Guitar stem seems better than Demucs, piano maybe too. Drums sound like Spleeter. Vocal bleeds in most of the stems, or not vocals are picked up, so they end up in the synths. But that's just from one song test” becruily</p>
+<p>- Drumsep <a href="https://colab.research.google.com/drive/1wws3Qm3I1HfMr-3gAyW6lYzUHXG_kuyz?usp=sharing#scrollTo=ZHabZkRf4ZNK"><span style="color:#1155cc">Colab</span></a> now has GPU acceleration and much better max quality optional settings</p>
+<p>- 1620 MDX23C model added on x-minus. Opposing the model on UVR, it's fullband and not released yet (16.2 SDR).</p>
+<p>"Even if the separations have more bleeding than VOC-FT (and it's an issue), the voice sound itself is much fuller, "in your face" compared to VOC-FT, that I now find it like blurry sounding compared to MDXv3 models.</p>
+<p>I think that's why the new MDXv3 models are scoring better despite having more bleeding (at the moment, like I said before, trainers/finetuners have to get familiar with new arch, and that will probably help with that new bleed issue)."</p>
+<p>- New MDX23C model added on MVSEP (better SDR - 16.17)</p>
+<p>- UVR beta <a href="https://github.com/TRvlvr/model_repo/releases/download/uvr_update_patches/UVR_Patch_7_11_23_20_51_BETA.exe"><span style="color:#1155cc">patch 2</span></a> repairing no audio issue with GPU separation on the GTX 1600 series using MDX23C arch. Fixes some other bugs too.</p>
+<p>- Narrowband MDX23C vocal model (MDX23C_D1581 a.k.a. model_2_stem_061321) trained by UVR team has been released. SDR is said to be better than voc_ft (but the latter was evaluated with older non-beta patch). Be aware that CPU processing returns errors for MDX23C models, at least on some configs (“deserialize model on CUDA” error). Fullband models will be released in a few weeks (and as it was usually before, on x-minus first for a few weeks later). <a href="https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/MDX23C_D1581.ckpt"><span style="color:#1155cc">Download</span></a> (install <a href="https://github.com/TRvlvr/model_repo/releases/download/uvr_update_patches/UVR_Patch_7_11_23_20_51_BETA.exe"><span style="color:#1155cc">beta patch</span></a> first and drop it into the MDX-Net models folder). The patch is for only Windows now, with an upcoming Mac patch planned later. For Linux, there's probably a source of the patch already out.</p>
+<p>MDX23C_D1581 parameters are set up with its yaml config file and its n_fft value is 12288, not 7680. It has cutoff at 14.7khz (while VOC-FT cutoff is 17.5khz)</p>
+<p>- "(Probably all) models are stereo and can't handle mono audio. You have to create a fake stereo file with the same audio content on the L and R channel if the software doesn't make it by itself." Make sure that the other channel is not empty when isolation is executed - it can produce silent bleeding of vocals in the opposite channel (happens in e.g. MDX23 and GSEP, and errors with mono in MDX-Net)</p>
+<p>- ”For Unbound local” error while you do anything in UVR since the new model installation, you might be forced to rollback the update </p>
+<p>- Clear the Auto-Set Cache in the MDX-Net menu if you set wrong parameter and end up with error</p>
+<p>- Pitch shift is the same as soprano mode except in the GUI beta you can choose how many semitones to pitch the conversion</p>
+<p>- Dango.ai released a 9.0 model. We received a very positive report on it so far. </p>
+<p>- UVR beta patch released. Potentially new SDR increases with the same models.</p>
+<p>Added segmentation, overlap for MDX models, batch mode changes.</p>
+<p>Soprano trick added. Basically, you can set it by semi-tones. </p>
+<p>Support for MDX-NET23 arch. For now, it uses only basic models attached by Kuielab (low SDR, so don't bother for now), but UVR team already trained their own model for that arch, which will be released later, and a few weeks after x-minus and MVSep. And it's performing well already. Wait™. Don't exceed an overlap 0.93-0.95 for MDX models, it's getting tremendously long with not much of a difference, 0.8 might be a good choice as well. Also, segments can ditch the performance AF. 2560 might be still a high but balanced value.  </p>
+<p>Sadly, it looks like max mag for single models is no longer available - you can use it only under Ensemble Mode for now.</p>
+<p>Q: What is Demucs Pre-process model?</p>
+<p>A: You can process the input with another model that could do a better job at removing vocals for it to separate into the other 3 stems</p>
+<p>Beta UVR patch <a href="https://github.com/TRvlvr/model_repo/releases/download/uvr_update_patches/UVR_Patch_7_7_23_6_34_BETA.exe"><span style="color:#1155cc">link</span></a></p>
+<p>- "Post-Process [for VR] has been fixed, the very end bits of vocals don't bleed anymore no matter which threshold value is used"</p>
+<p>- New BVE model will be ready at the beginning of August (Aufr33).</p>
+<p>- MDX23C by ZFTurbo model(s) added on mvsep.com. They're trained by him using the new 2023 MDX-Net V3 arch.</p>
+<p>Slightly worse SDR than MDX23 2.1 Colab on its own.</p>
+<p>Might be good for rock, the best when all three models are weighted/ensembled)</p>
+<p>- MDX23C ensemble/weighted available on mvsep.com for premium users (best SDR for public 2 stem model).</p>
+<p>It might still leave some instrumental residues in vocals of some tracks (which can be cleared with MDX-UVR HQ_3 model) but it can be also vice versa -  the same issue as kim vocal models, where the vocals are slightly left in the instrumentals [vs e.g. MDX23 2.1 free of the issue]</p>
+<p>On some Modern Talking and CC tracks it can give the best results so far).</p>
+<p>- If you have problems with “Error when uploading file” on MVSEP, use VPN. Similar issues can happen for free X-Minus for users in Turkey.</p>
+<p>- lalal.ai cooperation with MVSEP was fake news. Go along.</p>
+<p>- As for Drumsep, besides in fixed <a href="https://colab.research.google.com/drive/1wws3Qm3I1HfMr-3gAyW6lYzUHXG_kuyz?usp=sharing"><span style="color:#1155cc">Colab</span></a>, you can also use it (the separation of single percussion instruments from drums stem) in UVR GUI. How to do this:</p>
+<p>Go to UVR settings and open the application directory.</p>
+<p>Find the folder "models" and go to "demucs models" then "v3_v4"</p>
+<p>Copy and paste both the <a href="https://drive.google.com/file/d/1S79T3XlPFosbhXgVO8h3GeBJSu43Sk-O/view"><span style="color:#1155cc">.th</span></a> and <a href="https://cdn.discordapp.com/attachments/708579735583588366/1124699600717094932/drumsep.yaml"><span style="color:#1155cc">.yaml</span></a> files, and it's good to go.</p>
+<p>Overlap above 0.6 or 0.7 becomes placebo, at least for dry track, with no effects. </p>
+<p>- Drumsep benefits from shifts a lot (you can use even 20). </p>
+<p>- For better results, test out potentially also -6 semitones in UVR beta, or with 31183Hz sample rate with changed tempo.</p>
+<p>12 semitones from 44100Hz is 22050 and should be rather less usable in most cases, the same for tempo preservation on.</p>
+<p>- If you have a long band_net <a href="https://cdn.discordapp.com/attachments/708595418400817162/1124780489522282686/Captura_de_pantalla_2023-07-01_121518.png"><span style="color:#1155cc">error</span></a> log while using DeNoise model by Fox Joy in UVR, reinstall the app.</p>
+<p>- It can happen that every second separation using MDX Colab will fail due to memory issues, at least with Karaoke 2 model. </p>
+<p>- New fine-tuned vocal model added to UVR5 GUI download center and HV Colab (slightly better SDR than Kim Vocal 2) it's called "UVR-MDX-Net-Voc_FT" and is narrowband (because it's based on previous models).</p>
+<p>- Audioshake 3 stem model is added to <a href="https://myxt.com/"><span style="color:#1155cc">https://myxt.com/</span></a> for free demo accounts. Unfortunately, it has WAVs with 16kHz cutoff which Audioshake normally doesn't have. No other stem. Results, maybe slightly better than Demucs.</p>
+<p>Might be good for vocals.</p>
+<p>- Spectralayers 10 received an update of an AI, and they no longer use Spleeter, but Demucs 4, and they now also good kick, snare, cymbals separation too. Good opinions so far. Compared to drumsep sometimes it's better, sometimes it's not. Versus MDX23 Colab V2, instrumentals sometimes sound much worse. “SpectraLayers is great for taking Stems from UVR and then carrying on separating further and editing down. (...) Receives a GPU processing patch soon”</p>
+<p>- (? some) MDX Colabs started causing errors of insufficient driver version.</p>
+<p>&gt; "As a temp workaround you can go to "Tools" in the main menu, and "Command Palette", and search for "Use fallback runtime version", and click on it, this will restart the notebook with the previous Ubuntu version in Colab, and things should works as they were before (at least till mid July or earlier [how it was once] where it is currently scheduled to be deleted)" probably it will be fixed.</p>
+<p>X: Some people have an error that fallback runtime is unavailable.</p>
+<p>- New v2 version of ZFTurbo's MDX23 <a href="https://github.com/jarredou/MVSEP-MDX23-Colab_v2/"><span style="color:#1155cc">Colab</span></a> released by jarreadou (now also with denoiser off memory fix added). Now it should have less bleeding in general.</p>
+<p>It includes models changed for better ones (Kim Vocal 2 and HQ_3), volume compensation, fullband of vocals, higher frequency bleeding fix. It all manifests in increased SDR.</p>
+<p>Instrum is inverted of vocals stem</p>
+<p>Instrum2 is the sum of drums+bass+other stems (I used to prefer it, but most people rarely see any difference between both, and it also depends on specific fragments, although instrum gets better SDR and is less muddy, so it’s rather better to stick with instrum)</p>
+<p>If your separation ends up instantly with path written below, you wrongly wrote it in the cell.</p>
+<p>Simply remove the `file - name.flac` at the end and leave only path leading to a file.</p>
+<p>It's organized in a way that it catches all files within that path/folder.</p>
+<p>Suggestion: go to drive.google.com and create a folder `input`,</p>
+<p>and drop the tracks you want to process in there.</p>
+<p>When the process is done, delete them, and add others you want to process.</p>
+<p>Overlap large and small are the main settings, higher values = slightly higher score, but way longer processing.</p>
+<p>Colab doesn't allow much higher value for chunk size, but you can try little higher ones and see when it crashes because of memory. Higher chunk size give better results.</p>
+<p>- <a href="https://cdn.discordapp.com/attachments/708579735583588366/1123687734003904552/inference.py"><span style="color:#1155cc">Updated</span></a> inference with voc_ft model (<a href="https://colab.research.google.com/github/deton24/MVSEP-MDX23-Colab_v2.1/blob/main/MVSep_MDX23_Colab.ipynb"><span style="color:#1155cc">Colab</span></a> v2.1 has denoiser now on, but updated inference not and is essentially what 2.2 currently is).</p>
+<p>- Volume compensation fine-tuning - it is in line 359 (voc_ft), 388 (for ensembling the vocals stem), 394 (for HQ_3 instrumental stem inversion).</p>
+<p>- chunk_size = 500000 will fail with 5:30 track, decrease it to at least 300K in such case.</p>
+<p>Overlap 0.8 is a good balance between duration and quality.</p>
+<p>- In case of system error wav not found, simply retry separation.</p>
+<p>Nice <a href="mdx23-by-zfturbo-jarredou-fork---2-4-stems.html#h.jmb1yj7x3kj7"><span style="color:#1155cc">instruction</span></a> how to use the Colab.</p>
+<p>The v. 2.1 Colab was firstly evaluated with lower parameters, hence it received slightly worse SDR. Then it was evaluated again and got better score than v2.</p>
+<p>WiP Colabs</p>
+<p>- 2.2 Beta <a href="https://github.com/jarredou/MVSEP-MDX23-Colab_v2/tree/2d82810d0b6ff5781a5b64cef13ca7387fc95b77"><span style="color:#1155cc">1</span></a> (no voc_ft yet)</p>
+<p>- 2.2 Beta <a href="https://github.com/jarredou/MVSEP-MDX23-Colab_v2/tree/7171c4704992c3a878452f52df57c8455ec7cff9"><span style="color:#1155cc">1.5</span></a></p>
+<p>- 2.2 Beta (1.5.1, <a href="https://drive.google.com/file/d/1QbNuY2acGnuJZD0Fczsul4kqJKRFBEgO/view?usp=sharing"><span style="color:#1155cc">inference</span></a> with voc_ft, replace in the Colab above; no fine-tuning)</p>
+<p>- <a href="https://colab.research.google.com/github/jarredou/MVSEP-MDX23-Colab_v2/blob/597b5b7f653e4593a0a94938a3923077d66f8767/MVSep-MDX23-Colab.ipynb"><span style="color:#1155cc">v2.2</span></a> beta 2/3 (<a href="https://drive.google.com/file/d/1igkChOCO9L2zyrUp9roZ5TWff2aOhOQc/view?usp=sharing"><span style="color:#1155cc">working inference</span></a>) (MDX bigshifts, overlap added, fine-tuning, no 4 stems &gt; experimental, no support for now, 22 minutes for vocals only, mdx: bsf 21, ov 0.15, 500k, 5:30 track)</p>
+<p>- <a href="https://colab.research.google.com/github/jarredou/MVSEP-MDX23-Colab_v2/blob/597b5b7f653e4593a0a94938a3923077d66f8767/MVSep-MDX23-Colab.ipynb"><span style="color:#1155cc">v2.2</span></a> (w/ voc_ft <a href="https://drive.google.com/file/d/1bpZKZynmdsYcriF-M8t8yLtVLm7zRz5U/view?usp=sharing"><span style="color:#1155cc">inference</span></a>) pre beta 3 w/o MDX v3 yet - comment out both bigshifts in the cell - they won’t work</p>
+<p>- current beta <a href="https://colab.research.google.com/github/jarredou/MVSEP-MDX23-Colab_v2/blob/v2.2/MVSep-MDX23-Colab.ipynb"><span style="color:#1155cc">link</span></a> (WiP, might be unstable at times; e.g. here for 19.07 bigshifts doesn’t work, and you need to look for working inference in history or delete the two bigshifts references in the cell; doesn’t seem that MDX v3 model is here yet)</p>
+<p>In general - </p>
+<p>MDX23 is quite an improvement over htdemucs_ft (...).</p>
+<p>Drum stem makes htdemucs_ft sound like lossy in comparison, absolutely beautiful</p>
+<p>Bass is significantly more accurate, identifies and retains actual bass guitar frequencies with clarity and accuracy</p>
+<p>"Other", equally impressive improvement over htdemucs_ft, much more clarity in guitars"</p>
+<p>And problems with vocals they originally described are probably fixed in V2 Colab.</p>
+<p>- “I just added 2 new denoise models that were made by FoxJoy. They are both very good at removing any residual noise left by MDX-Net models. You can find them both in the "Download Center". - Anjok</p>
+<p>Be aware that they're narrowband (17.7kHz cutoff). Good results.</p>
+<p>To download models from Download Center -</p>
+<p>In UVR5 GUI, click the tools icon &gt; click Download Center tab &gt; Click radio button of VR architecture &gt; click dropdown &gt; select the model &gt; hit Download button &gt; wait for it to download... Profit.</p>
+<p>- New MDX-UVR “HQ_3” model released in UVR5 GUI! The best SDR for a single instrumental model so far. <a href="https://cdn.discordapp.com/attachments/767947630403387393/1117709857223606300/UVR-MDX-NET-Inst_HQ_3.onnx"><span style="color:#1155cc">Model file</span></a> (but visiting download center is enough). On X-Minus I think too.</p>
+<p>-HQ_3 model added to <a href="https://colab.research.google.com/github/kae0-0/Colab-for-MDX_B/blob/main/MDX_Colab.ipynb"><span style="color:#1155cc">MDX Colab</span></a> (old)</p>
+<p>-HV just made a new version of her own <a href="https://colab.research.google.com/github/NaJeongMo/Colab-for-MDX_B/blob/main/MDX-Net_Colab.ipynb"><span style="color:#1155cc">updated MDX Colab</span></a> with all new models, including HQ_3. It lacks e.g. Demucs 2 for Instrumentals of vocal models, but in return it allows using YouTube and Deezer links for lossless tracks, with providing ARL, and allows specifying manually more than one file name to process at the same time. Also, for any new models in the future, there's optional input for model settings, to bypass parameters of parameters autoloader. IRC, the Colab stores its files in different path, so be aware about it when uploading tracks for separations on GDrive.</p>
+<p>- she has added volume compensation in new revision (they’re applied automatically for each model)</p>
+<p>In previous <a href="9703-model-is-uvr-mdx-net-1-uvr-mdx-net-2-is-uvr-mdxnet-2-96.html#h.aa2xhwp434"><span style="color:#1155cc">MDX Colabs</span></a> there were also min, avg, max, and chunks, but they're gone in HV Colab.</p>
+<p>- HV also made a <a href="https://colab.research.google.com/drive/1VnqwFkpjPLjMwUPmgjoZJQR1S8hd6CBJ"><span style="color:#1155cc">new</span></a> VR Colab which irc, now don’t clutter all your GDrive, but only downloads models which you use (but without VR ensemble) and probably might work without GDrive mounting, but it lacks VR ensemble.</p>
+<p>- New MDX models added to both variants of MVSep (Kim inst, Vocal 1/2, Main [vocal model], HQ_2)</p>
+<p>- ZFTurbo’s MDX23 code now requires less GPU memory. “I was able to process file on 8 GB card. Now it's default mode.”: 6GB VRAM is not enough. Lowering overlaps (e.g. 500000 instead of 1000000) or chunking track manually might be necessary in this case. Also now you can control everything from options: so you can set chunk_size 200000 and single ONNX. It can possibly work with 6GB VRAM that way.</p>
+<p>Overlap large and small - controls overlap of song during processing. The larger value the slower processing but better quality (both)</p>
+<p>If you have fail to allocate memory error, use --large_gpu parameter</p>
+<p>Sometimes turning off use large GPU and reducing chunk size from 1000000 to 500000 helps</p>
+<p>- Models/AIs of the 1st and 2nd place winners in MDX23 music challenge (ByteDance’s and quickpepper947’s) sadly won’t be released to the public (at least won’t be open-sourced). Maybe in June, ByteDance will be released as an app in worse quality.</p>
+<p>Judging by the few snippets we had:</p>
+<p>"the vocal output, yes, better than what can be achieved right now by any other model, it seems.</p>
+<p>the instrumental output... meh. I can hear vocals in it, on a low volume level." but be aware that improved their model by the time by a lot.</p>
+<p>- MDX23 4 stem model and <a href="https://github.com/ZFTurbo/MVSEP-MDX23-music-separation-model"><span style="color:#1155cc">source code</span></a> with dedicated app by ZFTurbo (3rd place) was released publicly with the whole AI and instructions how to run it locally. No longer requires minimum 16GB VRAM Nvidia GPU. It even has a neat GUI (3rd place in leaderboard C, better SDR than demucs ft). You can still use the model online on <a href="https://mvsep1.ru/"><span style="color:#1155cc">mvsep1.ru</span></a> (now mvsep.com).</p>
+<p>The command: </p>
+<p>"conda install -c intel icc_rt" </p>
+<p>SOLVES the LLVM ERROR</p>
+<p>For above, you can get less vocal residues by replacing the Kim Vocal 1 model there manually by newer Kim Vocal 2 and kim inst by and Kim Inst with UVR Inst HQ 292 (“full 292 is a lot more aggressive than kim_inst”).</p>
+<p>jarredou forked it with better models and settings already.</p>
+<p>Short technical <a href="https://discord.com/channels/708579735583588363/911050124661227542/1107002345704927362"><span style="color:#1155cc">summary</span></a> of ZFTurbo about what is under the hood and small <a href="https://arxiv.org/pdf/2305.07489.pdf"><span style="color:#1155cc">paper</span></a>.</p>
+<p>From what I see in the code, it uses inverted vocals output for instrumentals from - Demucs ft, with - hdemucs_mmi, and - Kim vocal 1 and - Kim inst (ft other). More explanations in <a href="mdx23-by-zfturbo-jarredou-fork---2-4-stems.html#h.jmb1yj7x3kj7"><span style="color:#1155cc">MDX23</span></a> dedicated section of this doc.</p>
+<p>- jarreadou made a <a href="https://colab.research.google.com/github/jarredou/MVSep-MDX23-Colab/blob/main/MVSep-MDX23-Colab.ipynb"><span style="color:#1155cc">Colab</span></a> version of ZFTurbo MDX23:</p>
+<p>"(It's working with `chunk_size = 500000` as default, no memory error at this value after few tests with Colab free)</p>
+<p>Output files are saved on Colab drive, in the "results" folder inside MVSep installation folder, not in *your* GDrive."</p>
+<p>On 19.05 its SDR was tested, and had better score for instrumentals than UVR5 ensemble for that time being. Currently not, but there are new versions of the Colab planned.</p>
+<p>- ByteDance-USS was released with <a href="https://colab.research.google.com/drive/1lRjlsqeBhO9B3dvW4jSWanjFLd6tuEO9?usp=share_link"><span style="color:#1155cc">Colab</span></a> by jazzpear. It works better than zero-shot for SFX and “user-friendly wise” while zero-shot stil better for instruments.</p>
+<p>"<a href="https://www.dropbox.com/sh/fel3hunq4eb83rs/AAA1WoK3d85W4S4N5HObxhQGa?dl=0"><span style="color:#1155cc">https://www.dropbox.com/sh/fel3hunq4eb83rs/AAA1WoK3d85W4S4N5HObxhQGa?dl=0</span></a></p>
+<p>Queries for ByteDance USS taken from the DNR dataset. Just DL and put these on your drive to use them in the Colab as queries."</p>
+<p><a href="uss-bytedance-any-esp-sfx.html#h.4svuy3bzvi1t"><span style="color:#1155cc">QA</span></a> section added.</p>
+<p>- The <a href="https://colab.research.google.com/drive/1CO3KRvcFc1EuRh7YJea6DtMM6Tj8NHoB?usp=sharing"><span style="color:#1155cc">modified</span></a> MDX Colab - now with automatic models downloading (no more manual GDrive models installations) and Karaoke 2 model.</p>
+<p>&gt; Separate input for 3 models parameters added, so you don’t need to change models.py every time you switch to some other model. Settings for all models listed in Colab. From now on, it uses reworked main.py and models.py (made by jarredou) downloaded automatically. Don’t replace models.py from packages with models from <a href="9703-model-is-uvr-mdx-net-1-uvr-mdx-net-2-is-uvr-mdxnet-2-96.html#h.aa2xhwp434"><span style="color:#1155cc">here</span></a> now. Now denoiser optionally added!</p>
+<p>- MDX Colab with newer models is now reworked to use with current Python 3.10 runtime which all Colabs now use. </p>
+<p>- Since 28.04 lots of Colabs started having errors like "onnxruntime module not found". Probably only MDX Colab (was) affected.</p>
+<p>(not needed anymore)</p>
+<p>&gt; "As a temp workaround you can go to "Tools" in the main menu, and "Command Palette", and search for "Use fallback runtime version", and click on it, this will restart the notebook with the previous python version, and things should works as they were before"</p>
+<p>- <a href="https://colab.research.google.com/drive/189nHyAUfHIfTAXbm15Aj1Onlog2qcCp0?usp=sharing"><span style="color:#1155cc">OG</span></a> MDX HV Colab is (also) broken due to torch related issues (reported to HV). To fix it, add new code row with:</p>
+<p>!pip install torch==1.13.1 </p>
+<p>below mounting and execute it after mounting </p>
+<p>&gt; or use fixed MDX <a href="https://colab.research.google.com/drive/1CO3KRvcFc1EuRh7YJea6DtMM6Tj8NHoB?usp=sharing"><span style="color:#1155cc">Colab</span></a> with newer models and fix added (now with also old Karaoke models).</p>
+<p>- While using <a href="https://colab.research.google.com/github/NaJeongMo/Colaboratory-Notebook-for-Ultimate-Vocal-Remover/blob/main/Vocal%20Remover%205_arch.ipynb"><span style="color:#1155cc">OG</span></a> HV VR Colab, people are currently encountering issues related to librosa. The issues are already reported to HV (the author of the Colab). </p>
+<p>&gt;  use this <a href="https://colab.research.google.com/drive/16Q44VBJiIrXOgTINztVDVeb0XKhLKHwl?usp=sharing"><span style="color:#1155cc">fixed</span></a> VR Colab for now (04.04.23). (the issue itself was fixed by uncommenting librosa line and setting 0.9.1 version  -  deleted "#" before the lines in Mount to Drive cell, now also fresh installation issues are fixed - probably the previous fix was based on too old HV Colab revision). VR Colab is not affected by May/April runtime issues.</p>
+<p>- If you have fast CPU, consider using it for ensemble if you have only 4GB VRAM, otherwise you can encounter more vocal residues in instrumentals. 11GB VRAM is good enough, maybe even 8GB.</p>
+<p>- New Kim's instrumental "ft other" model. Already added to UVR's download center with parameters.</p>
+<p>Manual settings - dim_f = 3072 n_fft = 7680 <a href="https://drive.google.com/drive/folders/19-jUNQJwols7UyuWO5PWWVUlJQEwpn78"><span style="color:#1155cc">https://drive.google.com/drive/folders/19-jUNQJwols7UyuWO5PWWVUlJQEwpn78</span></a></p>
+<p>(Unlike HQ models, it has cutoff, but better SDR than even inst3/464, added to Colab)</p>
+<p>- Anjok (UVR5) "I released an additional HQ model to the Download Center today. **UVR-MDX-NET Inst HQ 2**  (epoch 498) is better at removing long drawn out vocals than UVR-MDX-NET Inst HQ 1." It has already evaluated slightly better SDR vs HQ_1 both for vocals and instrumentals (HQ_1 evaluation was made once more since introducing Batch Mode which slightly decreases SDR for only single models vs previous versions incl. beta, but mitigates an issue when there are sudden vocal pop-ins using &lt;11GB VRAM cards)</p>
+<p>- Anjok (UVR5, non-beta) “So I fixed MDX-Net to always use Batch Mode, even when chunks are on. This means setting the chunk and margin size will solely be for audio output quality. Regardless of PC specs, users will be able to set any chunk or margin size they wish. Resource usage for MDX-Net will solely depend on Batch Size.”</p>
+<p>Edit. Batch size set to default instead of chunks enabled on 11GB cards for ensemble achieves better SDR, but separation time is longer.</p>
+<p>- Public UVR5 patch with batch mode and final full band model was released (MDX HQ_1)</p>
+<p>- 293/403 and 450/498 (HQ_1 and 2) full band MDX-UVR models added to <a href="9703-model-is-uvr-mdx-net-1-uvr-mdx-net-2-is-uvr-mdxnet-2-96.html#h.zaimpsi6j19a"><span style="color:#1155cc">Colab</span></a> and (also in UVR) (PyTorch fix added for Colab)</p>
+<p>- Wind model (trumpet, sax) beside x-minus, added also to UVR5 GUI</p>
+<p>You'll find it in UVR5 in Download Center -&gt; VR Models -&gt; select model 17</p>
+<p>(10 seconds of audio separated with Wind model, from a 7-min track, takes 29 minutes to isolate on a 3rd gen i7 - might be your last resort if it crashes your 4GB VRAM GPU as some people reported)</p>
+<p>- (x-minus/Aufr33) "1. **Batch mode** is now enabled. This greatly speeds up processing without degrading quality.</p>
+<p>2. The **b.v.** models have been renamed to **kar**.</p>
+<p>3. A new **Soprano voice** setting has been added for songs with the high-pitched vocals. </p>
+<p>*This only works with mdx models so far.*"</p>
+<p>It slows down the input file similarly to the method we described in our tip section below.</p>
+<p>- New MDX23 vocal model added to beta MVSEP site.</p>
+</div>
+<nav class="pager"><a class="prev" href="edit-280826-stable-56-opencl-directml-version-of-uvr-5-gui-f.html">← - Stable 5.6 OpenCL (DirectML) version of UVR 5 GUI for Windows</a><a class="next" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---sup.html">- (no longer necessary) Fork of UVR GUI and How to install - support for AMD and Intel GPUs appeared (works only for VR and MDX architectures), Besides W11, also W10 confirmed working, MDX achieves speeds of i5-4460s using 6700 XT, while for VR, speeds are v. fast and comparable to CUDA, so CPU processing might be slower in VR, but for MDX you might want to stick with the official UVR5 GUI. →</a></nav>
+<footer>Mirror of <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit">the Google Doc</a> — 65 sections · generated 2026-08-29 15:23 UTC</footer>
+</main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

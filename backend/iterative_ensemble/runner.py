@@ -422,7 +422,7 @@ class IterativeEnsembleRunner(QThread):
             "Demucs Architecture": "htdemucs",
             "BS Roformer Architecture": "bs_roformer",
             "Melband Roformer Architecture": "mel_band_roformer",
-            "Medley Vox Architecture": "bs_roformer",
+            "Medley Vox Architecture": "medley_vox",
             "SCNet Architecture": "scnet",
             "Apollo Architecture": "apollo",
             "Bandit Architecture": "bandit",

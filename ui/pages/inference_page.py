@@ -24,8 +24,9 @@ from backend.yaml_analyzer import classify_model_type, get_stems_for_type
 from ui.theme import theme_manager, UIConstants, FONT_STACK
 from ui.widgets.common import (
     ConsoleLog, SpectrogramPanel, WaveformPanel, ProcessingStatusPanel, PageHeader,
-    outline_button_ss, paint_chevron, EllipsisButton, GlyphButton,
-    _outline_icon_color, _stop_icon_color, _add_icon_color,
+    outline_button_ss, solid_button_ss, paint_chevron, EllipsisButton,
+    GlyphButton,
+    _outline_icon_color, _solid_icon_color, _stop_icon_color, _add_icon_color,
 )
 
 AUDIO_FILTER = ("Audio files (*.wav *.flac *.mp3 *.ogg *.aiff *.m4a *.opus *.wv);;"
@@ -46,7 +47,7 @@ ARCH_TO_MODEL_TYPE = {
     "Demucs Architecture": "htdemucs",
     "BS Roformer Architecture": "bs_roformer",
     "Melband Roformer Architecture": "mel_band_roformer",
-    "Medley Vox Architecture": "bs_roformer",
+    "Medley Vox Architecture": "medley_vox",
     "SCNet Architecture": "scnet",
     "Apollo Architecture": "apollo",
     "Bandit Architecture": "bandit",
@@ -1903,10 +1904,10 @@ class InferencePage(QWidget):
         btn_row.setSpacing(8)
         btn_row.setContentsMargins(0, 0, 0, 0)
 
-        self.btn_run = GlyphButton("Separate", "\u25B6", _outline_icon_color,
+        self.btn_run = GlyphButton("Separate", "\u25B6", _solid_icon_color,
                                    glyph_size=18, text_size=12)
         self.btn_run.setFixedSize(170, 44)
-        self.btn_run.setStyleSheet(outline_button_ss())
+        self.btn_run.setStyleSheet(solid_button_ss())
         self.btn_run.clicked.connect(self._run)
 
         self.btn_stop = GlyphButton("Stop", "\u25A0", _stop_icon_color,
@@ -2140,7 +2141,7 @@ class InferencePage(QWidget):
                 pass  # summary label uses its own style
 
         # Update run/stop buttons
-        self.btn_run.setStyleSheet(outline_button_ss())
+        self.btn_run.setStyleSheet(solid_button_ss())
         self.btn_stop.setStyleSheet(
             "QPushButton{"
             f"background:{t.surface};color:{t.text_muted};"

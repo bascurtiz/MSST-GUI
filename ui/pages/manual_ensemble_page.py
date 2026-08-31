@@ -18,8 +18,9 @@ from backend.runner import ProcessRunner
 from backend.paths import REPO_ROOT, get_python_exe
 from ui.theme import theme_manager, UIConstants
 from ui.widgets.common import (
-    PageHeader, outline_button_ss, ChevronCombo, GlyphButton, EllipsisButton,
-    _outline_icon_color, _stop_icon_color, _addfile_icon_color,
+    PageHeader, outline_button_ss, solid_button_ss, ChevronCombo, GlyphButton,
+    EllipsisButton,
+    _outline_icon_color, _solid_icon_color, _stop_icon_color, _addfile_icon_color,
 )
 from ui.pages.inference_page import _ComboBox, _ExpandArrow
 
@@ -953,7 +954,7 @@ class ManualEnsemblePage(QWidget):
 
         for w in self.findChildren(QPushButton):
             if w is self.btn_run:
-                w.setStyleSheet(outline_button_ss())
+                w.setStyleSheet(solid_button_ss())
             elif w is self.btn_stop:
                 w.setStyleSheet(
                     f"QPushButton{{"
@@ -1051,10 +1052,10 @@ class ManualEnsemblePage(QWidget):
         btn_row.setSpacing(8)
         btn_row.setContentsMargins(0, 0, 0, 0)
 
-        self.btn_run = GlyphButton("Run Ensemble", "\u25B6", _outline_icon_color,
+        self.btn_run = GlyphButton("Run Ensemble", "\u25B6", _solid_icon_color,
                                    glyph_size=18, text_size=12)
         self.btn_run.setFixedSize(240, 44)
-        self.btn_run.setStyleSheet(outline_button_ss())
+        self.btn_run.setStyleSheet(solid_button_ss())
         self.btn_run.clicked.connect(self._run)
 
         self.btn_stop = GlyphButton("Stop", "\u25A0", _stop_icon_color,

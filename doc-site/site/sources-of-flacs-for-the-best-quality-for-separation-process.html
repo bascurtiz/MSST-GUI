@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__Sources of FLACs for the best quality for separation process__ — Google Doc</title>
+<link rel="stylesheet" href="assets/style.css">
+<script>(function(){var t;try{t=localStorage.getItem("doc-theme");}catch(e){}document.documentElement.setAttribute("data-theme",t||"dark");})();</script>
+</head>
+<body>
+<header class="topbar">
+<button id="nav-toggle" aria-label="Toggle navigation">☰</button>
+<a class="brand" href="index.html">Google Doc</a>
+<input id="search" type="search" placeholder="Search this document…" autocomplete="off">
+<button id="theme-toggle" aria-label="Toggle color theme" title="Toggle light/dark theme">☾</button>
+</header>
+<div class="layout">
+<nav class="sidebar"><div class="sidebar-inner"><a class="sidebar-brand" href="index.html">Google Doc</a><ul class="toc"><li class="toc-group"><span class="toc-tab">Google Doc</span><ul><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="edit-280826.html">edit. 28.08.26</a></div><ul class="toc-subs"><li><a class="toc-sub" href="edit-280826-last-updates-and-news.html">Last updates and news</a></li><li><a class="toc-sub" href="edit-280826-bsmel-roformer-uvr-beta-patch-for-gpu-accelerati.html">- BS/Mel-Roformer UVR beta patch For GPU acceleration, UVR currently supports: a) CUDA (NVIDIA GPUs) b) DirectML (AMD and Intel GPUs; previously misnamed as OpenCL) c) MPS (Mac M1 [ARM]/x86-64) And even old CPUs are supported (AMD A6-9225 Dual-Core or Intel Core 2 Quad [models with SSE4.1 tested]), but for at least MDX-Net HQ (v2) models speeds will be good on such CPUs without GPU acceleration. DirectML acceleration is not supported for Apollo, Bandit (also incompatible with MPS), SCNet and probably Demucs 2 archs - CPU will be used automatically. Minimum reasonably good enough NVIDIA GPU for Roformers might be: desktop RTX 3050 6GB, 2304 CUDA cores (at best 8GB variant with more 2560 CUDA). E.g. Colab’s Tesla T4 11GB (older RTX 2000 gen) has 2560 (which without TTA [not implemented for Roformers in UVR] is just alright - see separation times). The old 980 Ti 6GB with 2816 CUDA will be rather slower than these due to older architecture. I'd refrain from getting a mobile RTX 3050 - the Ti variant has 2560 CUDA cores, but both Ti and regular have 4GB, and using shared memory is slower - Roformers generally use more than that. In FP16 inference, if we “convert” CUDA cores performance to match the Blackwell: RTX 5060 Ti 4608 | 4608 | 100% RTX 4070 Ti 7680 | ~4800-5120 | ~105-110% RTX 3080 8704 | ~3200-3500 | ~70-75% Plus, you can always convert current Roformers to FP16 if some model uses FP32 (more below). Performance comparisons: 1 | 2 | 3 | 4 Using CUDA, even with currently the biggest 2GB size inst model, Rifforge, doesn’t reach 6GB VRAM usage on RTX 2000 (but its separation time on T4 using TTA in Colab takes a long 36 minutes for a 5 minute file), so consider min. 6GB VRAM as bare minimum for reasonable separation times with around 2560 CUDA cores on at least RTX 2000 (newer gens should have faster cores in inferencing). Unless you want to use the 53 stem model. For AMD/Intel GPUs, if you want to use default high chunk_size with certain models, 16GB VRAM is recommended, so you won’t have to decrease it manually (DirectML is way less memory-efficient than CUDA). Minimum AMD GPU capable for Roformers using DirectML might be RX 6600 XT or RX 7600 (might be even faster than 3050, DML will probably use its new RDNA3 AI cores).</a></li><li><a class="toc-sub" href="edit-280826-directml-is-slow-nevertheless-so-if-you-want-som.html">DirectML is slow nevertheless, so if you want some serious GPU acceleration boost on AMD GPUs, use MSST/pymms with ROCm instead. DirectML gives tremendous overhead over CUDA. For older GPUs than AMD Vega (which doesn't support ROCm PyTorch or only potentially with ZLUDA with modded libs) or Intel GPUs with Vulkan support, instead of MSST use: https://github.com/chenmozhijin/BSRoformer.cpp (CLI, C++ ready build, model conversion required besides Deux and FV6, allows quantization for faster separation, Vulkan backend faster than ROCm 5+ZLUDA on Windows) or also: https://github.com/pymss-project/pymss-mnn (CLI, requires building and also model conversion, Vulkan backend too, potentially a bit slower)</a></li><li><a class="toc-sub" href="edit-280826-full-list-of-model-architectures-supported-by-uv.html">Full list of model architectures supported by UVR: MDX-Net (a.k.a. v2), MDX23C (archs by kuielab), VR (voice-remover by tsurumeso, versions: 4, 5 [UVR fork], and 5.1), Demucs (by Meta; v. 1-4, only models trained on OG code, not MSST ones), BS-Roformer, Mel-Roformer (arch by Bytedance &amp; implementation from paper by lucidrains; issues on Linux explained later), SCNet, Apollo (in Tools; for upscaling, no DirectML acceleration), BandIt (SFX, no DirectML support). It has also a feature of ensembling models of various archs. If some models don't appear on the ensemble list reach the appropriate section below (or rich the document outline in options). Demudder functionality added in newer UVR patches (currently not on Linux and MacOS).</a></li><li><a class="toc-sub" href="edit-280826-models-for-roformersscnetbandit-arch-are-located.html">Models for Roformers/SCNet/Bandit arch are located altogether in the MDX-Net menu.</a></li><li><a class="toc-sub" href="edit-280826-ensembling-impossible---model-not-visible-in-voc.html">Ensembling impossible - model not visible in vocal splitter in UVR</a></li><li><a class="toc-sub" href="edit-280826-if-user-imported-roformers-arent-recognized-in-i.html">- If user-imported Roformers aren't recognized in "instrumental/vocals" in ensemble or in vocal splitter, but are in "multi-stem ensemble": “The .yaml associated with the model usually needs to be updated to match UVR's stem naming conventions. For example, if your config shows the instruments as "other" and "vocals", it will need to be updated to "Instrumental" and "Vocals" (case-sensitive)” - Anjok</a></li><li><a class="toc-sub" href="edit-280826-memory-issues---chunk-size-table-for-combatting.html">Memory issues - chunk_size table for combatting “RuntimeError”</a></li><li><a class="toc-sub" href="edit-280826-use-amp-key-error.html">'use_amp' “Key error”</a></li><li><a class="toc-sub" href="edit-280826-norm-attributeerror-using-eg-unwa-beta-5e-model.html">“”’norm’”” attributeError using e.g. unwa beta 5e model in UVR</a></li><li><a class="toc-sub" href="edit-280826-layers-errors---general.html">Layers errors - general</a></li><li><a class="toc-sub" href="edit-280826-typeerror-freqs-per-bands.html">TypeError: (...) freqs_per_bands</a></li><li><a class="toc-sub" href="edit-280826-mlp-expansion-facfor.html">mlp_expansion_facfor</a></li><li><a class="toc-sub" href="edit-280826-the-size-of-tensor-a-484864-must-match-the-size.html">"The size of tensor a (484864) must match the size of tensor b (485100) at non-singleton dimension 2"</a></li><li><a class="toc-sub" href="edit-280826-skip-connection.html">skip_connection</a></li><li><a class="toc-sub" href="edit-280826-torch-dynamopolyfillsfx.html">torch._dynamo.polyfills.fx</a></li><li><a class="toc-sub" href="edit-280826-winerror-2-the-system-cannot-find-the-file-speci.html">[WinError 2] The system cannot find the file specified</a></li><li><a class="toc-sub" href="edit-280826-num-bands.html">num_bands</a></li><li><a class="toc-sub" href="edit-280826-system-error-file-not-found.html">System error / file not found</a></li><li><a class="toc-sub" href="edit-280826-python39dll.html">Python39.dll</a></li><li><a class="toc-sub" href="edit-280826-runtimeerror.html">RuntimeError: ""</a></li><li><a class="toc-sub" href="edit-280826-stable-56-opencl-directml-version-of-uvr-5-gui-f.html">- Stable 5.6 OpenCL (DirectML) version of UVR 5 GUI for Windows</a></li><li><a class="toc-sub" href="edit-280826-supporting-amd-and-intel-gpus-acceleration-but-n.html">Supporting AMD and Intel GPUs acceleration but no Roformers yet</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---sup.html">- (no longer necessary) Fork of UVR GUI and How to install - support for AMD and Intel GPUs appeared (works only for VR and MDX architectures), Besides W11, also W10 confirmed working, MDX achieves speeds of i5-4460s using 6700 XT, while for VR, speeds are v. fast and comparable to CUDA, so CPU processing might be slower in VR, but for MDX you might want to stick with the official UVR5 GUI.</a></div><ul class="toc-subs"><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-2.html">The best models</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html">for specific stems</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-4.html">- Advanced chain processing chart (image)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-5.html">Chained separation order</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-6.html">Plugins (different types of noise)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-7.html">“UVR BVE v2 model [currently on x-minus] is actually full band. There is, however, a small nuance. This model uses MDX VocFT preprocessing, which is not full band. MDX VocFT model is rebalancing the song. The music is slightly mixed with the vocals (25% music + 100% vocals). This mix is then processed by the BVE model. A small amount of music can help the model better understand the context (it's important for harmony separation). We train the model on a rebalanced dataset. It contains 25% of music.” aufr33</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-8.html">MDX settings &amp; ens. explanations in UVR5 (and also Demucs/VR/MDX v2/23C inferencing parameters)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-9.html">&gt;&gt;Tips to enhance separation results&lt;&lt;</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install-10.html">24. arigato78 method for lead vocal acapella</a></li></ul></li><li class="toc-item"><a class="toc-section" href="sdr-leaderboard-explanation.html">SDR leaderboard &amp; explanation</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="bleedness-and-fullness-leaderboard-python-evaluation-script.html">Bleedness and fullness leaderboard Python evaluation script by jarredou (prob. mirror), Torch version (with Bas Curtiz), used on Quality Checker</a></div><ul class="toc-subs"><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-2.html">50 models sorted by SDR</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-3.html">UVR5 GUI (MDX, VR, Demucs 2-4 and UVR team models)</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-4.html">GUI FAQ &amp; troubleshooting for UVR (PT. 2)</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-5.html">- Chunks may alter separation results</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-6.html">Manual ensemble</a></li></ul></li><li class="toc-item"><a class="toc-section" href="uvrs-vr-architecture-models.html">UVR’s VR architecture models</a></li><li class="toc-item"><a class="toc-section" href="first-vocal-models-trained-by-uvr-for-mdx-net-arch.html">First vocal models trained by UVR for MDX-Net arch:</a></li><li class="toc-item"><a class="toc-section" href="9703-model-is-uvr-mdx-net-1-uvr-mdx-net-2-is-uvr-mdxnet-2-96.html">9.703 model is UVR-MDX-NET 1, UVR-MDX-NET 2 is UVR_MDXNET_2_9682, NET 3 is 9662, all trained at 14.7kHz</a></li><li class="toc-item"><a class="toc-section" href="demucs-3.html">Demucs 3</a></li><li class="toc-item"><a class="toc-section" href="demucs-4-colab-4-6-stem.html">Demucs 4 (+ Colab) (4, 6 stem)</a></li><li class="toc-item"><a class="toc-section" href="gsep-now-gaudio-2-4-5-6-stem-karaoke.html">Gsep (now GAudio) (2, 4, 5, 6 stem, karaoke)</a></li><li class="toc-item"><a class="toc-section" href="dangoai.html">dango.ai</a></li><li class="toc-item"><a class="toc-section" href="musicai.html">music.ai</a></li><li class="toc-item"><a class="toc-section" href="iterative-ensemble-colab-by-introc.html">Iterative Ensemble Colab by IntroC</a></li><li class="toc-item"><a class="toc-section" href="mdx23-by-zfturbo-jarredou-fork---2-4-stems.html">MDX23 by ZFTurbo (jarredou fork) - 2, 4 stems</a></li><li class="toc-item"><a class="toc-section" href="karafan-by-captain-flam.html">KaraFan by Captain FLAM</a></li><li class="toc-item"><a class="toc-section" href="ripplecapcutsami-bytedancevolcenginebs-roformer-2-4-stem.html">Ripple/Capcut/SAMI-Bytedance/Volcengine/BS-RoFormer (2-4 stem)</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="drumsep---single-percussion-instruments-separation.html">&gt;Drumsep - single percussion instruments separation</a></div><ul class="toc-subs"><li><a href="drumsep---single-percussion-instruments-separation.html#h.aowhgo4swnk4">Mel-Roformer MVSEP drumsep models</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.ofipsjc35vaq">SCNet MVSEP drumsep models</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.67bx3lypshg7">(newer) MDX23C 5 stem drumsep by jarredou</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.2u19k7ty9b00">(older) MDX23C 6 stem drumsep by jarredou/Aufr33</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.swkhktenzm58">BS-Roformer MVSEP 4 stems</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.jmjab44ryjjo">Older drumsep by Inagoy</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.p1lb0lkwo8dk">Moises.ai drumsep</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.cz4j2d3uf48s">FactorSynth</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.buopqcmi0inj">Regroover</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.n8a91zv9lor0">UnMixingStation</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.f067glwjzyi4">LarsNet</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.ftdzxgety1hd">VirtualDJ 2023/Stems 2.0 (kick, hi-hat)</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.1bm9wmdv6hpf">RipX DeepAudio (-||-) (6 stems [piano, guitar])</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.404qq7uhcrx5">Spectralayers 10</a></li></ul></li><li class="toc-item"><a class="toc-section" href="uss-bytedance-any-esp-sfx.html">USS-Bytedance (any; esp. SFX)</a></li><li class="toc-item"><a class="toc-section" href="zero-shot-any-sample-esp-instruments.html">Zero Shot (any sample; esp. instruments)</a></li><li class="toc-item"><a class="toc-section" href="sam-audio.html">SAM-Audio</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="audiosep.html">AudioSep</a></div><ul class="toc-subs"><li><a href="audiosep.html#h.s4sjh68fo1sw">Medley Vox (different vocalists)</a></li><li><a href="audiosep.html#h.z0rg2bewgfed">real-time</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret open" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section current" href="sources-of-flacs-for-the-best-quality-for-separation-process.html">__Sources of FLACs for the best quality for separation process__</a></div><ul class="toc-subs open"><li><a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.ueeiwv6i39ca">Dolby Atmos ripping</a></li><li><a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.konra76mukwf">360 Reality Audio FAQ</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="ai-mastering-services.html">___AI mastering services___</a></div><ul class="toc-subs"><li><a href="ai-mastering-services.html#h.tu3sw6pao8fp">___Best quality on YouTube for your audio uploads____</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="best-quality-from-youtube-and-soundcloud---how-to-squeeze-ou.html">___Best quality from YouTube and Soundcloud - how to squeeze out the most from the music taken from YT for separation___</a></div><ul class="toc-subs"><li><a href="best-quality-from-youtube-and-soundcloud---how-to-squeeze-ou.html#h.k3cm3bvgsf4j">Repository of stems/multitracks from music to create your own dataset</a></li></ul></li><li class="toc-item"><a class="toc-section" href="list-of-cloud-services-with-a-lot-of-space.html">List of cloud services with a lot of space</a></li><li class="toc-item"><a class="toc-section" href="or-for-temporary-storage.html">or for temporary storage</a></li><li class="toc-item"><a class="toc-section" href="ai-killing-tracks---difficult-ones-to-get-instrumentals-or-v.html">AI-killing tracks - difficult ones to get instrumentals (or vocals) - a lot of e.g. vocal (or instrumental) leftovers in current models</a></li><li class="toc-item"><a class="toc-section" href="training-models-guides.html">Training models guides</a></li></ul></li></ul><div class="sidebar-foot"><a href="index.html">Index</a> · <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit">Google Doc ↗</a></div></div></nav>
+<main class="content"><nav class="crumbs"><a href="index.html">Google Doc</a> › <span>Google Doc</span></nav>
+<h1>__Sources of FLACs for the best quality for separation process__</h1>
+<p class="meta">Page 59 of 65 · <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit?tab=t.0#heading=h.nspwy0bkpiec" target="_blank" rel="noopener">Edit this page in Google Docs ↗</a></p>
+<div class="doc">
+<p>Introduction</p>
+<ul><li>Don’t use YouTube or mp3 as input files for separation. Compression decreases the quality of the output. If you need music video, Tidal has videos up to 320 kbps AAC audio, with bitrates varying by content and quality settings. None of the online rippers download videos from Tidal. You need a valid subscription and local ripper for it (more later below).</li><li>If you're forced to use YT, download audio, preferably as Opus if it's available for your video, and it exceeds 16kHz on spectrogram (AAC might be better up to 16kHz).</li><li>To enhance results from YT by combining Opus and AAC <a href="best-quality-from-youtube-and-soundcloud---how-to-squeeze-ou.html#h.6543hhocnmmy"><span style="color:#1155cc">read</span></a></li><li>If you want to verify if your input file is really lossless: </li></ul>
+<p><a href="https://fakinthefunk.net/en"><span style="color:#1155cc">https://fakinthefunk.net/en</span></a> (sometimes streaming services share bad/lossy versions)</p>
+<ul><li>If you want to check the real bit depth of the file, check:</li></ul>
+<p><a href="https://www.stillwellaudio.com/plugins/bitter/"><span style="color:#1155cc">https://www.stillwellaudio.com/plugins/bitter/</span></a></p>
+<h6 id="h.q2yh9cwh3mmt">Various versions of the same song</h6>
+<h6 id="h.pjvi1qowv8cq">Sometimes the same track you may try to isolate can exist in few versions: e.g. </h6>
+<ul><li>For output files, don’t set quality to mp3 in <a href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-5.html#h.wbc0pja7faof"><span style="color:#1155cc">Colab</span></a><a href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-5.html#h.wbc0pja7faof"><span style="color:#1155cc">s</span></a> (export your separations as WAV/FLAC) - YT will recompress it</li></ul><ul><li>To upload your lossless output file also losslessly on YT to avoid recompression <a href="ai-mastering-services.html#h.tu3sw6pao8fp"><span style="color:#1155cc">read</span></a></li><li>Masters on streaming services can be different from those released on CD - esp. the pre-streaming era albums. Changes might be sometimes slight (minor differences in iLUFS which also mp3 will show) or big in volume (more or less dynamic masters, or sometimes straight up remasters without any notice)</li></ul>
+<p>0) album version <br>- on streaming services - sometimes both explicit and non-explicit album versions are available, plus sometimes both in 44kHz 16-24 bit or 48-192kHz - they might give a bit of different results (if your old player app struggles with playing these files, download the latest MKVToolnix, drag and drop the file and begin multiplexing. It doesn’t reencode/recompress the audio stream)</p>
+<p>- on CD - sometimes these are two different masters - if total time and track gain of lossless files scanned by F2K is different by e.g. 1dB or iLufs reading is different, it’s a different master (both mp3 and lossless file should show exactly the same iLUFS (to 0.0X precision)  if they’re from the same source, if they’re not - the changes should be noticeably on spectrograms comparing both lossless sources - allflac has only CD rips for at least pre-streaming/~pre-2016 era albums). </p>
+<p>~ Sometimes recent masters of older music are louder on CDs than on streaming services providing fewer dynamics, and in most cases such CD should be worse for AI separation when mastered to -9 iLUFS vs -14 iLUFS for streaming, although it can be totally opposite for some releases too</p>
+<p>~ Regional CD version - certain albums in the past used to have different releases for some countries, e.g. Japan, different track order, even slightly different mastering</p>
+<p>- on DSD - if available, they are different masters and might be worth to check for separation too</p>
+<p>- on SACD - -||-</p>
+<p>- on vinyl (so-called “vinyl rip”) - might give you a bit of different results for problematic tracks</p>
+<p>- on DVD-Audio (sometimes also 2.0 releases) if AC3 was used, it can be lossy - used bit depth or sample rate might depend on a release and it can be a different master</p>
+<p>in separation - usually vinyls are different masters with bass more/mostly in mono</p>
+<h6 id="h.sh3jeu6radnq">1) single version - in the old days, single versions contained official instrumentals or accapella which not always invert with original mixture to get instrumental if it wasn’t available (but if it inverts at least partially it might give you better result - always try lossless files - lossy might not invert well)</h6>
+<h6 id="h.6tsiff5t9xtr">- on CD - sometimes contain different track list than on vinyl, extra tracks, remixes, etc.</h6>
+<h6 id="h.35pcm6mmklj4">(rarely available on streamings in this form now) - always refer to Discogz to find all releases of your interest</h6>
+<p>- on vinyl - -||- (won’t invert correctly due to constant playback speed fluctuations)</p>
+<h6 id="h.p3strfbd6g31">2) deluxe edition/reissue/remastered (sometimes separated instrumentals from remastered versions can be crispier than leaked multitracks which are rarely even mastered; also, different remasters might be available on streaming platforms or fan-made ones on YT or on the internet)</h6>
+<p>3) Video released for the song - although lossy, it can be a completely different mix or master giving different results for separation (YT, Tidal, Vimeo, Dailymotion, etc.)</p>
+<p>4) Release from movie OST or from a game (OST or so-called gamerip) - usually different master</p>
+<p>5) Official remix - sometimes it might be easier to separate vocals from such version</p>
+<p>6) Leaks of earlier version of the song (might have different mixing, lyrics, even instrumental) - YT (often a subject to be taken down), fan-made Discord servers, internet (use various search engines; more below)</p>
+<p>7) Leaks of multitracks or stems of the song - usually it’s a different master than the final song, but you might experiment with Matchering and using it mixdown without vocals a target, and well sounding separation as input for Matchering to make it more similar to the final song</p>
+<p>8) Leak of instrumental/vocals - it can be lossy or slightly different from the final song, e.g. close to final stage or sometimes might have even dry vocals without any effects</p>
+<p>Surround versions</p>
+<p>8) 5.1 -  e.g. DTS on DVD Audio/Blu-ray or SACD (you can search Discogz to look for multichannel versions released on disks, e.g. whole DTS Entertainment label)</p>
+<p>9) 360 Reality or Atmos (7.1 or more) - e.g. on Tidal, Apple Music (better quality/more channels than Tidal; how to download described below).</p>
+<p>Sometimes in surround releases, vocals can be there simply in the center channel, but it's not always the case - still, it can be a better source, e.g. when you manipulate with volume of specific channels, or for vocals - when you get only center channel with very little instrumentalization which may turn out easier to separate by AI (for instrumental you might possibly invert result of vocal model and center channel to receive the remain instrumentalization in center).</p>
+<p>“For me, I convert left and right together then center alone then LS+Rs+LFE together then I have 3 audio files process them then remix into 5.1 again.</p>
+<p>The 2 are in stereo and one mono which is center” - killdubo</p>
+<p>“I do the same, except that I don't process LFE. Only the other 5.” - santilli_/Michael</p>
+<p>E.g. "With the Dolby Atmos release of Random Access Memories, some vocals and instrumentals can be separated almost like stems"</p>
+<p>Or alternatively, you can simply downmix everything to stereo and then separate (just to check the outcome vs regular 2.0 versions).</p>
+<p>Tape</p>
+<p>10) Cassette tape - wouldn’t recommend it as a source (maybe unless it sounds superb, or you have a great deck at disposal to rip the recording) - even though the cassette tapes might be still released occasionally, contemporary music usually sound worse on them than it used to in the past, and potentially to compensate for it, they might contain different masters (cassette tape won’t invert due to speed fluctuations either)</p>
+<p>11) Reel to reel tape (better quality, mostly old music, also, usually in the past, the base medium for archival original stems of the recording before final mix and master, but degrading along the time, sometimes can change the sound after some time even when in the period of the song production)</p>
+<p>General</p>
+<p>As for a good quality music on streaming services, you can get FLAC 16 bit and 24 bit on Qobuz, Amazon or on Tidal (now also up to 24 bit FLACs for Master quality - formerly MQA 24 bit (in the past most of Max (formerly Master) quality on Tidal was 16 bit MQA, while High (formerly Hi-Fi) is and was always FLAC 16 bit; MQA was lossy (but less than all other formats), but 24 bit MQA file could have given better results than 16 bit FLAC). MQA was gradually changed to FLAC on Tidal, but seems like old uploads in 24 bit MQA are not 24 bit anymore, but just 16 bit FLACs, so you might want to use Qobuz to find some of these 24 bit files if they aren’t available on Tidal like they used to be.</p>
+<p>Most importantly -</p>
+<p>Feel free to experiment with different versions and find the best result with a specific version of your song, although 24 bit FLAC should be the best (although not everyone might notice the difference). </p>
+<p>If you have seemingly the same FLAC Audio CD rip from before streaming services times (~&lt;2013), it can happen that a lossless file taken from a streaming service may be slightly different in most cases (same length but slight changes in Spek across the whole track which normally don’t exist when comparing FLACs from various streaming services which have the same Audio MD5 checksums - also sometimes track finishes in slightly different place). Sometimes it can sound better, sometimes worse.<br> </p>
+<p>([outdated - there are no longer MQA files on Tidal] and we’re talking about situation that it’s not MQA 16 bit like "Master" quality files on Tidal [but lots are 24 bit as well, though it's better to get them from e.g. Qobuz if 24 bit for some track is available, or at least compare both, because it can give slightly different results/quality]). </p>
+<p>Also, it can happen that 24 bit MQA on Tidal will sound better for whatever reason than seemingly better FLAC on Qobuz - it might be possibly due to different files sent to streaming services by the provider/label.</p>
+<p>How to notice difference on spectrogram in e.g. Spek between MQA and FLAC is frequencies from 18kHz (only in certain places) but in all cases - frequencies from 21kHz - press alt-tab between the two windows’ - don’t hover your mouse between preview of both windows’ - use alt-tab - you’ll notice the changes easier. That way, you’ll notice CD rip vs streaming differences if there are any.</p>
+<p>Generally, MQA is the least of lossy codecs - you might consider picking it where its 24 bit variant is available over regular 16 bit FLAC (separate the track using the two, and you should notice any differences easier if you already can’t hear them on mixtures/original songs).</p>
+<p>Comparisons of various versions of the FLAC files on streaming services</p>
+<p>Use Audio MD5 in Foobar &gt;properties of the file (or download <a href="https://github.com/moisespr123/AudioMD5Checker/releases/"><span style="color:#1155cc">AudioMD5Checker</span></a>) to not run in circles looking for various versions of the same track with the same length. Some FLAC files don’t have MD5 checksums in F2K shown, so you’ll need to download AudioMD5Checker.</p>
+<p>E.g. on Tidal Recovery by Eminem returns the same MD5 for Deluxe and regular album, but using Deezer source, checksums are different for both (to differentiate - albums on the net sites have various release dates), but Deluxe on Tidal with the regular on Deezer have the same MD5. And when Audio MD5 checksums were different, there were different results after separation. In this case of one unique vs 3 same MD5, the unique resulted in worse separation (but it can depend on more factors in other cases). Be aware of non-explicit versions which will naturally have different checksum. Some flacs will lack MD5 calculated, so you will need to use AudioMD5Checker above, or just look at spectrograms in e.g. Spek.</p>
+<h6 id="h.ataywcoviqx0"><strong>Sites and rippers</strong></h6>
+<p>List of a ways to get lossless files for separation process</p>
+<p>Various music is scattered across various streaming services nowadays. If you can’t find your track on one service, or its ripper currently doesn’t work (it constantly changes) check other streaming service or the net (more below). </p>
+<p>List of all lossless streaming services with rippers below:<br>Tidal, Qobuz, Apple Music, Amazon Music (they support hi-res), Deezer (16/48 FLAC).</p>
+<p>Note: Qobuz bans accounts using Qobuz-DL since October 1st 2025, so it might not be supported by any sites. Also Deezer stopped being supported quite some time ago (but things could change since then).</p>
+<p>0) <a href="https://monochrome.samidy.com"><span style="color:#1155cc">https://monochrome.samidy.com</span></a> - (if it fails to download anything [error after “starting” which in fact is the download process], use incognito mode [disabling adblock doesn’t help]; it allows downloading from queries in the search, don’t click download button more than once - wait a while - the download will start after a moment. Sometimes the search doesn’t work immediately, or needs manually inserting URL looking like: https://monochrome.samidy.com/search/rjd2%20deadringer</p>
+<p>Also, once in April 2026 the yellow message in the left said it was unstable at the moment, and sometimes could break downloads - retrying a few times helps, but a special Chromium-based browser <a href="https://github.com/monochrome-music/monochrome/tree/main/extension"><span style="color:#1155cc">extension</span></a> allegedly helps to fix that if it still states any problem to you. Some, e.g. Tidal links, not working in lucida or doubledouble won’t work here too, but no error will appear after the download button will be clicked - the download will just not start without any error. If redirecting to a specific album doesn’t list the tracklist and everything is grey, you won’t be able to download it directly from search clicking on three dots).</p>
+<p>?) <a href="https://t2tunes.site/"><span style="color:#1155cc">t2tunes.site</span></a> (might undergo some issues, works searching by song titles or by albums, various regions in settings, and hi-res; if you look for songs on specific albums which don’t appear, write just album name without an artist, the same goes for song titles (then don’t write artist name) otherwise the search won’t work correctly; don’t click download multiple times, at some point there was no indicator that the downloading has started nor any progress bar, it just downloads in background and notifies when it’s finished (clicking download button manually shows current progress); it seems to download only from Amazon Music up to 192kHz)</p>
+<p>_<br></p>
+<p>0) <a href="https://antra.hoshi.cfd/"><span style="color:#1155cc">antra.hoshi.cfd</span></a> (Spotify, Apple Music, Amazon, Tidal, Qobuz, or Deezer, for link pasting; good for some stuff not downloadable from Tidal below and not on Amazon, although they have some limits for free users; downloading requires pasting link, then clicking download, then again download below, but it works; if you see red “quality” error for Tidal links, decrease output quality to FLAC 16)</p>
+<p>0) <a href="https://lucida.to/"><span style="color:#1155cc">lucida.to</span></a> | <a href="https://lucida.su/"><span style="color:#1155cc">lucida.su</span></a> (sometimes works, sometimes redirects to doubledouble.top)</p>
+<p>(Qobuz, Deezer [may not work], Tidal [incl. 24/96kHz FLAC stereo], Amazon Music, Beatport, lossy: Spotify, Yandex Music, Soundcloud). Various subscription regions, for now there’s no Apple Music) - for URLs generated from share option on these services</p>
+<p>Try out 2-3 times for at least Tidal links when having errors after ripping started.<br>- Send your request again if you got site unreachable browser error during download<br>- Sometimes it might fail generating download in the first place<br>- It frequently shows that it’s down, simply retry entering<br>- “if a track has a status code 404, it means it is unavailable (region locked or completely unavailable) you have to try with another country/account under 'advanced…'”<br>- Downloading more than EP (7-10 songs) at a time works clunky - it’s slow (at least from Tidal), plus during downloading track ~10 it might give an error, so you need to click retry, sometimes a few times, and then the whole album ripping will be completed. It might occur more than once for one album</p>
+<p>- Clicking retry while downloading whole albums from e.g. might end up with loops of “An error occurred. Track #1 error: Max retries attempted.” errors, after long wait on “Sending request for item 1” or series of interrupted downloads, while downloading single songs will work fine<br>- You cannot download Dolby Atmos versions of songs from e.g. Tidal<br>- For "An error occurred. Unexpected token '&lt;', "&lt;html&gt; &lt;h"... is not valid JSON." just retry the task, or uncheck add metadata option.</p>
+<p>- For a search found as “unidentified” with generic cover, e.g. on Amazon, use Japan region and retry the search</p>
+<p>- All linking schemes like: </p>
+<p>1) https://www.deezer.com/xx/track/XXXXXXXXXXXX?host=XXXXXXX&amp;utm_campaign=clipboard-generic&amp;utm_source=user_sharing&amp;utm_content=track-XXXXXXXXXXXX&amp;deferredFl=1&amp;universal_link=1” </p>
+<p>2) Later converted by lucida automatically to: https://www.deezer.com/xxx/track/XXXXXXX or</p>
+<p>3) https://link.deezer.com/s/xXxXXxxXxxxXxxXX</p>
+<p>can can give “uh-oh!” error - if <a href="https://lucida.to/stats"><span style="color:#1155cc">stats</span></a> page shows 0 downloads for Deezer (or any other service), it just doesn’t work</p>
+<p>- Sometimes Tidal links will work after retrying the pasting link request, or if you cut everything which follows <a href="https://tidal.com/track/xxxxxxxx/"><span style="color:#1155cc">https://tidal.com/track/xxxxxxxx/</span></a> so the “u” (not sure which one).</p>
+<p>- In Amazon linking scheme, referral number appears in the middle, not at the end of the link, so you can debloat the following to restrict the tracker: https://music.amazon.com/albums/B073JR1FBD?marketplaceId=A3K6Y4MI8GDYMT&amp;musicTerritory=PL&amp;ref=dm_sh_xxxxxxxxxxxxxxxxxxxxxxx&amp;trackAsin=B073RRBQR5<br>By the following:</p>
+<p>https://music.amazon.com/albums/B073JR1FBD?marketplaceId=A3K6Y4MI8GDYMT&amp;musicTerritory=PL&amp;trackAsin=B073RRBQR5<br>When you use shared Amazon links, sometimes they must be deprived of some information after “&amp;” mark, in order to not return error on the site, but because they contain an “album” string, you might end up with the whole album downloaded instead of a single song if you did it wrong.</p>
+<p>At some point region string was better to be rather US instead of whatever your shared links have (it seems the accounts have US region), but now other regions in the links work too, and currently are changed automatically to US, and sometimes changing them manually to US might cause another error. Setting Japan in the Lucida region might alleviate some issues, but it will give Japan names of artists in the output files (both in tags and file names).</p>
+<p>0) <a href="https://doubledouble.top/"><span style="color:#1155cc">doubledouble.top</span></a> (currently Qobuz, Tidal doesn’t seem to work for the EU region for now or for US rarely] and Soundcloud only works) Sometimes works, sometimes redirects to Lucida. For URLs, it supported Apple Music unlike Lucida (but later it stopped working too or worked rarely or with specific music, then lucida started supporting it), and currently from Deezer it returns only mp3 128kbps (check current services status at the bottom). </p>
+<p>In specific cases, some streaming services might not have FLAC for your song, then use other streaming service.</p>
+<p>0) <a href="https://arcod.xyz"><span style="color:#1155cc">arcod.xyz</span></a> (works for Qobuz)</p>
+<p>0) <a href="https://am-dl.pages.dev/"><span style="color:#1155cc">am-dl.pages.dev</span></a> - Apple Music, ALAC, allegedly downloading whole albums might start downloading lossy</p>
+<p>?) <a href="https://yams.tf/"><span style="color:#1155cc">yams.tf</span></a> (it seems like old accounts where lost, you need to re-register - very simple registration without email now is required; it shows only 5 first hits from the search, so use artist and song name for the best hit; based on song search, it allows playing the files in your browser in FLAC and creating your own playlists, but at least the web version now stopped playing anything after errors were shown.<br>Downloading was only possible with Settings&gt;DevTools&gt;Media&gt;Start playing&gt;New entry appears&gt;Open in new Tab&gt;...&gt;Download. But output file names are generic and tags are empty). Didn’t check what streaming service it uses now.</p>
+<p>Before, it supported Qobuz, Tidal, Deezer, Spotify and Apple Music only at 320 kbps, and worked only with URLs.</p>
+<p><br>___</p>
+<p>0) <a href="https://tidal.qqdl.site"><span style="color:#1155cc">https://tidal.qqdl.site</span></a> - TIDAL (redirects to Lucida; as for April 2026 either all downloads were failing or corrupting files in the middle after download occurred - downloading in hi-res was introduced at some point - if it occurs in hi-res, maybe change to CD quality in settings or try on PC instead of mobile; some smartphones generally run out of memory running the site, it’s a a new site by Lucida stuff)</p>
+<p><br>0) <a href="https://tidal.squid.wtf/"><span style="color:#1155cc">https://tidal.squid.wtf/</span></a> - TIDAL</p>
+<p>New services might appear sooner <a href="https://fmhy.net/audio#audio-ripping-sites"><span style="color:#1155cc">here</span></a> and <a href="https://rentry.co/wheredownloadmusic"><span style="color:#1155cc">here</span></a></p>
+<p>Telegram ripping bots</p>
+<p>Note: To use Telegram in a browser, visit</p>
+<p><a href="https://web.telegram.org/"><span style="color:#1155cc">https://web.telegram.org/</span></a></p>
+<p>You need the app installed and an account registered on your phone, and then QR code from there is needed.</p>
+<p>1a) Bot </p>
+<p><a href="https://t.me/onlydonuts"><span style="color:#1155cc">https://t.me/onlydonuts</span></a></p>
+<p>1b) Amazon bot (up to 24/96 FLAC)</p>
+<p><a href="https://t.me/GlomaticoAmazonMusicBot"><span style="color:#1155cc">https://t.me/GlomaticoAmazonMusicBot</span></a> <br>Q: “I hit start bot, but nothing happens”<br>A: “Once you start the bot, you must type /codec and send, then it will show a menu where you pick the format you want (mp3, flac, atmos)</p>
+<p>After selecting a codec, you simply need to send a link to a track or album.</p>
+<p>The bot will download all the tracks in the format you pick, but if the track is not available in Atmos it will be ignored”</p>
+<p>1c) Apple Music Bot<br><a href="https://t.me/GlomaticoAppleMusicBot"><span style="color:#1155cc">https://t.me/GlomaticoAppleMusicBot</span></a></p>
+<p><a href="https://t.me/bayapplemusicbot"><span style="color:#1155cc">https://t.me/bayapplemusicbot</span></a></p>
+<p>1d) Deezer Telegram Bot </p>
+<p><a href="https://t.me/deezload2bot"><span style="color:#1155cc">https://t.me/deezload2bot</span></a> - for ARLs <a href="https://rentry.org/firehawk52#deezer-arls"><span style="color:#1155cc">see</span></a> (but those public get taken down often)</p>
+<p>1e) Spotify / Deezer / Tidal / Yandex / VK / FLAC / 25 Daily bot</p>
+<p><a href="https://t.me/BeatSpotBot"><span style="color:#1155cc">https://t.me/BeatSpotBot</span></a></p>
+<p>1f) Deezer mp3/FLAC bot</p>
+<p><a href="https://t.me/DeezerMusicBot"><span style="color:#1155cc">https://t.me/DeezerMusicBot</span></a></p>
+<p>1e) <a href="https://t.me/vkmsaverbot"><span style="color:#1155cc">VK Bot</span></a>, <a href="https://t.me/vkmusbot"><span style="color:#1155cc">vkmusbot</span></a> or <a href="https://t.me/mephbot"><span style="color:#1155cc">Meph Bot</span></a> - VK / 320kbps MP3</p>
+<p>(sites not ripping directly from streaming later below)</p>
+<p>Ripping apps</p>
+<p>2) <a href="https://telegra.ph/murglar-en-05-12"><span style="color:#1155cc">Murglar</span></a> app - <a href="https://github.com/badmannersteam/murglar-downloads/releases/tag/murglar_2.1.3_279_stable"><span style="color:#1155cc">apk</span></a> for Android - player and downloader working with Deezer, SoundCloud, VKontakte and Yandex Music (alternatively you can use it in Android virtual machine)</p>
+<p>3) Apple Music ALAC/Atmos downloader</p>
+<p><a href="https://github.com/adoalin/apple-music-alac-downloader"><span style="color:#1155cc">https://github.com/adoalin/apple-music-alac-downloader</span></a> (valid subscription required, you can’t use an account that’s on a family sharing plan, more about installation below in <a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.ueeiwv6i39ca"><span style="color:#1155cc">Dolby Atmos</span></a> section)</p>
+<p>Might be less comfy to install for beginners. It requires Android (rooted at best and in Android Studio w/o Google APIs) and installing specific Frida server version (for not rooted devices it might be more complicated) and specific version of Apple Music app. </p>
+<p>Refer to GitHub link above and Frida website for further instructions.</p>
+<p>(the section continues later below)</p>
+<p>4) <a href="https://github.com/zhaarey/apple-music-downloader"><span style="color:#1155cc">https://github.com/zhaarey/apple-music-downloader</span></a></p>
+<p><a href="https://rentry.co/zhaareywrapper"><span style="color:#1155cc">Instruction</span></a></p>
+<p>“and additional note if that does not work </p>
+<p>replace Part 2 Line 2</p>
+<p>Download and extract the NDK needed to build the wrapper.</p>
+<p>wget https://dl.google.com/android/repository/android-ndk-r23b-linux.zip &amp;&amp; unzip android-ndk-r23b-linux.zip -d ~</p>
+<p>with </p>
+<p>Download and extract the NDK needed to build the wrapper.</p>
+<p>wget https://dl.google.com/android/repository/android-ndk-r27c-linux.zip &amp;&amp; unzip android-ndk-r27c-linux.zip -d ~</p>
+<p>the change is the Android NDK version from 23b to 27c”</p>
+<p>Bas Curtiz tutorial:</p>
+<p><a href="https://www.youtube.com/watch?v=eJ7a3W8qy5o"><span style="color:#1155cc">https://www.youtube.com/watch?v=eJ7a3W8qy5o</span></a></p>
+<p>__</p>
+<p>General bots usage instructions</p>
+<p>Go to proper dl request channel and write</p>
+<p>!dl</p>
+<p>and after !dl (on Discord $dl), paste a link to your album or song from the desired streaming service and send the message, e.g.</p>
+<p>!dl https://www.deezer.com/en/track/XXXXXX</p>
+<p>Follow this link pattern. Sometimes the sharing option on the site changes the link pattern, so you need to open the changed link, and then it will redirect to the one similarly looking like above.</p>
+<p>To open the Deezer player to search for files without active subscription, log-in and just go to:</p>
+<p><a href="https://www.deezer.com/search/rjd2%20deadringer"><span style="color:#1155cc">https://www.deezer.com/search/rjd2%20deadringer</span></a></p>
+<p>And replace the search query with yours after opening the link.</p>
+<p>If the bot doesn’t respond in an instant, it probably means the track/album is regional-blocked, and you should use a link from another service or another channel (UK and NZ alternative servers available). It's capable of printing out unavailability errors as well.</p>
+<p>Some bots rip tracks or whole albums from Qobuz, Deezer, Tidal - all losslessly, while:</p>
+<p>Spotify, Soundcloud Go+, YouTube Music, JioSaavn are lossy.  </p>
+<p>Providing valid links for bot</p>
+<p>For your comfort, you should register and log into every streaming service and share links for specific tracks or albums from these services (e.g. instead of pasting full album links if you want), when you can’t simply find a specific single track in Google for this service, or share the link only for it comfortably. So basically go to <a href="https://play.qobuz.com/"><span style="color:#1155cc">https://play.qobuz.com/</span></a>,</p>
+<p>and you can share single tracks to paste for bot to download - available only after logging into free account and only in the link above instead of regular Qobuz file search you can find in Google - there you cannot share single songs to download using bot later. It can happen that you’ll see an error that Qobuz is not available in your country. It’s fine - you won’t have to buy a subscription at this step in order to use their search. It’s enough to log-in using specific link and not the main page, use this one:</p>
+<p><a href="https://play.qobuz.com/search/tracks"><span style="color:#1155cc">https://play.qobuz.com/search/tracks</span></a></p>
+<p>And it will allow you to log in.</p>
+<p>Because the bot rips from Qobuz, it’s the best source of 24 bit files which I recommend if only available (either 44, 48 or 96kHz) as it delivers FLACs for end users, instead of partly lossy MQA on Tidal when some album/song uses Master quality which is compulsory for 24 bit (44/48) there, but MQA 16 bit and Master is also possible for some albums (and you should avoid 16 bit MQA). Of course there might be some exceptions where 24 bit MQA on Tidal will sound better than FLAC 24 bit on Qobuz as I mentioned above - the example is Eminem - Music To Be Murdered By (Deluxe Edition) - Volume 1 (the newer Side B, track - Book of Rhymes).</p>
+<p>For using Deezer links with bot, you need to find a song/album, use option to share a link to track or album, then open the shared link so it will be redirected, and then rename the link to this form for a single song (otherwise bot will return “processing” instead of ripping or even possible error):</p>
+<p><a href="https://www.deezer.com/en/track/XXXXXXX"><span style="color:#1155cc">https://www.deezer.com/en/track/XXXXXXX</span></a></p>
+<p>(ARLs trick doesn’t work anymore) Hint: There's also something like ARL, which is a cookie's session identifier which can be shared, so everyone can log into the premium account and download FLACs with ARLs of different regions and regional locks. Might be useful for some specific tracks. ARLs are frequently shared online, though harder to find nowadays (Reddit censorship).</p>
+<p>IRC, Deemix might use ARLs beside regular account log in process.</p>
+<p>5) <a href="https://github.com/yaronzz/Tidal-Media-Downloader-PRO/releases"><span style="color:#1155cc">Tidal Downloader Pro</span></a> (the fastest method for batch and local downloading) in GUI.</p>
+<p>HiFi Plus subscription is no longer necessary, just valid Hi-Fi subscription (for at least Hi-Fi albums, the two are merged in one for the price of the cheaper one now).</p>
+<p>You won’t be able to download with better quality than 24 bit/48kHz and in Atmos with this downloader (then use <a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.2myqsboh95hp"><span style="color:#1155cc">orpheusdl_tidal</span></a> instead, or <a href="https://github.com/exislow/tidal-dl-ng"><span style="color:#1155cc">tidal-dl-ng</span></a> (<a href="https://pypi.org/project/tidal-dl-ng/"><span style="color:#1155cc">mirror</span></a>, <a href="https://github.com/rodvicj/tidal_dl_ng-Project"><span style="color:#1155cc">2</span></a>) - but for that one I’m not sure if it downloads Atmos files) or <a href="https://github.com/oskvr37/tiddl"><span style="color:#1155cc">tiddl</span></a>.</p>
+<p>Install Tidal app on Windows and log in, then open the downloader and click log, copy and paste the given code in the opened browser tab and voila.</p>
+<p>Or if that GUI temporarily doesn’t work, go to: <a href="https://github.com/yaronzz/Tidal-Media-Downloader/releases"><span style="color:#1155cc">https://github.com/yaronzz/Tidal-Media-Downloader/releases</span></a> and download the newest source code. It contains CMD version for downloading, located in: Tidal-Media-Downloader-202x.xx.xx.x\TIDALDL-PY\exe</p>
+<p>Documentation: <a href="https://doc.yaronzz.com/post/tidal_dl_installation/"><span style="color:#1155cc">https://doc.yaronzz.com/post/tidal_dl_installation/</span></a></p>
+<p>If you have problems with running the app and people also write in GitHub issues that the current version is not working, keep tracking new versions, or read all the issues about this version, it may happen that someone else will update the app before.</p>
+<p>Versions “2022.01.21.1” and ”1.2.1.9” need to be updated to newer versions, they stopped working entirely. </p>
+<p>(not needed anymore, as current should still work)</p>
+<p>You can alternatively grab this <a href="https://na01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fmega.nz%2Ffolder%2FDR1k1CCa%23Opt5RbSvXZVMMsq_QabAvA&amp;data=04%7C01%7C%7C7a3ae2ea93da4c74678c08d9e99f4da0%7C84df9e7fe9f640afb435aaaaaaaaaaaa%7C1%7C0%7C637797692673323048%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000&amp;sdata=tJ7ZlRYX5SDVc5MsMWZLau3FHcDkYq0g5l3QFJXrv4A%3D&amp;reserved=0"><span style="color:#1155cc">recompiled </span></a>version by another user.</p>
+<p>By these downloaders you can easily download whole albums including hi-res and in GUI (PRO), and also queue for single tracks to download automatically is available (Pro). </p>
+<p>There are cases when certain songs are behind regional block, and won’t be downloaded by any Divolt or Discord bot resulting in error. </p>
+<p>In such a case, you’ll need the above downloader used locally, along with a Hi-Fi Plus subscription bought for your localization. Accounts bought from elsewhere, or paid with foreign currency, will most likely have regional block for some other country, so after you log into the service, certain songs won’t show in search, so the only way to show them without proper account (at least for your region) is to log out from regional locked account, start new account, and visit: <a href="https://listen.tidal.com/"><span style="color:#1155cc">https://listen.tidal.com/</span></a> (you don’t need to have a valid subscription to search for songs on Tidal).</p>
+<h6 id="h.89rwiestpg95">Besides trial, you can go for Tidal Hi-Fi cheap subscription to: <a href="https://www.hotukdeals.com/search?q=Tidal"><span style="color:#1155cc">https://www.hotukdeals.com/vouchers/tidal.com</span></a> or <a href="https://www.pepper.pl/search?q=tidal"><span style="color:#1155cc">pepper.pl</span></a> or <a href="http://mydealz.de"><span style="color:#1155cc">mydealz.de</span></a> which always have some free or almost free giveaways (linked to a ready search). Then install the desktop Tidal app and log in and open the downloader. It might automate the login process in the downloader</h6>
+<p>(if you need to switch an account, you better delete Tidal-GUI folder from your documents folder in case of any problems). Monthly Argentinian subscription is the most reliable solution now if you don’t want to change your account every month or two searching for new offers.</p>
+<p>Tidal over some other streaming services has some tracks in master quality which is 24 bit, and it gives better results for separation as the dynamics are usually better. But check if your downloaded file is really a 24 bit and your downloader is configured properly (read the documentation in case of any issues).</p>
+<p>But, on Tidal there are were some fake master files in the past, which in reality were 16 bits, and they’re MQA to save space on their servers or mislead people, so there is no benefit from using them vs Audio CD 16 bit rip, since MQA alters quality in higher frequencies (only) and it will have an influence on separation process. So to verify if your downloader is set up properly, check whether you can download any track from Music To be Murdered By, by Eminem in 24 bit. If you can, you have properly installed and authorized the downloader, so it can download 24 bit files or at a higher sample rate than 44kHz if available. </p>
+<p>You can paste links from Tidal into the GUI browser to find that track. Just delete “?u” at the end of the shared link.</p>
+<p>5b) Colab for downloading from Tidal and Qobuz using your own valid account (based on streamrip, active subscription required):</p>
+<p><a href="http://colab.research.google.com/github/r-piratedgames/rip/blob/master/rip.ipynb"><span style="color:#1155cc">colab.research.google.com/github/r-piratedgames/rip/blob/master/rip.ipynb</span></a></p>
+<p>6) For Deezer <a href="https://archive.org/details/deemix"><span style="color:#1155cc">https://archive.org/details/deemix</span></a> - it allows you to download mp3 320 and FLAC files for premium Deezer accounts, and only mp3 128kbps for free Deezer accounts.</p>
+<p>Be aware that deemix.pro site is unofficial, and the PC 2020 version linked there is not functional. The last 2022 is on the archive.org linked above from reddit. </p>
+<p>Qobuz or Deezer might give better results since Tidal is recently deleting FLAC support for 16 bit files on some albums, making all the files 16 bit MQA, which is not fully lossless file format, but close (of course Tidal Downloader converts the same MQA to FLAC). It also provides some high resolution files, but most likely less of them than on Tidal.</p>
+<p>Be aware that using some streaming services downloaders or even official Deezer/Tidal/Spotify apps, you might not be able to find or even play there some specific tracks or albums due to:</p>
+<p>a) premium lock (it won't be played for free users) </p>
+<p>b) regional lock (search will come up empty [the same applies to Tidal here])</p>
+<p>Example: Spyair - Imagination instrumental - it shows up in search probably in Japan, though it cannot be downloaded using 2) https://free-mp3-download.net, but deemix with premium Deezer subscription did the job in downloading the song (not sure if it was Japan account).</p>
+<p>PS. You can cancel your trial subscription of Deezer or Tidal immediately to avoid being charged in the future, but also keeping the access to premium till the previous charge date at the same time.</p>
+<p>Warning: Qobuz started banning accounts using Qobuz-DL; can’t guarantee that other downloaders are not affected.</p>
+<p>7) <a href="https://github.com/yarrm80s/orpheusdl"><span style="color:#1155cc">https://github.com/yarrm80s/orpheusdl</span></a></p>
+<p>Supports Qobuz, Tidal (with <a href="https://github.com/Dniel97/orpheusdl-tidal"><span style="color:#1155cc">this</span></a> module, and unlike tidal-dl, also downloads files greater than 24/48 and Atmos) and probably more</p>
+<p>7a) Bas Curtiz <a href="https://www.youtube.com/watch?v=RAXsW67SjGU"><span style="color:#1155cc">GUI</span></a> for Orpheus (still needs working subscription)</p>
+<p>7b)<a href="https://rentry.org/firehawk52#qobuzdownloaderx-mod"><span style="color:#1155cc"> QobuzDownloaderX-MOD</span></a></p>
+<p>(*May not work anymore)</p>
+<p>7*) If you have a Qobuz subscription, you can just use <a href="https://github.com/vitiko98/qobuz-dl"><span style="color:#1155cc">qobuz-dl</span></a> (last updated a year ago, probably no longer works, but not sure, there might be some alternative already). </p>
+<p>Alternatively check:<br>Qobuz Downloader X </p>
+<p>or Allavsoft (both requires subscription)</p>
+<p><a href="https://www.qobuz-dl.com/"><span style="color:#1155cc">https://www.qobuz-dl.com/</span></a> (takendown frontend browser client for downloading music for Qobuz. The code for hosting on <a href="https://github.com/QobuzDL/Qobuz-DL"><span style="color:#1155cc">GH</span></a>)</p>
+<p>7b) <a href="https://github.com/nathom/streamrip"><span style="color:#1155cc">https://github.com/nathom/streamrip</span></a></p>
+<p>A scriptable stream downloader for Qobuz, Tidal, Deezer (active subscription required) and SoundCloud.</p>
+<p>8*) For Deezer you can use <a href="https://deezloader.site/"><span style="color:#1155cc">Deezloader</span></a> or Deezloader Remix - it doesn’t require any subscription for mp3 128kbps, just register a Deezer account for free before, and use the account in the app. For free users it gives only mp3 128kbps with 16kHz, so it's worse than YT and Opus, so don't bother.</p>
+<p>9a) For Spotify, you can use Soggfy, or </p>
+<p>9b) SpotiDown (premium subscription for 320kbps downloading and app compiling required)</p>
+<p>9c** Seemingly you can use <a href="https://spotiflyer.app/"><span style="color:#1155cc">https://spotiflyer.app/</span></a></p>
+<p>but it “doesn't download from Spotify, but from Saavn, in 128kbps/low-quality.</p>
+<p>Also, since it doesn't d/l from Spotify, you can't d/l exclusives released from there.”</p>
+<p>It doesn't require a valid subscription irc and also allows playing and sharing music inside the app.</p>
+<p>9d** The same sadly goes to this telegram bot downloader:</p>
+<p><a href="https://t.me/Spotify_downloa_bot"><span style="color:#1155cc">https://t.me/Spotify_downloa_bot</span></a></p>
+<p>9e) <a href="https://spotify-downloader.com/"><span style="color:#1155cc">https://spotify-downloader.com/</span></a></p>
+<p>Other lists of rippers and sites: </p>
+<p><a href="https://rentry.org/firehawk52"><span style="color:#1155cc">https://rentry.org/firehawk52</span></a></p>
+<p><a href="https://ripped.guide/Audio/Music/"><span style="color:#1155cc">https://ripped.guide/Audio/Music/</span></a></p>
+<p><a href="https://fmhy.net/audiopiracyguide#audio-ripping-sites"><span style="color:#1155cc">https://fmhy.net/audiopiracyguide#audio-ripping-sites</span></a></p>
+<p>________________</p>
+<p><strong>Other sites </strong></p>
+<p>(not downloading directly from streaming)</p>
+<p>10) <a href="http://allflac.com"><span style="color:#1155cc">allflac.com</span></a> - it’s paid, but they don’t pay royalties to the artist and its labels, as I spoke with at least one. They don’t keep up with the content with the streaming services, but they share stuff also not available on streaming services, even including vinyl rips as hi-res ones. Most if not all the files on the site are CD rips taken from around the net.</p>
+<p>I’ll explain to you how to download files for free from allflac and flacit:</p>
+<p>0. Log in</p>
+<p>1. Find desired album (don't press play yet!), set CD instead of Mp3 quality<br>(if you already started playing in mp3, refresh the site and set CD, otherwise it won’t work).</p>
+<p>2. Open the Chrome Menu in the upper-right-hand corner of the browser window and select More Tools &gt; Developer Tools&gt;navigate to “Network”</p>
+<p>3. Press CTRL+R if prompted</p>
+<p>4. Play audio file</p>
+<p>5. If it's 16/44 FLAC, go to media, sort by size, right-click on the entry and open in new tab to download (sometimes it appear after some time of playing and only in “all” instead of “media”)</p>
+<p>6*. On some 24 bit files, go to all, play the file and sort by size. You will find an entry with increasing size with xhr type and FLAC name if it’s not shown in the media tab.</p>
+<p>7. Recently it happened once, that the point five stopped working and the FLAC link is red. Now you need to go to the console and open a link with ERR_CERT_DATE_INVALID in the new tab and open the site, clicking on advanced.</p>
+<p>In case of a 32 KB/s download, get Free Download Manager, and paste the download link there, and with 2 active connections in the downloader, it will speed up to 96KB/s occasionally (properly set JDownloader also allows increasing number of connections).<br>Haven’t tried switching accounts to check if it will make the speeds back to normal (it wasn’t like that before).</p>
+<p>Some albums on allflac.com don't have tracks separated, but all the albums are in track 1. </p>
+<p>If you want to physically divide the audio file -</p>
+<p>In such case, you can search for cue sheet here: <a href="https://www.regeert.nl/cuesheet/"><span style="color:#1155cc">https://www.regeert.nl/cuesheet/</span></a></p>
+<p>Place it near the file, and eventually rename, and it's ready, but it's only for playing and playlist purposes. It doesn't separate the audio file physically. To cut the file losslessly you need lossless-cut <a href="https://github.com/mifi/lossless-cut/releases/"><span style="color:#1155cc">https://github.com/mifi/lossless-cut/releases/</span></a> - it allows importing cue sheets to cut the album. Now if you have all the files divided you can probably use MusicBrainz (probably Foobar2000 plugin is available) to tag the files (but not the filenames - for that, you need mp3tag and tagged files to copy tags to filenames with specific masks). I know that lossless-cut might be not precise, and it may create a problem with automatic content detection in MusicBrainz, but I know that tool or similar allowed to just search for the album you specifically searched for, and not by just mark files&gt;album detection in Foobar which may fail. So technically cutting and tagging the files should be possible, but time-consuming.</p>
+<p>Looks like, unlike 24/48 files, all 24/96/192kHz ones are just vinyl rips taken from various torrents. If again there’s only one or two files with the whole album, originally attached with cue, you should be able to find specific cue files simply searching in Google for its specific file name with quotes (file list is below track list there). Of course, you can also cut your album manually, or even make your own cue sheet to cut the album.</p>
+<p>Also be aware that sometimes you won’t be able to download the file, and it won’t appear as FLAC, if you do not press CTRL+R on Network before starting playing the file, otherwise you need to close and reopen the tab and press CTRL+R in Network again.</p>
+<p>And also, such files can reset during downloading near the end (maximum size of downloaded file cannot exceed 1GB, otherwise it gets reset for some reason). To prevent it, copy the download link from your browser, and paste it to some download accelerator. Even free BitComet will do the trick since it supports HTTP multiple connection downloading. If you’re lazy, to prevent losing at least these 1GB, simply open the still downloaded file using MPC-HC and Chrome won’t reset the file size after it starts to reset the whole download (because the file cannot be deleted now), wait for the reset of the download, now just make a copy of the file and rename file extension to FLAC from temporary extension added by e.g. Chrome during downloading. Now you can stop downloading in Chrome. The downside is - the moment the file gets reset is not when it ends, meaning it’s not fully complete. But mostly. Of course, you can be lucky enough to find the original torrent with the files and simply finish downloading by verifying checksums of existing ones in P2P client (filenames must match to torrent files, simply replace them and find option to verify checksums).</p>
+<p>10b. All of the above applies to <a href="https://www.flacit.com/"><span style="color:#1155cc">https://www.flacit.com/</span></a></p>
+<p>Looks like it has the same library taken from </p>
+<p>adamsfile.com </p>
+<p>which is also a warez site allowing playing files and downloading them using the method above.</p>
+<p>You also need to register before playing any file there (registration is free).</p>
+<p>11. <a href="http://flacmusicfinder.com/"><span style="color:#1155cc">http://flacmusicfinder.com/</span></a></p>
+<p>But it has a small library.</p>
+<p>*. FLAC sites listed <a href="https://fmhy.net/audiopiracyguide#download-sites"><span style="color:#1155cc">here</span></a></p>
+<p>12. Soulseek - but it’s simply a P2P based client, so carefully with that, and better use VPN (good one at best). GUI - <a href="https://nicotine-plus.org/"><span style="color:#1155cc">Nicotine+</span></a> and Seeker working on Android</p>
+<p>13. Rutracker (the same advice as above)</p>
+<p>14. Chomikuj.pl (use their search engine, eventually Yandex, Duckduckgo, Bing) - free 50MB per week for unlimited amounts of accounts, free transfer for points from files uploaded or shared from other people’s profiles. People upload there separate tracks on loose as well, but they frequently get taken down, so search for rather full album titles in archives rather than single files. Mp3 files and those files which allow preview, can be downloaded for free with JDownloader, but occasionally some of such files might not work in JDownloader, and they’ll have to be downloaded manually.</p>
+<p>  </p>
+<p>15. <a href="https://music.binimum.org"><span style="color:#1155cc">https://music.binimum.org</span></a></p>
+<p>16. <a href="https://monochrome.tf"><span style="color:#1155cc">https://monochrome.tf</span></a></p>
+<p>17. <a href="https://dab.yeet.su"><span style="color:#1155cc">https://dab.yeet.su</span></a> (requires free account creation)</p>
+<p>18. Simply search for the track on Google, or even better - Yandex, Duckduckgo, eventually Bing, because Google frequently blacklists some sites or search entries. Also, your specific provider may cut connection to some sites, so you'll be forced to use VPN in those cases when a search engine shows up a result from a site you cannot open.</p>
+<p>19. Redtopia archives on torrent sites</p>
+<p>20. YouTube Music - higher bitrate (256kbps) than max 128/160kbps on regular YT for Opus/webm (20kHz) and AAC/M4A 128kbps (16kHz). Similarly, like in Spotify - it can possess some exclusive files which are unavailable in lossless form on any other platform, but most on YTM are available losslessly on other streaming services, so use them instead.</p>
+<p>If you have YouTube Premium you apparently can download files from it if you provide your token properly to yt-dl.</p>
+<p>Maybe logging into Google account with enabled premium in JDownloader 2 will do the trick as well.</p>
+<p>Anyway, Divolt bot (or any other currently available) will work too.</p>
+<p>Note: Google can block your account if you use AdBlocks on YouTube. Use some spare one you won't regret losing for it.</p>
+<p>______</p>
+<p><strong>Outdated/closed/defunct</strong></p>
+<p>0) <a href="https://us.deezer.squid.wtf/"><span style="color:#1155cc">us.deezer.squid.wtf</span></a> | (out of order for now, Deezer only; search didn’t respond before) <a href="https://eu.deezer.squid.wtf/"><span style="color:#1155cc">eu.deezer.squid.wtf/</span></a> (also offline) - works for queries, not URLs, single songs or albums, if you don’t check the “Save songs on download” (supported on Chrome) you need to press download button manually after ripping finishes (so once you’re notified), sometimes ripping can be progressing very slow, but consequently when you zoom the progress bar. Also, sometimes downloading in your browser might get interrupted in the middle (press resume in your browser download queue if necessary).<br>Some users (e.g. French) are unable to reach the site (e.g. 403 error) then use VPN.</p>
+<p>0) <a href="https://us.qobuz.squid.wtf/"><span style="color:#1155cc">https://us.qobuz.squid.wtf/</span></a> (went offline) | <a href="https://eu.qobuz.squid.wtf/"><span style="color:#1155cc">https://eu.qobuz.squid.wtf/</span></a> (back offline; Qobuz only) - -||- It can happen that using search on Qobuz won’t give you the desired results, while the search in the link will be successful.</p>
+<p>0) <a href="https://qqdl.site/"><span style="color:#1155cc">https://qqdl.site/</span></a> - Qobuz (currently redirects to TIDAL), some smartphones might run out of memory running this, a new site by Lucida stuff, previously redirected to doubledouble.top</p>
+<p>0) <a href="https://deezmate.com/"><span style="color:#1155cc">https://deezmate.com</span></a> - Deezer - mp3 or FLACs, working with links</p>
+<p>0) <a href="https://free-mp3-download.net"><span style="color:#1155cc">https://free-mp3-download.net</span></a> (Deezer, FLAC, separate songs downloading)</p>
+<p>Here you can find (all?) mp3/flac files from Deezer. If the site doesn't work for you, use VPN. If the site doesn't search, mark "use our VPN". Single files download and captcha. No tags for track numbers and file names, FLAC/MP3 16 bit only.</p>
+<p>- If you see an error “file not found on this server” don't refresh, but go back and click download again.</p>
+<p>- From time to time it happened that it didn’t show up the FLAC option, and that it's “unavailable”, and sometimes it can show up after some period of time. The site started to have some problems, but it was fixed already.</p>
+<p>-Open every found track in a new tab, as back button won't allow you to see search results you looked for</p>
+<p>1 b) (doesn’t work anymore for 07.02.24)</p>
+<p>Discord server with sharing bot (albums and songs)</p>
+<p>https://discord.gg/MmE4JnUVA</p>
+<p>-||-</p>
+<p>https://discord.gg/2HjATw6JF</p>
+<p>(another invite link valid till 12.11.13; needs to be renewed every month, probably current invitations will be on Divolt server here when the above will expire)</p>
+<p>Later, they required writing to the bot via DM to access the welcome channel with requests. Once I couldn't access the channel, and I needed to update Discord or wait 10-15 minutes, so the input form appeared.</p>
+<p>To download, in welcome channel, paste:</p>
+<p>$dl [link to the song or album on streaming service without brackets]</p>
+<p>More detailed instruction of usage below.</p>
+<p>(Defunct)</p>
+<p>2) <a href="https://slavart.gamesdrive.net/tracks"><span style="color:#1155cc">https://slavart.gamesdrive.net/tracks</span></a></p>
+<p>(sometimes used to work, but not too often) </p>
+<p>As of June 2023-March 2024 it is defunct, and throws: “There was an error processing your request!” on track download attempt, or in the past it was loading forever and nothing happens on multiple tries, before it worked after download button will stop being gray, and it’s green again, so you should click it and download may start shortly, but it stopped, lately it was working, you only needed to wait a bit.</p>
+<p>Similar search engine for FLACs. Files are sourced from Qobuz (including hi-res when available). Songs listed double are sometimes in higher bit depth/resolution (different versions of the same track). </p>
+<p>If you want to know what is the version you download, go to https://play.qobuz.com/ share track from there, and use download bots.</p>
+<p>1 b) Join their Divolt server directly by this link (if the above stopped working):</p>
+<p>https://divolt.xyz/invite/Qxxstb7Q (currently the bot don’t allow posting, containing only Discord invite, check it again later for valid link if necessary)</p>
+<p>Free registration required.</p>
+<p>If this Divolt server is also down, go here:</p>
+<p><a href="https://slavart.gamesdrive.net/"><span style="color:#1155cc">https://slavart.gamesdrive.net/</span></a> (defunct)</p>
+<p>to get a valid Divolt invite link (it might have changed). But it had the old link for the long time later.</p>
+<h3 id="h.ueeiwv6i39ca">Dolby Atmos ripping</h3>
+<p>“Streamed Dolby Atmos is eac (5.1 Surround) and JOC (Joint Object coding) it's a hybrid file of channels and objects that decodes the 5.1 + joc to whatever your speakers are from 2.0 up to 9.1.6.</p>
+<p>It's not a multitrack, although clearly what some mixers do is put all the vocal in the center channel, so effectively you have an a cappella in center and then the instrumental in everything else, but many labels forbid engineers doing it and have policies that they must mix other sounds into center, so people don't rip the a cappella.</p>
+<p>[“apparently Logic Pro does it automatically as well” isling, src: ScrepTure]</p>
+<p>YouTube only supports FOA Ambisonics as spatial audio, but you can encode Dolby Atmos to Ambisonics. [by e.g. <a href="https://www.mach1.tech/"><span style="color:#1155cc">https://www.mach1.tech/</span></a>]</p>
+<p>Apple Music has a larger amount [of Atmos songs] because Apple Pay the labels for exclusive Atmos deals.” ~Sam Hocking</p>
+<p>Tidal only supports 5.1 or maybe 5.1.4, and Apple Music at least up to 7.1.4 (9.1.6 support could have been dropped since macOS Sonoma, not sure “On latest MacOS you do now have the ability to decode directly to 7.1.4 pcm realtime from Apple Music.”).</p>
+<p>“I tried using channels from an Atmos mix to get better instrumentals and very surprisingly it sounds a lot worse</p>
+<p>I rendered it into 7.1 and upmixed the channels into 3 separate stereo tracks, and processed each using unwa's v1e+</p>
+<p>It ended up sounding more muddy than using a lossless stereo mix” - santilli_</p>
+<p>“sometimes rendering into 9.1.6 is good for some instruments yet everyone says it’s really unnecessary</p>
+<p>which is kinda true</p>
+<p>like the 1-2 channel for 9.1.6 dolby is insanely clean on the songs i’ve tried but some other stems sound a bit ehh” - Isling</p>
+<p>- from Tidal (via Tidal-Media-Downloader-PRO [Tidal-DL GUI])</p>
+<p>(doesn’t work anymore for Atmos; see further below)</p>
+<p>Just get Tidal-dl with HiFi Plus <a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.89rwiestpg95"><span style="color:#1155cc">subscription</span></a> - now merged into one subscription (CLI version; for one user on our server it works for 13.10.22, but for some people strangely not).</p>
+<p>For 30.04.24 with Tidal app installed on Windows and tidal-gui authorized by browser prompt/or automatically, Atmos files are not downloaded (checked all qualities in settings incl. 720/1080), at least on subscription automatically converted into higher plan due to recent changes (MQA files started to play since then, so it might be not subscription issue).</p>
+<p>If having some problems, use tidal-dl (non-GUI) and tidal account with valid subscription and proper plan, set up to fire tv device api (option 5 iirc).</p>
+<p>But I cannot guarantee it will work for Atmos.</p>
+<h6 id="h.2myqsboh95hp">&gt; from Tidal (with <a href="https://github.com/Dniel97/orpheusdl-tidal"><span style="color:#1155cc">orpheus_dl_tidal</span></a> installed over <a href="https://github.com/OrfiTeam/OrpheusDL"><span style="color:#1155cc">orpheusDL</span></a>; max 5.1[.4?])</h6>
+<p>Downloads <a href="https://tidal.com/browse/track/280733977"><span style="color:#1155cc">Atmos</span></a> and <a href="https://tidal.com/browse/track/200566143"><span style="color:#1155cc">high resolution</span></a> files bigger than 24/48.</p>
+<p>It’s only CLI app (valid <a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.89rwiestpg95"><span style="color:#1155cc">subscription</span></a> is still required).</p>
+<p>A bit convoluted installation. </p>
+<p>If you have problem with using git in the Windows command line, use <a href="https://drive.google.com/file/d/1V6ZwVgzYXjqc4QH9BGRoBqFZE-ZPNO16/view?usp=sharing"><span style="color:#1155cc">this</span></a> ready OrpheusDL package (works for 30.04.24, later it can get outdated; it already has Tidal settings and Atmos enabled) after you install python-3.9.13 or newer (works currently also on python-3.12.3-amd64). </p>
+<p>Or else, to install manually following GH instructions, to fix git issue, execute:</p>
+<p>pip install gitpython </p>
+<p>and/or install git from <a href="https://git-scm.com/download/win"><span style="color:#1155cc">here</span></a> </p>
+<p>(one or both of these should fix using git in CML when pip install git cannot find supported distribution and git command is not recognized).</p>
+<p>Once Python and the OrpheusDL package is correctly installed, CML usage is:</p>
+<p>orpheus https://tidal.com/browse/track/280733977</p>
+<p>You can place it as parameter for shortcut to orpheus.py on your desktop in Target (PPM on shortcut).</p>
+<p>E.g. "C:\Program Files\OrpheusDL\orpheus.py" https://tidal.com/browse/track/280733977</p>
+<p>Or else, press Win+R&gt;cmd.exe, and if you’re currently not at the same partition as Orpheus (e.g. C:\) press e.g. </p>
+<p>d:\</p>
+<p>and seek to the folder you have Orpheus installed, e.g. </p>
+<p>cd D:\Program Files\OrpheusDL\</p>
+<p>then execute</p>
+<p>orpheus https://tidal.com/browse/track/280733977</p>
+<p>Always delete “?u” at the end of the link copied from Tidal, or it won’t work.</p>
+<p>Once you execute the command, it will ask you for login method (I tested the first one - TV) - now it will redirect to your browser to authorize.</p>
+<p>MQA is disabled by default (not used by Atmos), but you can enable it in config\settings\</p>
+<p>by editing "proprietary_codecs": to false in line 21.</p>
+<p>Downloaded files are located in OrpheusDL\downloads folder</p>
+<p><br>spatial_codecs flag is enabled by default and supports Dolby Atmos and 360 Reality Audio.</p>
+<p>"Some of the 360 stuff is impossible to split right now. Not sure what is going on. Maybe some type of new encryption. I have the MP4 to David Bowie Heroes 22 channels, and it's a brick, useless…"</p>
+<p>The output of downloaded Atmos files is m4a encoded in E-AC-3 JOC (Enhanced AC-3 with Joint Object) -  Dolby Digital Plus with Dolby Atmos and possibly AC-4, and FLAC for hi-res</p>
+<p>Downloaded hi-res and Atmos files can be played in e.g. MPC-HC or VLC Media Player, but will fail on some old players like Foobar2000 1.3 and 1.6.</p>
+<h6 id="h.b33tzk42zlc">&gt; from Tidal (with <a href="https://github.com/exislow/tidal-dl-ng"><span style="color:#1155cc">https://github.com/exislow/tidal-dl-ng</span></a>)</h6>
+<p>- from Apple Music (Android, max 7.1[.4?])</p>
+<p><a href="https://github.com/adoalin/apple-music-alac-downloader"><span style="color:#1155cc">https://github.com/adoalin/apple-music-alac-downloader</span></a></p>
+<p>Installation tutorial:<br><a href="https://www.youtube.com/watch?v=blazHnCh6jQ"><span style="color:#1155cc">https://www.youtube.com/watch?v=blazHnCh6jQ</span></a></p>
+<p>“Pre-Requisites:</p>
+<p>x86_64 bit device (Intel/AMD Only)</p>
+<p>Install Python: <a href="https://www.python.org/"><span style="color:#1155cc">https://www.python.org/</span></a></p>
+<p>Install Go: <a href="https://go.dev/doc/install"><span style="color:#1155cc">https://go.dev/doc/install</span></a></p>
+<p>Install Android Platform Tools: <a href="https://developer.android.com/tools/releases/platform-tools"><span style="color:#1155cc">https://developer.android.com/tools/releases/platform-tools</span></a></p>
+<p>and set it to environment variables / path</p>
+<p>Download and extract Frida Server - <a href="https://github.com/frida/frida/releases/download/16.2.1/frida-server-16.2.1-android-x86_64.xz"><span style="color:#1155cc">https://github.com/frida/frida/releases/download/16.2.1/frida-server-16.2.1-android-x86_64.xz</span></a></p>
+<p>Download Apple Music ALAC Downloader - <a href="https://github.com/adoalin/apple-music-alac-downloader"><span style="color:#1155cc">https://github.com/adoalin/apple-music-alac-downloader</span></a></p>
+<p>Extract content to any folder.</p>
+<p>1)</p>
+<p>Install Android Studio</p>
+<p>Create a virtual device on Android Studio with an image that doesn't have Google APIs.</p>
+<p>2)</p>
+<p>Install SAI - <a href="https://github.com/Aefyr/SAI"><span style="color:#1155cc">https://github.com/Aefyr/SAI</span></a></p>
+<p>Install Apple Music 3.6.0 beta 4 - <a href="https://www.apkmirror.com/apk/apple/apple-music/apple-music-3-6-0-beta-release/apple-music-3-6-0-beta-4-android-apk-download/"><span style="color:#1155cc">https://www.apkmirror.com/apk/apple/apple-music/apple-music-3-6-0-beta-release/apple-music-3-6-0-beta-4-android-apk-download/</span></a></p>
+<p>Launch Apple Music and sign in to your account. Subscription required.</p>
+<p>3)</p>
+<p>Open Terminal</p>
+<p>adb forward tcp:10020 tcp:10020</p>
+<p>if u get a msg that there are more than 1 emulator/devices running, seek up NTKDaemonService in task manager/services and stop it</p>
+<p>adb root</p>
+<p>cd frida-server-16.2.1-android-x86_64</p>
+<p>adb push frida-server-16.2.1-android-x86_64 /data/local/tmp/</p>
+<p>adb shell "chmod 755 /data/local/tmp/frida-server-16.2.1-android-x86_64"</p>
+<p>adb shell "/data/local/tmp/frida-server-16.2.1-android-x86_64 &amp;"</p>
+<p>The steps above place Frida-server on your Android device and starts the Frida-server.</p>
+<p>4)</p>
+<p>Open a new Terminal window</p>
+<p>Change directory to Apple Music ALAC Downloader folder location</p>
+<p>pip install frida-tools</p>
+<p>frida -U -l agent.js -f com.apple.android.music</p>
+<p>5)</p>
+<p>Open a new Terminal window</p>
+<p>Change directory to Apple Music ALAC Downloader folder location</p>
+<p>Start downloading some albums:</p>
+<p>go run main.go https://music.apple.com/us/album/beautiful-things-single/1724488123</p>
+<p>go run main_atmos.go "https://music.apple.com/hk/album/周杰倫地表最強世界巡迴演唱會/1721464851" </p>
+<p>- from Apple Music (alternative tool)</p>
+<p><a href="https://rentry.co/AppleMusicDecrypt"><span style="color:#1155cc">https://rentry.co/AppleMusicDecrypt</span></a></p>
+<p>(after March 5, 2025 get WSA from here:</p>
+<p><a href="https://github.com/MustardChef/WSABuilds"><span style="color:#1155cc">https://github.com/MustardChef/WSABuilds</span></a>)</p>
+<p>from Apple Music (MacOS, virtual soundcard recording)</p>
+<p>(Guide by Mikeyyyyy/K-Kop Filters, <a href="https://discord.com/channels/708579735583588363/708579735583588366/992461132755369984"><span style="color:#1155cc">source</span></a>)</p>
+<p>You will need a Mac to do this, this will only work for MacOS, you will need an Apple Music subscription, "Blackhole 16ch" and any DAW of your choice I prefer FL Studio (can be also Audacity),</p>
+<p>Step 1. Install Blackhole Audio driver (search for it in Google)</p>
+<p>Step 2. Download the song you want in Dolby Atmos (if you don't know how to do it, go to settings in Apple Music then to general then toggle download Dolby Atmos)</p>
+<p>Step 3. Go to your desired DAW and in your mixed select input, and it will show your 16 outputs select 1, (Mono) for the first mixer, then number 2 mixer do the same but 2 and so on until you reached 6</p>
+<p>Step 4. Hit record and play the track in Dolby, and you're done!</p>
+<p><a href="https://sharemania.us/threads/tutorial-how-to-rip-apple-musics-dolby-atmos-channels-7-1-4.209629/?__cf_chl_tk=e.AYlwMiV9oW5skYALD286x_IM5QgjDS0GaB_FxH610-1682477648-0-gaNycGzNDFA"><span style="color:#1155cc">Similar</span></a> tutorial based on Blackhole and Audacity on Mac (open the link in incognito in case of infinite captcha)</p>
+<p>“On the latest MacOS you now have the ability to decode directly to 7.1.4 pcm realtime from Apple Music. If you use a loopback virtual audio driver you can record the 12 channels. Depending on how the song was mixed might mean the C channel has even clearer vocals.</p>
+<p>Probably worth mentioning Dolby Atmos is delivered as dd+ (Dolby Digital 5.1 Surround downmix) but JOC allows it to be decoded up to 9.1.6 16 channels. To do that you need either an AVR or Dolby Reference Player or Cavern/Cavernize.” Sam</p>
+<p>You won't be able to do the same on Windows with <a href="https://www.nerds.de/en/loopbeaudio.html"><span style="color:#1155cc">LoopBeAudio</span></a> instead (paid, but trial works for every 60 minutes after boot) because Apple Music on Windows (including the one in MS Store) doesn't provide Dolby Atmos (7.3.1) files at all (only stereo hi-res lossless) no matter what virtual soundcard you use, so you'll need Hackintosh or VMware.</p>
+<p>"Vmware kinda lag</p>
+<p>and find own seri to fix login apple services"</p>
+<p>- <a href="https://github.com/ittiam-systems/libmpegh"><span style="color:#1155cc">ittiam-systems/libmpegh: MPEG-H 3D Audio Low Complexity Profile Decoder</span></a></p>
+<p>Using this program, you can extract the 12 channels of the Dolby Atmos tracks.</p>
+<p>“MPEG-H is essentially Sony360, just Sony360 licenced decoders needed. Fraunhofer allow it to be used for free, though.</p>
+<p>ia_mpeghd_testbench.exe -ifile:"FILENAME.mhm" -ofile:track1.wav</p>
+<p>or:</p>
+<p>ia_mpeghd_testbench.exe -ifile:"input file name.m4a" -ofile:"output file name.wav" -cicp:13</p>
+<p>“renders to 22.2 as well”</p>
+<p><a href="https://mpegh.lze-innovation.de/#LZE"><span style="color:#1155cc">https://mpegh.lze-innovation.de/#LZE</span></a></p>
+<p>But seems like you need to write them some message.</p>
+<p>Above it tells it's for professionals, but try your luck:</p>
+<p><a href="https://www.iis.fraunhofer.de/en/ff/amm/broadcast-streaming/mpegh.html?source=post_page---------------------------"><span style="color:#1155cc">https://www.iis.fraunhofer.de/en/ff/amm/broadcast-streaming/mpegh.html?source=post_page</span></a></p>
+<p>You should also have a success with extracting stems with MMH Atmos Helper “includes a MPEG-H decoder built-in apparently”</p>
+<p>360RA/MPEG-H 3D online decoder by run4r.ses/r4r</p>
+<p><a href="https://run4r-ses.github.io/mpeghdeconline/"><span style="color:#1155cc">https://run4r-ses.github.io/mpeghdeconline/</span></a></p>
+<p>“It uses WASM and the libmpegh testbench* to decode files. However, that means that it uses MEMFS, which can lead to the decoder using up to 1.5GB for a 22.2 file so make sure you have plenty of RAM for the decoder to use.</p>
+<p>if you don't like that RAM limitation (for mobile devices etc.) you can download builds of the testbench from <a href="https://run4r-ses.github.io/libmpegh_builder/"><span style="color:#1155cc">https://run4r-ses.github.io/libmpegh_builder/</span></a> (includes Android builds which you can run through terminal emulators) although the web decoder shouuulddd be fine for most devices (except iOS, it mostly crashes on it)</p>
+<p>I hope this is helpful to anyone! If you encounter any issues, please let me know, as this is pretty much still a WIP.</p>
+<p>* The original libmpegh testbench is made by Ittiam Systems, so all credits to them! Their licenses are linked in both websites”</p>
+<p>Isling: “do you happen to know what all of the names of the channels are?</p>
+<p>for the 22.2 layout for example, i have no idea what the channels/speakers are called, i see you have the acronyms for it though”</p>
+<p>A: <a href="https://en.wikipedia.org/wiki/22.2_surround_sound#Channels"><span style="color:#1155cc">https://en.wikipedia.org/wiki/22.2_surround_sound#Channels</span></a></p>
+<p>Isling: “Great site too, it has customisability too, the one by ITTIAM doesn't seem to keep the surround sound effect so i'll try this one out.<br>Like, when i decode the 360ra files they lose their surround sound, and they don't sound as good in DAWs compared to if i was playing them with amazon music for example</p>
+<p>they just sound like stereo mixes without mastering, i want them to still have that cool effect”</p>
+<p>R: “Well, if you decode to stereo then it might sound worse than Amazon Music because the binaural renderer that ittiam uses is very basic, and you will get the same result with this too. if you want a "custom surround sound" then you'll probably have to render to something like 22.2, use your own HRTF model etcetera etcetera which is what i imagine Amazon Music does.”</p>
+<p>I: Yeah I decode it to 22.2. And I didn't realise there were extra steps but that makes sense.</p>
+<p>___________________________</p>
+<p>All Dolby Atmos is encoded, so to play it, basically it has to be decoded to audio playback through a Dolby licensed decoder. There are ways to decode, though. Easiest is to use Cavern.</p>
+<p><a href="https://cavern.sbence.hu/cavern/"><span style="color:#1155cc">https://cavern.sbence.hu/cavern/</span></a></p>
+<p>Atmos is a lossy format. 768kbps across 6 channels so not the highest resolution, but to decode to multichannel .wav just download cavern and put your dd+joc file through Cavernize. Streamed Atmos [is lossy]. TrueHD Atmos isn't. Atmos Music is only distributed lossy, though.</p>
+<p>You can encode Dolby Atmos to Ambisonics by e.g. <a href="https://www.mach1.tech/"><span style="color:#1155cc">https://www.mach1.tech/</span></a>.</p>
+<p>Atmos files downloaded from Tidal with OrpheusDL are simply FLACs in m4a container, and can be read by MPC-HC, VLC, and Foobar 2.x.</p>
+<p>On the side, “The process of making Atmos [from an engineer standpoint] is:</p>
+<p>DAW &gt; 128 channel ADM_BWF &gt; 7.1.4 &gt;5.1(joc). So basically those 128 channels are encoded to 6, but the object audio is still known where it should exist in the space and pulls that audio out of the 5.1 channels to make up to 9.1.6 (max supported for music)”</p>
+<p>And authoring for Atmos is not available on Windows but:</p>
+<p>“Traditionally it's not been unless you ordered a DELL from Dolby configured to use as a Rendering machine, but today both Dolby Atmos Renderer, DAWs like Cubase and Nuendo and 3rd party VST exist to do it on Windows now. I use Fiedler Atmos Composer on a stereo DAW called Bitwig to build demix projects for Atmos engineers to then master to Atmos from Stereo (sometimes all they have left to work with as multitrack tapes lost/destroyed/politics/easier)” ~Sam Hocking</p>
+<h3 id="h.konra76mukwf">360 Reality Audio FAQ</h3>
+<p>“A lot more stems in 360, and it has no bleeding or filtered sounding artifacts.</p>
+<p>A big problem with Dolby stems is artifacts, essentially none of that in 360.</p>
+<p>And if there is bleeding in 360 then the volume is completely balanced and doesn’t change all the time” - I.</p>
+<p>Q (isling): Is there a way to just listen to 360 files locally while still getting the immersive 3d effect?</p>
+<p>Decoding them and listening in DAWs don't sound like how they do on Amazon Music for example.</p>
+<p>Is there even a way to listen to them without decoding? I've downloaded the MPEG-H software stuff.</p>
+<p>The MPEG-H format player doesn't read the decoded WAVs nor supports m4a which is what the original non-decoded files are.</p>
+<p>The 360 WalkMix player didn't work either.</p>
+<p><a href="https://github.com/ittiam-systems/libmpegh/releases"><span style="color:#1155cc">https://github.com/ittiam-systems/libmpegh/releases</span></a></p>
+<p>This one is the one I use, works great to use, but doesn’t have the same 3D effect.</p>
+<p>I tried playing the decoded 360 Reality Audio stems in VLC as it has the best Dolby effect, but it didn't have all the channels playing.</p>
+<p>A (Sam Hocking): I've worked it out, there's a free decoder. These are the main MPEG-H tools for both creating and playing MPEG-H 3D: <a href="https://mpegh.lze-innovation.de/"><span style="color:#1155cc">https://mpegh.lze-innovation.de/</span></a></p>
+<p>All free. The plugin is really cool. Request the plugin from their site.</p>
+<p>Dolby and Sony 360 are object based [not channel base like Ambisonics]. Sony 360 is just protected MPEG-H 3D.</p>
+<p>When you rip from Tidal, you can choose how you decode the file to channel-based audio. This is the point of object-based audio, you decode it to what number of speakers you have</p>
+<p>If you use tidal-gui, enter an Android token from your Tidal app on the phone and download the file, then you can decode the Sony 360 / MPEG-H by the following:</p>
+<p> Description in format Front/Surr.LFE</p>
+<p>        1: 1/0.0    - C</p>
+<p>        2: 2/0.0    - L, R</p>
+<p>        3: 3/0.0    - C, L, R</p>
+<p>        4: 3/1.0    - C, L, R, Cs</p>
+<p>        5: 3/2.0    - C, L, R, Ls, Rs</p>
+<p>        6: 3/2.1    - C, L, R, Ls, Rs, LFE</p>
+<p>        7: 5/2.1    - C, Lc, Rc, L, R, Ls, Rs, LFE</p>
+<p>        8: NA</p>
+<p>        9: 2/1.0    - L, R, Cs</p>
+<p>        10: 2/2.0   - L, R, Ls, Rs</p>
+<p>        11: 3/3.1   - C, L, R, Ls, Rs, Cs, LFE</p>
+<p>        12: 3/4.1   - C, L, R, Ls, Rs, Lsr, Rsr, LFE</p>
+<p>        13: 11/11.2 - C, Lc, Rc, L, R, Lss, Rss, Lsr, Rsr, Cs, LFE, LFE2, Cv, Lv, Rv,</p>
+<p>                      Lvss, Rvss, Ts, Lvr, Rvr, Cvr, Cb, Lb, Rb</p>
+<p>        14: 5/2.1   - C, L, R, Ls, Rs, LFE, Lv, Rv</p>
+<p>        15: 5/5.2   - C, L, R, Lss, Rss, Ls, Rs, Lv, Rv, Cvr, LFE, LFE2</p>
+<p>        16: 5/4.1   - C, L, R, Ls, Rs, LFE, Lv, Rv, Lvs, Rvs</p>
+<p>        17: 6/5.1   - C, L, R, Ls, Rs, LFE, Lv, Rv, Cv, Lvs, Rvs, Ts</p>
+<p>        18: 6/7.1   - C, L, R, Ls, Rs, Lbs, Rbs, LFE, Lv, Rv, Cv, Lvs, Rvs, Ts</p>
+<p>        19: 5/6.1   - C, L, R, Lss, Rss, Lsr, Rsr, LFE, Lv, Rv, Lvr, Rvr</p>
+<p>        20: 7/6.1   - C, Leos, Reos, L, R, Lss, Rss, Lsr, Rsr, LFE, Lv, Rv, Lvs, Rvs</p>
+<p>Note: CICP 13 is applicable for baseline profile streams with only object audio. </p>
+<p>But the delivery is all contained within 12 channels (7.1.4)</p>
+<p>There are different levels of MPEG-H. For streaming, it's 7.1.4 which is level 3 IIRC.</p>
+<p>Q: 3rd order Ambisonics you mean? And 7.1.4 is literally just Dolby, right?</p>
+<p>A: No 7.1.4. You can consider it the same as Dolby Atmos.</p>
+<p>It's object-based audio, Ambisonics is channel based audio.</p>
+<p>Q: Isn't 360 RA Ambisonics though? Dolby is object based, right?</p>
+<p>A: Yep, Dolby and Sony 360 are object based. Sony 360 is just protected MPEG-H 3D </p>
+<p>Q: So Sony 360 is also object based? So it's not Ambisonics</p>
+<p>A: [Sony 360 7.1.4 “decoded to normal channel-based audio” looks like just 12 stems which can be imported into Audacity]</p>
+<p>Q: The one I got was from Amazon Music, not Tidal. Shouldn't make a difference?</p>
+<p>A: It's actually far more powerful than Dolby Atmos in this sense.</p>
+<p>Music Media Helper can decode Sony 360. Last time i checked they are possible to rip from Tidal although iirc Tidal are dropping 360 support?</p>
+<p><a href="https://www.quadraphonicquad.com/forums/threads/music-media-helper-tools-for-multichannel-audio-music-videos.22693/"><span style="color:#1155cc">https://www.quadraphonicquad.com/forums/threads/music-media-helper-tools-for-multichannel-audio-music-videos.22693/</span></a> (Sam)</p>
+<p>Alternatively, this paid plugin can handle 360RA downmix to binaural audio. <a href="https://www.perfectsurround.com/"><span style="color:#1155cc">https://www.perfectsurround.com/</span></a> but you need an iLok ID even for the free trial (jarredou)</p>
+</div>
+<nav class="pager"><a class="prev" href="audiosep.html">← AudioSep</a><a class="next" href="ai-mastering-services.html">___AI mastering services___ →</a></nav>
+<footer>Mirror of <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit">the Google Doc</a> — 65 sections · generated 2026-08-29 15:23 UTC</footer>
+</main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

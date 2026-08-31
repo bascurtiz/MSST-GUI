@@ -38,6 +38,16 @@ def _outline_icon_color(btn):
     return theme_manager._accent_text if btn._hovered else theme_manager.accent
 
 
+def _solid_icon_color(btn):
+    """Icon color for solid-accent buttons (Separate / Run Ensemble, matching
+    the Install button): light text at rest and while hovered (only the
+    background darkens), muted when disabled."""
+    t = theme_manager.theme
+    if not btn.isEnabled():
+        return t.disabled_text
+    return theme_manager._accent_text
+
+
 def _stop_icon_color(btn):
     """Icon color for the Stop buttons: red once enabled, muted when off."""
     t = theme_manager.theme
@@ -209,6 +219,22 @@ def outline_button_ss(font_size=12):
         f"QPushButton:hover{{background:{theme_manager.accent};color:{theme_manager._accent_text};}}"
         f"QPushButton:pressed{{background:{theme_manager._accent_hover};color:{theme_manager._accent_text};}}"
         f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};border:1px solid {t.border};}}"
+    )
+
+
+def solid_button_ss(font_size=12):
+    """Solid-accent primary button, matching the Install button: filled accent
+    with light text, darkening to the accent-hover color on hover / press."""
+    t = theme_manager.theme
+    return (
+        "QPushButton{"
+        f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
+        "border-radius:8px;"
+        "font-family:'Montserrat',sans-serif;font-weight:600;"
+        f"font-size:{font_size}px;}}"
+        f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
+        f"QPushButton:pressed{{background:{theme_manager._accent_hover};}}"
+        f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};}}"
     )
 
 

@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, Signal, QRectF
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QPainterPath
 
 from ui.theme import theme_manager
-from ui.widgets.common import PageHeader
+from ui.widgets.common import PageHeader, solid_button_ss
 
 
 def _acc_rgba(alpha: float) -> str:
@@ -176,19 +176,9 @@ class _EnsembleCard(QFrame):
         self._select_btn.setStyleSheet(self._btn_ss())
 
     def _btn_ss(self):
-        if self._hovered:
-            return (
-                f"QPushButton{{background:{theme_manager.accent};border:none;"
-                f"color:{theme_manager._accent_text};font-family:'Montserrat',sans-serif;font-weight:600;"
-                f"font-size:12px;border-radius:8px;}}"
-            )
-        return (
-            f"QPushButton{{background:transparent;border:1px solid {theme_manager.accent};"
-            f"color:{theme_manager.accent};font-family:'Montserrat',sans-serif;font-weight:600;"
-            f"font-size:12px;border-radius:8px;}}"
-            f"QPushButton:hover{{background:{_acc_rgba(0.08)};}}"
-            f"QPushButton:pressed{{background:{_acc_rgba(0.15)};}}"
-        )
+        # Solid-accent button (same look as Install / Separate): filled accent
+        # with light text, darkening to the accent-hover color on hover.
+        return solid_button_ss()
 
     def _set_card_ss(self):
         t = theme_manager.theme

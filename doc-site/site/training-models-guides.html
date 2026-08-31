@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training models guides — Google Doc</title>
+<link rel="stylesheet" href="assets/style.css">
+<script>(function(){var t;try{t=localStorage.getItem("doc-theme");}catch(e){}document.documentElement.setAttribute("data-theme",t||"dark");})();</script>
+</head>
+<body>
+<header class="topbar">
+<button id="nav-toggle" aria-label="Toggle navigation">☰</button>
+<a class="brand" href="index.html">Google Doc</a>
+<input id="search" type="search" placeholder="Search this document…" autocomplete="off">
+<button id="theme-toggle" aria-label="Toggle color theme" title="Toggle light/dark theme">☾</button>
+</header>
+<div class="layout">
+<nav class="sidebar"><div class="sidebar-inner"><a class="sidebar-brand" href="index.html">Google Doc</a><ul class="toc"><li class="toc-group"><span class="toc-tab">Google Doc</span><ul><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="edit-280826.html">edit. 28.08.26</a></div><ul class="toc-subs"><li><a class="toc-sub" href="edit-280826-last-updates-and-news.html">Last updates and news</a></li><li><a class="toc-sub" href="edit-280826-bsmel-roformer-uvr-beta-patch-for-gpu-accelerati.html">- BS/Mel-Roformer UVR beta patch For GPU acceleration, UVR currently supports: a) CUDA (NVIDIA GPUs) b) DirectML (AMD and Intel GPUs; previously misnamed as OpenCL) c) MPS (Mac M1 [ARM]/x86-64) And even old CPUs are supported (AMD A6-9225 Dual-Core or Intel Core 2 Quad [models with SSE4.1 tested]), but for at least MDX-Net HQ (v2) models speeds will be good on such CPUs without GPU acceleration. DirectML acceleration is not supported for Apollo, Bandit (also incompatible with MPS), SCNet and probably Demucs 2 archs - CPU will be used automatically. Minimum reasonably good enough NVIDIA GPU for Roformers might be: desktop RTX 3050 6GB, 2304 CUDA cores (at best 8GB variant with more 2560 CUDA). E.g. Colab’s Tesla T4 11GB (older RTX 2000 gen) has 2560 (which without TTA [not implemented for Roformers in UVR] is just alright - see separation times). The old 980 Ti 6GB with 2816 CUDA will be rather slower than these due to older architecture. I'd refrain from getting a mobile RTX 3050 - the Ti variant has 2560 CUDA cores, but both Ti and regular have 4GB, and using shared memory is slower - Roformers generally use more than that. In FP16 inference, if we “convert” CUDA cores performance to match the Blackwell: RTX 5060 Ti 4608 | 4608 | 100% RTX 4070 Ti 7680 | ~4800-5120 | ~105-110% RTX 3080 8704 | ~3200-3500 | ~70-75% Plus, you can always convert current Roformers to FP16 if some model uses FP32 (more below). Performance comparisons: 1 | 2 | 3 | 4 Using CUDA, even with currently the biggest 2GB size inst model, Rifforge, doesn’t reach 6GB VRAM usage on RTX 2000 (but its separation time on T4 using TTA in Colab takes a long 36 minutes for a 5 minute file), so consider min. 6GB VRAM as bare minimum for reasonable separation times with around 2560 CUDA cores on at least RTX 2000 (newer gens should have faster cores in inferencing). Unless you want to use the 53 stem model. For AMD/Intel GPUs, if you want to use default high chunk_size with certain models, 16GB VRAM is recommended, so you won’t have to decrease it manually (DirectML is way less memory-efficient than CUDA). Minimum AMD GPU capable for Roformers using DirectML might be RX 6600 XT or RX 7600 (might be even faster than 3050, DML will probably use its new RDNA3 AI cores).</a></li><li><a class="toc-sub" href="edit-280826-directml-is-slow-nevertheless-so-if-you-want-som.html">DirectML is slow nevertheless, so if you want some serious GPU acceleration boost on AMD GPUs, use MSST/pymms with ROCm instead. DirectML gives tremendous overhead over CUDA. For older GPUs than AMD Vega (which doesn't support ROCm PyTorch or only potentially with ZLUDA with modded libs) or Intel GPUs with Vulkan support, instead of MSST use: https://github.com/chenmozhijin/BSRoformer.cpp (CLI, C++ ready build, model conversion required besides Deux and FV6, allows quantization for faster separation, Vulkan backend faster than ROCm 5+ZLUDA on Windows) or also: https://github.com/pymss-project/pymss-mnn (CLI, requires building and also model conversion, Vulkan backend too, potentially a bit slower)</a></li><li><a class="toc-sub" href="edit-280826-full-list-of-model-architectures-supported-by-uv.html">Full list of model architectures supported by UVR: MDX-Net (a.k.a. v2), MDX23C (archs by kuielab), VR (voice-remover by tsurumeso, versions: 4, 5 [UVR fork], and 5.1), Demucs (by Meta; v. 1-4, only models trained on OG code, not MSST ones), BS-Roformer, Mel-Roformer (arch by Bytedance &amp; implementation from paper by lucidrains; issues on Linux explained later), SCNet, Apollo (in Tools; for upscaling, no DirectML acceleration), BandIt (SFX, no DirectML support). It has also a feature of ensembling models of various archs. If some models don't appear on the ensemble list reach the appropriate section below (or rich the document outline in options). Demudder functionality added in newer UVR patches (currently not on Linux and MacOS).</a></li><li><a class="toc-sub" href="edit-280826-models-for-roformersscnetbandit-arch-are-located.html">Models for Roformers/SCNet/Bandit arch are located altogether in the MDX-Net menu.</a></li><li><a class="toc-sub" href="edit-280826-ensembling-impossible---model-not-visible-in-voc.html">Ensembling impossible - model not visible in vocal splitter in UVR</a></li><li><a class="toc-sub" href="edit-280826-if-user-imported-roformers-arent-recognized-in-i.html">- If user-imported Roformers aren't recognized in "instrumental/vocals" in ensemble or in vocal splitter, but are in "multi-stem ensemble": “The .yaml associated with the model usually needs to be updated to match UVR's stem naming conventions. For example, if your config shows the instruments as "other" and "vocals", it will need to be updated to "Instrumental" and "Vocals" (case-sensitive)” - Anjok</a></li><li><a class="toc-sub" href="edit-280826-memory-issues---chunk-size-table-for-combatting.html">Memory issues - chunk_size table for combatting “RuntimeError”</a></li><li><a class="toc-sub" href="edit-280826-use-amp-key-error.html">'use_amp' “Key error”</a></li><li><a class="toc-sub" href="edit-280826-norm-attributeerror-using-eg-unwa-beta-5e-model.html">“”’norm’”” attributeError using e.g. unwa beta 5e model in UVR</a></li><li><a class="toc-sub" href="edit-280826-layers-errors---general.html">Layers errors - general</a></li><li><a class="toc-sub" href="edit-280826-typeerror-freqs-per-bands.html">TypeError: (...) freqs_per_bands</a></li><li><a class="toc-sub" href="edit-280826-mlp-expansion-facfor.html">mlp_expansion_facfor</a></li><li><a class="toc-sub" href="edit-280826-the-size-of-tensor-a-484864-must-match-the-size.html">"The size of tensor a (484864) must match the size of tensor b (485100) at non-singleton dimension 2"</a></li><li><a class="toc-sub" href="edit-280826-skip-connection.html">skip_connection</a></li><li><a class="toc-sub" href="edit-280826-torch-dynamopolyfillsfx.html">torch._dynamo.polyfills.fx</a></li><li><a class="toc-sub" href="edit-280826-winerror-2-the-system-cannot-find-the-file-speci.html">[WinError 2] The system cannot find the file specified</a></li><li><a class="toc-sub" href="edit-280826-num-bands.html">num_bands</a></li><li><a class="toc-sub" href="edit-280826-system-error-file-not-found.html">System error / file not found</a></li><li><a class="toc-sub" href="edit-280826-python39dll.html">Python39.dll</a></li><li><a class="toc-sub" href="edit-280826-runtimeerror.html">RuntimeError: ""</a></li><li><a class="toc-sub" href="edit-280826-stable-56-opencl-directml-version-of-uvr-5-gui-f.html">- Stable 5.6 OpenCL (DirectML) version of UVR 5 GUI for Windows</a></li><li><a class="toc-sub" href="edit-280826-supporting-amd-and-intel-gpus-acceleration-but-n.html">Supporting AMD and Intel GPUs acceleration but no Roformers yet</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---sup.html">- (no longer necessary) Fork of UVR GUI and How to install - support for AMD and Intel GPUs appeared (works only for VR and MDX architectures), Besides W11, also W10 confirmed working, MDX achieves speeds of i5-4460s using 6700 XT, while for VR, speeds are v. fast and comparable to CUDA, so CPU processing might be slower in VR, but for MDX you might want to stick with the official UVR5 GUI.</a></div><ul class="toc-subs"><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-2.html">The best models</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html">for specific stems</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-4.html">- Advanced chain processing chart (image)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-5.html">Chained separation order</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-6.html">Plugins (different types of noise)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-7.html">“UVR BVE v2 model [currently on x-minus] is actually full band. There is, however, a small nuance. This model uses MDX VocFT preprocessing, which is not full band. MDX VocFT model is rebalancing the song. The music is slightly mixed with the vocals (25% music + 100% vocals). This mix is then processed by the BVE model. A small amount of music can help the model better understand the context (it's important for harmony separation). We train the model on a rebalanced dataset. It contains 25% of music.” aufr33</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-8.html">MDX settings &amp; ens. explanations in UVR5 (and also Demucs/VR/MDX v2/23C inferencing parameters)</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-9.html">&gt;&gt;Tips to enhance separation results&lt;&lt;</a></li><li><a class="toc-sub" href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install-10.html">24. arigato78 method for lead vocal acapella</a></li></ul></li><li class="toc-item"><a class="toc-section" href="sdr-leaderboard-explanation.html">SDR leaderboard &amp; explanation</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="bleedness-and-fullness-leaderboard-python-evaluation-script.html">Bleedness and fullness leaderboard Python evaluation script by jarredou (prob. mirror), Torch version (with Bas Curtiz), used on Quality Checker</a></div><ul class="toc-subs"><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-2.html">50 models sorted by SDR</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-3.html">UVR5 GUI (MDX, VR, Demucs 2-4 and UVR team models)</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-4.html">GUI FAQ &amp; troubleshooting for UVR (PT. 2)</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-5.html">- Chunks may alter separation results</a></li><li><a class="toc-sub" href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-6.html">Manual ensemble</a></li></ul></li><li class="toc-item"><a class="toc-section" href="uvrs-vr-architecture-models.html">UVR’s VR architecture models</a></li><li class="toc-item"><a class="toc-section" href="first-vocal-models-trained-by-uvr-for-mdx-net-arch.html">First vocal models trained by UVR for MDX-Net arch:</a></li><li class="toc-item"><a class="toc-section" href="9703-model-is-uvr-mdx-net-1-uvr-mdx-net-2-is-uvr-mdxnet-2-96.html">9.703 model is UVR-MDX-NET 1, UVR-MDX-NET 2 is UVR_MDXNET_2_9682, NET 3 is 9662, all trained at 14.7kHz</a></li><li class="toc-item"><a class="toc-section" href="demucs-3.html">Demucs 3</a></li><li class="toc-item"><a class="toc-section" href="demucs-4-colab-4-6-stem.html">Demucs 4 (+ Colab) (4, 6 stem)</a></li><li class="toc-item"><a class="toc-section" href="gsep-now-gaudio-2-4-5-6-stem-karaoke.html">Gsep (now GAudio) (2, 4, 5, 6 stem, karaoke)</a></li><li class="toc-item"><a class="toc-section" href="dangoai.html">dango.ai</a></li><li class="toc-item"><a class="toc-section" href="musicai.html">music.ai</a></li><li class="toc-item"><a class="toc-section" href="iterative-ensemble-colab-by-introc.html">Iterative Ensemble Colab by IntroC</a></li><li class="toc-item"><a class="toc-section" href="mdx23-by-zfturbo-jarredou-fork---2-4-stems.html">MDX23 by ZFTurbo (jarredou fork) - 2, 4 stems</a></li><li class="toc-item"><a class="toc-section" href="karafan-by-captain-flam.html">KaraFan by Captain FLAM</a></li><li class="toc-item"><a class="toc-section" href="ripplecapcutsami-bytedancevolcenginebs-roformer-2-4-stem.html">Ripple/Capcut/SAMI-Bytedance/Volcengine/BS-RoFormer (2-4 stem)</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="drumsep---single-percussion-instruments-separation.html">&gt;Drumsep - single percussion instruments separation</a></div><ul class="toc-subs"><li><a href="drumsep---single-percussion-instruments-separation.html#h.aowhgo4swnk4">Mel-Roformer MVSEP drumsep models</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.ofipsjc35vaq">SCNet MVSEP drumsep models</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.67bx3lypshg7">(newer) MDX23C 5 stem drumsep by jarredou</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.2u19k7ty9b00">(older) MDX23C 6 stem drumsep by jarredou/Aufr33</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.swkhktenzm58">BS-Roformer MVSEP 4 stems</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.jmjab44ryjjo">Older drumsep by Inagoy</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.p1lb0lkwo8dk">Moises.ai drumsep</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.cz4j2d3uf48s">FactorSynth</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.buopqcmi0inj">Regroover</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.n8a91zv9lor0">UnMixingStation</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.f067glwjzyi4">LarsNet</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.ftdzxgety1hd">VirtualDJ 2023/Stems 2.0 (kick, hi-hat)</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.1bm9wmdv6hpf">RipX DeepAudio (-||-) (6 stems [piano, guitar])</a></li><li><a href="drumsep---single-percussion-instruments-separation.html#h.404qq7uhcrx5">Spectralayers 10</a></li></ul></li><li class="toc-item"><a class="toc-section" href="uss-bytedance-any-esp-sfx.html">USS-Bytedance (any; esp. SFX)</a></li><li class="toc-item"><a class="toc-section" href="zero-shot-any-sample-esp-instruments.html">Zero Shot (any sample; esp. instruments)</a></li><li class="toc-item"><a class="toc-section" href="sam-audio.html">SAM-Audio</a></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="audiosep.html">AudioSep</a></div><ul class="toc-subs"><li><a href="audiosep.html#h.s4sjh68fo1sw">Medley Vox (different vocalists)</a></li><li><a href="audiosep.html#h.z0rg2bewgfed">real-time</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="sources-of-flacs-for-the-best-quality-for-separation-process.html">__Sources of FLACs for the best quality for separation process__</a></div><ul class="toc-subs"><li><a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.ueeiwv6i39ca">Dolby Atmos ripping</a></li><li><a href="sources-of-flacs-for-the-best-quality-for-separation-process.html#h.konra76mukwf">360 Reality Audio FAQ</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="ai-mastering-services.html">___AI mastering services___</a></div><ul class="toc-subs"><li><a href="ai-mastering-services.html#h.tu3sw6pao8fp">___Best quality on YouTube for your audio uploads____</a></li></ul></li><li class="toc-item"><div class="toc-head"><button class="toc-caret" type="button" aria-label="Toggle sub-headings">▸</button><a class="toc-section" href="best-quality-from-youtube-and-soundcloud---how-to-squeeze-ou.html">___Best quality from YouTube and Soundcloud - how to squeeze out the most from the music taken from YT for separation___</a></div><ul class="toc-subs"><li><a href="best-quality-from-youtube-and-soundcloud---how-to-squeeze-ou.html#h.k3cm3bvgsf4j">Repository of stems/multitracks from music to create your own dataset</a></li></ul></li><li class="toc-item"><a class="toc-section" href="list-of-cloud-services-with-a-lot-of-space.html">List of cloud services with a lot of space</a></li><li class="toc-item"><a class="toc-section" href="or-for-temporary-storage.html">or for temporary storage</a></li><li class="toc-item"><a class="toc-section" href="ai-killing-tracks---difficult-ones-to-get-instrumentals-or-v.html">AI-killing tracks - difficult ones to get instrumentals (or vocals) - a lot of e.g. vocal (or instrumental) leftovers in current models</a></li><li class="toc-item"><a class="toc-section current" href="training-models-guides.html">Training models guides</a></li></ul></li></ul><div class="sidebar-foot"><a href="index.html">Index</a> · <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit">Google Doc ↗</a></div></div></nav>
+<main class="content"><nav class="crumbs"><a href="index.html">Google Doc</a> › <span>Google Doc</span></nav>
+<h1>Training models guides</h1>
+<p class="meta">Page 65 of 65 · <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit?tab=t.0#heading=h.bg6u0y2kn4ui" target="_blank" rel="noopener">Edit this page in Google Docs ↗</a></p>
+<div class="doc">
+<p>1. <a href="https://docs.google.com/document/d/1jUcwiPfrJ8CpHqXIRHuOu70cFDMv_n-UzW53iaFuM9w/edit?tab=t.0"><span style="color:#1155cc">Read mesk’s guide</span></a> (new link #2), then proceed below for arch explanations and more details.</p>
+<p><br>2. <a href="https://docs.google.com/document/d/1WDDK7E8-HY7EYUOM-evIcXNYX_Of0gYOVjG95zLQfKo/edit?tab=t.0"><span style="color:#1155cc">More thorough training guide</span></a> (just not that step-by-step, condensed form, all the training content was moved from here, there, to avoid 1.02M character limitation of Google Documents)</p>
+<p>As for a training code for Roformers and MDX23C, SCNet or adding new archs, most people use <a href="https://github.com/ZFTurbo/Music-Source-Separation-Training"><span style="color:#1155cc">MSST</span></a> by ZFTurbo. It’s also provided with a bunch of documentation.</p>
+<p>“You can start with Sucial MSST <a href="https://github.com/SUC-DriverOld/MSST-WebUI"><span style="color:#1155cc">WebUI</span></a> (<a href="https://huggingface.co/Sucial/MSST-WebUI/tree/main/1.7.0"><span style="color:#1155cc">link</span></a>). I use that to train all my models” - Gabox</p>
+<p>For weird errors with depth and stuff like:</p>
+<p>Wrong shape: expected 4 dims. Received 3-dim tensor:</p>
+<p>ZFTurbo "has been testing some things with Roformers lately, I already notified him that the Rofos have bugs.</p>
+<p>You'll have to use an older version of mel_band_roformer.py, for example 1-2 months ago" - becruily</p>
+<p><a href="https://github.com/ZFTurbo/Music-Source-Separation-Training/tree/v.1.0.4"><span style="color:#1155cc">https://github.com/ZFTurbo/Music-Source-Separation-Training/tree/v.1.0.4</span></a></p>
+<p>An old ass one, it doesn't even have sage attention, LoRA and all that shit - mesk</p>
+<p>But probably you won’t need LoRA anyway.</p>
+<h4 id="h.gzsz53bzhmzn">Local SDR testing script</h4>
+<p><a href="https://drive.google.com/file/d/1GC9pwch0WQXZXwBNTz_QnXE_UyxdKmQF/view?usp=sharing"><span style="color:#1155cc">https://drive.google.com/file/d/1GC9pwch0WQXZXwBNTz_QnXE_UyxdKmQF/view?usp=sharing</span></a> by Dill</p>
+<p><a href="https://drive.google.com/file/d/1BeqNw3TnRTDMwnoQGMbOqwrcGRwe4Zht/view?usp=sharing"><span style="color:#1155cc">https://drive.google.com/file/d/1BeqNw3TnRTDMwnoQGMbOqwrcGRwe4Zht/view?usp=sharing</span></a> GUI by zmis (but it scores a bit lower for some reason):</p>
+<p>“Here's a handy little python script I made using the help of Ai that can calculate the SDR of a track based off of the actual instrumental or vocal of the song.</p>
+<p>You can do python sdr.py --help for an explanation on how to use the script.</p>
+<p>You just need numpy and scipy for it to work, and python ofc!</p>
+<p>I'm not sure if you would like to pin this or not, but I've been using this script to help me improve my separation methods. </p>
+<p><a href="https://github.com/ZFTurbo/Audio-separation-models-checker/tree/main"><span style="color:#1155cc">https://github.com/ZFTurbo/Audio-separation-models-checker/tree/main</span></a></p>
+<p>Based on MUSDB18-HQ dataset”</p>
+<p>“Q: Why SDR goes &lt;0 in silence parts? (song_006)</p>
+<p>A: SDR and SISDR behave weirdly when 1 of the input is silent, and that's why log_WMSE was made: <a href="https://github.com/crlandsc/torch-log-wmse/"><span style="color:#1155cc">https://github.com/crlandsc/torch-log-wmse/</span></a></p>
+<p>Interestingly, L1freqMag metrics is giving same results than some users here (1296 a bit better for instrumentals, 1297 a bit better for vocals).” jarredou</p>
+<h4 id="h.dus2zjzbt7dg">Best ensemble finder for a song script</h4>
+<p>by Vinctekan</p>
+<p><a href="https://drive.google.com/file/d/1LUtBsCSym1iDHqADEusmACs-LF2lNYLw/view?usp=sharing"><span style="color:#1155cc">https://drive.google.com/file/d/1LUtBsCSym1iDHqADEusmACs-LF2lNYLw/view?usp=sharing</span></a></p>
+<p>Currently, this optimized version can find the best combo of 9, 3 minute audio files in about 2 minutes and 40 seconds in Colab.</p>
+<p>Refactored best weighted ensemble finder by jarredou</p>
+<p><a href="https://drive.google.com/file/d/1Rm09z1wpj0Pi-6bFQ15u767n1XV95pDz/view?usp=sharing"><span style="color:#1155cc">https://drive.google.com/file/d/1Rm09z1wpj0Pi-6bFQ15u767n1XV95pDz/view?usp=sharing</span></a></p>
+<p>“That's what I've used to find optimal weights for my MDX23 fork v2.5 update.</p>
+<p>It's still Nelder-Mead based optimizer, but code is way more simple/clean than 1st version.</p>
+<p>To use it, you need:</p>
+<p>A dataset of clean sources (with exact same filename scheme than mvsep multisong dataset).</p>
+<p>Process dataset mixtures with all the models you want to ensemble and put the outputs in different folders, 1 for each model (and still with exact same filename scheme than mvsep multisong dataset).</p>
+<p>librosa and scipy python libs</p>
+<p>then run (for example):</p>
+<p>weight_finder_v2.py \</p>
+<p>  --ref c:\reference_dataset \</p>
+<p>  --est c:\InstVoc c:\bsrofo1296 c:\kimrofo \</p>
+<p>  --stem vocals \</p>
+<p>  --extension flac \</p>
+<p>  --tracks 100</p>
+<p>--ref is clean sources' folder path</p>
+<p>--est is estimates (separations) folder paths (multiple inputs)</p>
+<p>--stem is stem name (based on multisong dataset filename scheme)</p>
+<p>--extension is audio file extension (flac/wav...)</p>
+<p>--tracks is a number of tracks in a dataset.</p>
+<p>It will process the datasets many times and change weights each time until it find the best balance. When finished, it will output weights scaled to 10 max value.</p>
+<p>Warning: it can take hours (or even days, depending on the number of models to ensemble, size of dataset and resources of computer)</p>
+<p>A python lib to align audio:</p>
+<p><a href="https://github.com/nomonosound/fast-align-audio"><span style="color:#1155cc">https://github.com/nomonosound/fast-align-audio</span></a>”</p>
+<h4 id="h.784wd9d5jdkb">Universal function to make different types of ensembles by ZFTurbo</h4>
+<p><a href="https://cdn.discordapp.com/attachments/911050124661227542/1192220574982881320/ensemble.py"><span style="color:#1155cc">https://cdn.discordapp.com/attachments/911050124661227542/1192220574982881320/ensemble.py</span></a></p>
+<p>I think it’s the same or newer:</p>
+<p><a href="https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/ensemble.py"><span style="color:#1155cc">https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/ensemble.py</span></a></p>
+<p>“In my experiments SDR for avg_wave always the max.”</p>
+<p>Now also jarredou made his Colab with the above implemented with comfy GUI:</p>
+<p><a href="https://colab.research.google.com/github/jarredou/Music-Source-Separation-Training-Colab-Inference/blob/main/Manual_Ensemble_Colab.ipynb"><span style="color:#1155cc">https://colab.research.google.com/github/jarredou/Music-Source-Separation-Training-Colab-Inference/blob/main/Manual_Ensemble_Colab.ipynb</span></a></p>
+<p>_____________________________________________________</p>
+<p>____________________________________________________________________</p>
+<h5 id="h.yhu13dizwjvi">Volume compensation for MDX v2 models</h5>
+<p><strong>How to automate calculation of volume compensation value for all older MDX models</strong></p>
+<p>(results are not perfect and need to be fine-tuned)</p>
+<p>by jarredou</p>
+<p>So, I have maybe a protocol to find accurate volume compensation:</p>
+<p>- Use a short .wav file of just noise (I've used pink noise here) and pass it through the model you wanna evaluate</p>
+<p>- Take the resulting audio, the one that will have all the noise in it and compare it to the original noise with this little python script that will give you the difference in dBTP and the quivalent VC ratio (you'll need to </p>
+<p>pip install librosa</p>
+<p> if you don't have it installed already). The results I've found with it are coherent with the ones you've found by ears ! (1.035437 for HQ2 / 1.022099 for KimFT other)</p>
+<p>Here's the script :</p>
+<p>import numpy as np</p>
+<p>import argparse</p>
+<p>import librosa</p>
+<p> </p>
+<p> </p>
+<p>def Diff_dBTP(file1,file2):</p>
+<p>    y1, sr1 = librosa.load(file1)</p>
+<p>    y2, sr2 = librosa.load(file2)</p>
+<p>    true_peak1 = np.max(np.abs(y1))</p>
+<p>    true_peak2 = np.max(np.abs(y2))</p>
+<p>    difference = 20 * np.log10(true_peak1 / true_peak2)</p>
+<p>    print(f"Diff_dBTP : The difference in true peak between the two audio files is {difference:.6f} dB.")</p>
+<p>    ratio = 10 ** (difference / 20)</p>
+<p>    print(f"The volume of sound2 is {ratio:.6f} times that of sound1.\n")</p>
+<p>  </p>
+<p>if __name__ == "__main__":</p>
+<p>    parser = argparse.ArgumentParser(description="Find volume difference of two audio files.")</p>
+<p>    parser.add_argument("file1", help="Path to original audio file")</p>
+<p>    parser.add_argument("file2", help="Path to extracted audio file")</p>
+<p>    args = parser.parse_args()</p>
+<p>    </p>
+<p>    Diff_dBTP(args.file1, args.file2)</p>
+<p><strong>Volume compensation values for various models (in reality they may differ +/- e.g. by 0.00xxxx, but maybe not much more)</strong></p>
+<p>All values according to the script made by **jarredou**</p>
+<p>*(All default but Spectral Inversion - Off; Denoise Output: On; - the latter shouldn't affect the results if turned off)*:</p>
+<p>   -   Kim Vocal_1   -   1.012819</p>
+<p>   -   Kim Vocal 2 - 1.009</p>
+<p>   -   voc_ft - 1.021   </p>
+<p>   -   Kim ft other - 1.020 (Bas' fine-tuned and SDR-validated)</p>
+<p>   -   UVR-MDX-NET 1    -   1.017194</p>
+<p>   -   UVR-MDX-NET Inst 2    -   1.037748</p>
+<p>   -   UVR-MDX-NET Inst 3    -   1.043115</p>
+<p>   -   UVR-MDX-NET Inst HQ 1    -   1.052259</p>
+<p>   -   UVR-MDX-NET Inst HQ 2    -   1.047476</p>
+<p>   -   UVR-MDX-NET Inst Main    -   1.037812 (actually it turned out to be 1.025)</p>
+<p>   -   UVR-MDX-NET Main    -   1.002124</p>
+<p>   -   UVR-MDX-NET-Inst_full_292    -   1.056003</p>
+<p>   -   UVR-MDX-NET_Inst_82_beta    -   1.088610</p>
+<p>   -   UVR-MDX-NET_Inst_90_beta    -   1.151219 (wtf)</p>
+<p>   -   UVR-MDX-NET_Main_340    -   1.002742</p>
+<p>   -   UVR-MDX-NET_Main_406    -   1.001850</p>
+<p>   -   UVR-MDX-NET_Main_427    -   1.002091</p>
+<p>   -   UVR-MDX-NET_Main_438    -   1.001799</p>
+<p>   -   UVR_MDXNET_9482    -   1.007059</p>
+<p>"denoise is just processing twice with the second try inverted, after separation reinverted, to amplify the result, but remove the noise introduced by MDX, and then deamplified by 6dbs, so it still the same volume, just without MDX noise.</p>
+<p>Basically HV noise removal trick"</p>
+<h6 id="h.ntgu6se9g0u5">UVR-MDX parameters &amp; hashes decoded by Bas Curtiz</h6>
+<p><a href="https://github.com/Anjok07/ultimatevocalremovergui/blob/master/models/MDX_Net_Models/model_data/model_data.json"><span style="color:#1155cc">https://github.com/Anjok07/ultimatevocalremovergui/blob/master/models/MDX_Net_Models/model_data/model_data.json</span></a> - the link with hashes possess MDX models parameters.</p>
+<p>The above probably still doesn’t possess all the models added in the update, e.g. Foxy model, but there are only 4-5 combinations of settings so far.</p>
+<p>File with newer models parameters:</p>
+<p><a href="https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/model_data_new.json"><span style="color:#1155cc">https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/model_data_new.json</span></a></p>
+<p>All MDX-Net model parameters in UVR consist of these combinations:</p>
+<p>- HQ_4:</p>
+<p>self.n_fft = 6144 dim_f = 2560 dim_t = 8</p>
+<p>- All older HQ fullbands:</p>
+<p>self.n_fft = 6144 dim_f = 3072 dim_t = 8</p>
+<p>- kim vocal 1/2, kim ft other (inst), inst 1-3 (415-464), 427, voc_ft:</p>
+<p>self.n_fft = 7680 dim_f = 3072 dim_t = 8</p>
+<p>- 496, Karaoke, 9.X (NET-X)</p>
+<p>self.n_fft = 6144 dim_f = 2048 dim_t = 8 (and 9 kuielab_a_vocals only)</p>
+<p>- Karaoke 2</p>
+<p>self.n_fft = 5120 dim_f = 2048 dim_t = 8</p>
+<p>- De-reverb by FoxJoy</p>
+<p>self.n_fft = 7680 dim_f = 3072 dim_t = 9</p>
+<h6 id="h.cb6cxq8g7i0v">UVR model hash decode</h6>
+<p>“I've made this little script a while back to find those hashes.</p>
+<p>Use with model_hash_finder.py path_to_model_file.” </p>
+<p><a href="https://drive.google.com/file/d/1D4TNKjuObNn6MSiss1PtmXPQoR3XJOwJ/view?usp=sharing"><span style="color:#1155cc">https://drive.google.com/file/d/1D4TNKjuObNn6MSiss1PtmXPQoR3XJOwJ/view?usp=sharing</span></a> </p>
+<p>It's a checksum hash but based only on the last 10MB of model files.” (jarredou)</p>
+<p>full_band_inst_model_new_epoch_309.onnx fea6de84f625c6413d0ee920dd3ec32f</p>
+<p>full_band_inst_model_new_epoch_337.onnx 4bc04e98b6cf5efeb581a0f382b60499</p>
+<p>kim_ft_other.onnx b6bccda408a436db8500083ef3491e8b</p>
+<p>Kim_Vocal_1.onnx 73492b58195c3b52d34590d5474452f6</p>
+<p>Kim_vocal_2.onnx 970b3f9492014d18fefeedfe4773cb42</p>
+<p>UVR-MDX-NET-Voc_FT.onnx 77d07b2667ddf05b9e3175941b4454a0</p>
+<p>kuielab_a_bass.onnx 6703e39f36f18aa7855ee1047765621d</p>
+<p>kuielab_a_drums.onnx dc41ede5961d50f277eb846db17f5319</p>
+<p>kuielab_a_other.onnx 26d308f91f3423a67dc69a6d12a8793d</p>
+<p>kuielab_a_vocals.onnx 5f6483271e1efb9bfb59e4a3e6d4d098</p>
+<p>kuielab_b_bass.onnx c3b29bdce8c4fa17ec609e16220330ab</p>
+<p>kuielab_b_drums.onnx 4910e7827f335048bdac11fa967772f9</p>
+<p>kuielab_b_other.onnx 65ab5919372a128e4167f5e01a8fda85</p>
+<p>kuielab_b_vocals.onnx 6b31de20e84392859a3d09d43f089515</p>
+<p>Reverb_HQ_By_FoxJoy.onnx cd5b2989ad863f116c855db1dfe24e39</p>
+<p>UVR-MDX-NET-Inst_1.onnx 2cdd429caac38f0194b133884160f2c6</p>
+<p>UVR-MDX-NET-Inst_2.onnx ceed671467c1f64ebdfac8a2490d0d52</p>
+<p>UVR-MDX-NET-Inst_3.onnx e5572e58abf111f80d8241d2e44e7fa4</p>
+<p>UVR-MDX-NET-Inst_full_292.onnx b06327a00d5e5fbc7d96e1781bbdb596</p>
+<p>UVR-MDX-NET-Inst_full_338.onnx 13819d85cad1c9d659343ba09ccf77a8</p>
+<p>UVR-MDX-NET-Inst_full_382.onnx 734b716c193493a49f8f1ad548451c48</p>
+<p>UVR-MDX-NET-Inst_full_386.onnx 2e4fcd9ec905f35d2b8216933b5009ff</p>
+<p>UVR-MDX-NET-Inst_full_403.onnx 94ff780b977d3ca07c7a343dab2e25dd</p>
+<p>UVR-MDX-NET-Inst_HQ_1.onnx 291c2049608edb52648b96e27eb80e95</p>
+<p>UVR-MDX-NET-Inst_HQ_2.onnx cc63408db3d80b4d85b0287d1d7c9632</p>
+<p>UVR-MDX-NET-Inst_HQ_2.onnx 55657dd70583b0fedfba5f67df11d711</p>
+<p>UVR-MDX-NET-Inst_Main.onnx 1c56ec0224f1d559c42fd6fd2a67b154</p>
+<p>UVR-MDX-NET_Inst_187_beta.onnx d2a1376f310e4f7fa37fb9b5774eb701</p>
+<p>UVR-MDX-NET_Inst_82_beta.onnx f2df6d6863d8f435436d8b561594ff49</p>
+<p>UVR-MDX-NET_Inst_90_beta.onnx 488b3e6f8bd3717d9d7c428476be2d75</p>
+<p>UVR-MDX-NET_Main_340.onnx 867595e9de46f6ab699008295df62798</p>
+<p>UVR-MDX-NET_Main_390.onnx 398580b6d5d973af3120df54cee6759d</p>
+<p>UVR-MDX-NET_Main_406.onnx 5d343409ef0df48c7d78cce9f0106781</p>
+<p>UVR-MDX-NET_Main_427.onnx b33d9b3950b6cbf5fe90a32608924700</p>
+<p>UVR-MDX-NET_Main_438.onnx e7324c873b1f615c35c1967f912db92a</p>
+<p>UVR_MDXNET_1_9703.onnx a3cd63058945e777505c01d2507daf37</p>
+<p>UVR_MDXNET_2_9682.onnx d94058f8c7f1fae4164868ae8ae66b20</p>
+<p>UVR_MDXNET_3_9662.onnx d7bff498db9324db933d913388cba6be</p>
+<p>UVR_MDXNET_9482.onnx 0ddfc0eb5792638ad5dc27850236c246</p>
+<p>UVR_MDXNET_KARA.onnx 2f5501189a2f6db6349916fabe8c90de</p>
+<p>UVR_MDXNET_KARA_2.onnx 1d64a6d2c30f709b8c9b4ce1366d96ee</p>
+<p>UVR_MDXNET_Main.onnx 53c4baf4d12c3e6c3831bb8f5b532b93</p>
+<p>VR de-reverb models decode</p>
+<p>UVR-De-Echo-Normal.pth = f200a145434efc7dcf0cd093f517ed52</p>
+<p>UVR-De-Echo-Aggressive.pth = 6857b2972e1754913aad0c9a1678c753</p>
+<p>UVR-DeEcho-DeReverb.pth = 0fb9249ffe4ffc38d7b16243f394c0ff</p>
+<p>So they’re all "4band_v3.json"  config file (from <a href="https://github.com/TRvlvr/application_data/blob/main/vr_model_data/model_data.json"><span style="color:#1155cc">here</span></a>)</p>
+<p>More thorough chart by David Duchamp a.k.a. Captain FLAM:</p>
+<p><a href="https://docs.google.com/spreadsheets/d/1XZAyKmgJkKE3fVKrJm9pBGIXIcSQC3GWYYI90b_ul1M/edit#gid=366525450"><span style="color:#1155cc">https://docs.google.com/spreadsheets/d/1XZAyKmgJkKE3fVKrJm9pBGIXIcSQC3GWYYI90b_ul1M</span></a></p>
+<p>___</p>
+<h5 id="h.l5v4dmylg8vo">Voice Cloning</h5>
+<p>“RVC and some of its forks (<a href="https://docs.applio.org/"><span style="color:#1155cc">Applio</span></a>, Mangio, etc) are genuine free, open source ones for inference and training. For realtime voice changer that uses RVC models, there's w-okada: <a href="https://rentry.co/VoiceChangerGuide"><span style="color:#1155cc">https://rentry.co/VoiceChangerGuide</span></a>” no guide for Linux though.</p>
+<p><a href="https://www.tryreplay.io/"><span style="color:#1155cc">https://www.tryreplay.io/</span></a></p>
+<p>“Url downloads, local files, massive database of models, both huggingface and weightsgg, in built separation models, options to skip that part if you have vocals, ability to use multiple ai models for one particular result, and the option to either merge or just get multiple results at the end, plus whatever else, de-reverb and stuff” it has voc_ft vocal model from UVR5.</p>
+<p>“even my old laptop still can inferencing using applio</p>
+<p>i3 3217u 1.8ghz</p>
+<p>intel hd 4000”</p>
+<p>And you’re probably aware already that RVC Colabs to train voice cloned models are banned.</p>
+<h5 id="h.2jk25wjmsohe">Stable Audio Open Gen</h5>
+<p>Available on MVSEP in the Experimental section. It’s not for separation, but generating sounds.</p>
+<p>ZFTurbo: “Algorithm based on model:</p>
+<p><a href="https://huggingface.co/stabilityai/stable-audio-open-1.0"><span style="color:#1155cc">https://huggingface.co/stabilityai/stable-audio-open-1.0</span></a></p>
+<p>Audio is generated in Stereo format with a sample rate of 44.1 kHz and duration up to 47 seconds. The quality is quite high. It's better to make prompts in English.</p>
+<p> Example prompts:</p>
+<p>1) Sound effects generation: cats meow, lion roar, dog bark</p>
+<p>2) Sample generation: 128 BPM tech house drum loop</p>
+<p>3) Specific instrument generation: A Coltrane-style jazz solo: fast, chaotic passages (200 BPM), with piercing saxophone screams and sharp dynamic changes</p>
+<p> Examples:</p>
+<p>Cat meow:<a href="https://mvsep.com/result/20250612092110-b297c082fb-generated.wav"> </a><a href="https://mvsep.com/result/20250612092110-b297c082fb-generated.wav"><span style="color:#1155cc">https://mvsep.com/result/20250612092110-b297c082fb-generated.wav</span></a></p>
+<p>Dog bark:<a href="https://mvsep.com/result/20250612115517-b297c082fb-generated.wav"> </a><a href="https://mvsep.com/result/20250612115517-b297c082fb-generated.wav"><span style="color:#1155cc">https://mvsep.com/result/20250612115517-b297c082fb-generated.wav</span></a></p>
+<p>128 BPM tech house drum loop:<a href="https://mvsep.com/result/20250612115841-b297c082fb-generated.wav"> </a><a href="https://mvsep.com/result/20250612115841-b297c082fb-generated.wav"><span style="color:#1155cc">https://mvsep.com/result/20250612115841-b297c082fb-generated.wav</span></a></p>
+<p>Violin solo:<a href="https://mvsep.com/result/20250612120111-b297c082fb-generated.wav"> </a><a href="https://mvsep.com/result/20250612120111-b297c082fb-generated.wav"><span style="color:#1155cc">https://mvsep.com/result/20250612120111-b297c082fb-generated.wav</span></a></p>
+<p>Woman sing song "Happy Birthday to you":<a href="https://mvsep.com/result/20250612120433-b297c082fb-generated.wav"> </a><a href="https://mvsep.com/result/20250612120433-b297c082fb-generated.wav"><span style="color:#1155cc">https://mvsep.com/result/20250612120433-b297c082fb-generated.wav</span></a>”</p>
+<p> </p>
+<p>__________</p>
+<p>Visit our <a href="https://discord.com/channels/708579735583588363/1220364005034561628"><span style="color:#1155cc">#dev-talk</span></a> channel for more</p>
+<h5 id="h.6brljt8lbd7b"><a href="https://www.youtube.com/watch?v=-pcVN54cgw0"><span style="color:#1155cc">Anjok’s interview </span></a>on YT</h5>
+<p>TL;DW: UVR’s documentary + training, archs and demudder explained</p>
+<p>Anjok is the developer of Ultimate Vocal Remover 5 (UVR5 GUI).</p>
+<p>He intended UVR to be a Swiss army tool - to contain everything you need for separation, and also contain models made by the community (e.g. dereverb/denoise/deecho).</p>
+<p>History of UVR</p>
+<p>Anjok in times where Spleeter was still a thing, found a VR arch made by Japanese developer, tsurumeso, and received better results than Spleeter. He started to make his own model on laptop 1060 6GB on 100 or 150 pairs with the absolute minium parameters, and it turned out to be a better model than tsurumeso's one. Later he transitioned to faster GPU (probably before 3090 yet).</p>
+<p>Anjok wanted GUI for VR, and found BoskanDilan on Fiver and simply contracted him, paying to build the foundations of what UVR is today. BoskanDilan turned out to be a very good and talented coder.</p>
+<p>They put the work on GitHub, and Aufr33 contacted Anjok with ideas on how the VR models can be improved etc.</p>
+<p>Then BoskanDilan left in mid 2021 for personal reasons. Then the GUI work was taken by Anjok who was mentored by BoskanDilan to improve on understanding the coding. Anjok started to working on UVR exclusively, spending 10 hours a day for UVR in 2022. </p>
+<p>He decided to make a simple installer in one package, as he received lots of issues on GutHub, from people not knowing how to install it. He also re-coded the UVR to make the code easier to maintain. Then Bas Curtiz helped Anjok on design aspects of UVR, e.g. designed new logo, and gave some advice, and good amount of feedback from UVR user perspective. Early 2022 phase of UVR development took a lot of advice from early users of UVR.</p>
+<p>In May 2022 there was a first installer released to make UVR more accessible without e.g. installing Python or other dependencies and specialized programming knowledge to set up a proper environment.</p>
+<p>Anjok was still in charge of introducing other archs than VR into UVR, being simply the only one behind the process, while normally bigger teams work on projects of that scale, when e.g. different archs could be coded into UVR by different developers. It was a stressful period of time, because Anjok intended to make the software which is free of bugs, and still not fully rely on the community in terms of bug reporting.</p>
+<p>Then the Mac version came out and M1/M2/M3 support for faster GPU acceleration. Anjok found out in Demucs repo a part of the code, making it easier to port UVR to Macs, and it is used by every model. Music community is pretty Mac-centered, and he devoted a considerable amount of time to make it work reliably on Macs too.</p>
+<p>In the new UVR version there's a planned demudder to be introduced (described later), and possibly translations.</p>
+<p>Anjok currently trains a new model coming in several weeks.</p>
+<p>It's intended to be a little smaller in order to be not so resource intensive, but also better than the best current MDX-Net model.</p>
+<p>Update 01.03.24</p>
+<p>“I'm going to allow HQ4 to continue training beyond 1500+ epochs as an experiment (it's currently at 1200), and interestingly, the SDR has been steadily increasing. It has significantly surpassed HQ3 in terms of SDR and listening tests, and it also outperformed MDXC23 in listening tests, though not in SDR (yet!). The most recent evaluation on the multi-dataset showed a score of 15.85, using the default settings. Clearly, there's a limit to how much further training can enhance performance, but up to this point, improvements are still being observed. This model has been in training since October! I'm chipping away at the next GUI update as well, and the demudder will be in it.”</p>
+<p>The model was released, with already HQ_5 scheduled in following month/s.</p>
+<p>The archs in UVR and their technicalities summarized</p>
+<p>VR</p>
+<p>VR uses audio spectrograms and converts them to FFT spectrograms.</p>
+<p>VR uses only magnitude spectrograms, not phase.</p>
+<p>Phase represents timing where the data is, while magnitude represents the intensity of each frequency.</p>
+<p>Phase is much harder to predict.</p>
+<p>Actually VR uses original phase from the mixture and saves it during the process "and it just does the magnitude".</p>
+<p>That's the reason why VR tends to have more artefacts in it. The smearing in instrumentals of VR is because the phase from the mixture is still in there.</p>
+<p>Aufr33 later introduced 4 bands support for UVR.</p>
+<p>Let's say for first of three bands between 0-700Hz there will be different resolution, for all other frequency ranges there will be different. E.g. knowing that vocals are in specific frequency range, you can optimize it further.</p>
+<p>That feature made UVR and VR arch much better.</p>
+<p>Later they introduced - </p>
+<p>Ensembling</p>
+<p>So a way to use multiple models to potentially get better results.</p>
+<p>The three ways of ensembling:</p>
+<p>avg - gets the average of vocals/instrumentals</p>
+<p>max - is maximum result of each stem, e.g. in a vocal you'll get the heaviest weighted vocal from each model, and the same goes for instrumental, giving a bit cleaner results, but more artefacts</p>
+<p>min</p>
+<p>MDX-Net</p>
+<p>Uses full spectrogram with phase and magnitude</p>
+<p>Tradeoff is muddier results, but natural, cleaner sound.</p>
+<p>Training</p>
+<p>Anjok separated on nearly every genre you can think of, and stated that the hardest genre for separation is metal and vocal-centered mixes. Also, if the instrumental has lot of noise, e.g. distorted guitars, the instrumental will come out muddier.</p>
+<p>MDX-Net was the arch, addressing lots of VR issues in its core.</p>
+<p>Tracks from 70-80s can separate well. 50-60s will be harder, e.g. recorded in mono. Early stereo era gets a little better.</p>
+<p>A good model needs to be as good as the dataset for a model.</p>
+<p>There was lots of work scrapping it from the internet.</p>
+<p>Aufr33 was the mastermind behind Karaoke model and its dataset.</p>
+<p>Demucs model wasn't as successful, as probably was more meant for more stems, and MDX-Net gave better results for 2 stems.</p>
+<p>Training details covered in this interview can be found at the top of <a href="training-models-guides.html#h.bg6u0y2kn4ui"><span style="color:#1155cc">Traning models guide </span></a>section of the doc</p>
+<p>The biggest issue in terms of archs and the source of muddiness, is phase. Currently, in audio separation there's not a great way to calculate phase in a model like the phase spectrogram as it's not as obvious as the magnitude spectrogram.</p>
+<p>You take the vocal out of a heavy rock track, but the process is not perfect, so it will take some part of the instrumental with it. Even if you don't hear instrumental in vocals, there's still instrumental data in there in the phase of that vocal track.</p>
+<p>In the end of the day, source separation is prediction. It's predicting where it thinks it is, but there will be always some imperfections, e.g. whenever you hear muddier sound in a track which has more noise like metal tracks.</p>
+<p>Anjok emphasizes on (currently) lack of correlation between SDR and the fact that bigger SDR metric doesn’t necessarily mean better. He tried some top of the SDR chart result before, and wasn’t quite happy about them.</p>
+<p>Because phase is a big part of the issue, now the new upcoming -</p>
+<h6 id="h.bviye361m0v">Demudder</h6>
+<p>A UVR feature incoming (it was also explained before on the server by Anjok - if something is not clear, try to find his messages there)</p>
+<p>It uses lots of phasing tricks. It processes the track twice. The first takes instrumental from the first go around and compares it against the original mixture. It chops the mixture into 3 second chunks and ?inerts over that lists of chunks and for each segment, it cuts out where that segment is in the instrumental, and it finds similar events that aren't at the exact same place. It takes those chunks, and it analyses them against the instrumental that was generated, and it tries to find the most similar events it can from the instrumental, that aren't at the same place from that segment, and it finds similar events, and then it phases it, it does a phase invert of that instrumental </p>
+<p>(56:30) If the volume or DB threshold isn't past the certain point because it's too loud then it means it does not cancel out and doesn't make phase invert, if it reaches a certain threshold like if it is below certain threshold it'll phase that, and then it will basically stitch together a new mixture that is kind of phased from that original instrumental output, and it reprocesses that new stitch together, mixture with the phase with the instrumental phase changed, and it processes that through the second pass, and then it takes that vocal and then phase inverts it with the mixture, with the original mixture and then what you end up having is some of the parts that are similar from the other parts of the track, you end up having those fill in the spectral holes.</p>
+<p>Sam remarks find some similarity with probably how Izotope Imager works.</p>
+<p>Anjok says: I'm trying to get a similar part, but also try to take it and phase it with that segment. Because it's not the exact same part of the segment, it's not gonna be a perfect phase, because it would be an original vocal output.</p>
+<p>So it's kind of still finding the bit of instrumental that is still in the vocal.</p>
+<p>Sam remarks about frequent situations where you perform separation, and it can lead to decrease of e.g. hi hat volume levels in instrumental, referring to what information separated vocal stem can wear. It's part of the muddiness Anjok tried to address with the feature.</p>
+<p>Anjok didn't want to compromise vocal quality, and in some cases it makes the vocals better too, but it also depends on how the track was mixed originally. If it's an analog track recorded in one session or even a live track, it won't work so well. The problem is with e.g. 10 minutes track, when demudder won't find phase similarities so effectively. It will work the best on music made with samples. If the track is digital, it is more likely to work better.</p>
+<p>Anjok currently works on it to make it work for all tracks. </p>
+<p>The more he works on it, the more breakthroughs are made, but due to his day job, he had less time to work on it lately.</p>
+<p>Anjok gives his appreciation to the group of very talented developers who made MDX-Net arch in the University of Korea. It's his favourite network. He's a big fan of Woosung Choi's work.</p>
+<p>_____</p>
+<p>Later, Aufr33 invented his own:</p>
+<h6 id="h.sv6j1ndk4oq5">Simpler demudder</h6>
+<p>Published for paid users of x-minus.pro (when you pick Roformer model for instrumentals, buttons with methods appear; it is only applied for instrumentals, not vocals)</p>
+<p>In his own words:</p>
+<p>“</p>
+<p>1. Separate the song into vocals and music</p>
+<p>2. Invert the phase of the vocal and mix it with the music</p>
+<p>3. Now separate this mix</p>
+<p>4. Mix the vocals with the input song</p>
+<p>It actually works more complicated than that. I added a high pass filter since the demudder is not needed at low frequencies.”</p>
+<p>Probably something from the 100-250 Hz range. </p>
+<p>Actually, Aufr33 used following ffmpeg command:</p>
+<p>“ -filter_complex "[0:a]highpass=f=900[hp1];[0:a][hp1]amerge,pan=stereo|c0=c0-c2|c1=c1-c3[lp];[1:a]highpass=f=900[hp2];[lp][hp2]amix=inputs=2:duration=longest:normalize=0[out]"”</p>
+<p>Rephrased by becruily</p>
+<p>“use Roformer on a song</p>
+<p>phase invert the vocal file and combine it with the instrumental</p>
+<p>separate again using the same model</p>
+<p>combine the original song and vocals (no inversion or anything) and you will get demudded inst</p>
+<p>this is for instrumental, if you want demudded vocals just switch the two words (acapella and instrumental)”</p>
+<p><a href="https://discord.com/channels/708579735583588363/708579735583588366/1265218940695740498"><span style="color:#1155cc">Video</span></a> how to apply demudder method</p>
+<p>Notes </p>
+<p>- For HQ 4 and at least denoise model enabled, the method seems to produce more vocal residues, so it might be feasible more for Roformers (it’s used optionally for Kim Mel-Roformer on x-minus).</p>
+<p>- "xminus demudder is more pleasing to the ears" isling</p>
+<p>- Some people might still prefer max_mag ensemble on x-minus or mel-roformer + bs-roformer ensemble in UVR</p>
+<p>Phase fixer on x-minus for unwa inst v1 model copies phase from Kim Mel-Roformer model.</p>
+<h6 id="h.t8ntb5endb8y">UVR Demudders released in the <a href="edit-280826-bsmel-roformer-uvr-beta-patch-for-gpu-accelerati.html#h.6y2plb943p9v"><span style="color:#1155cc">beta Roformer patch</span></a></h6>
+<p>(in Anjok’s words)</p>
+<ul><li>Phase Rotate:<br>The fullest sounding, but can leave a lot of artifacts with certain models. I only recommend that method for the muddiest models. Otherwise, Combined Methods is the best”<br></li></ul><ul><li>First, a filtered instrumental is created, and the left and right channels are swapped.</li><li>The phase is shifted by 90 degrees.</li><li>This modified filtered instrumental is then inverted with the original mixture, and another inference pass is performed on the resulting mixture.</li><li>Finally, the vocal from the second pass is phase-inverted and combined with the original mixture, creating a cleaner instrumental.</li></ul><ul><li>Phase Remix (similar to X-Minus; also available in <a href="https://colab.research.google.com/drive/1IC6Q1hLF55_tK6mhky0SWYKGVF9T5WsY"><span style="color:#1155cc">this</span></a> Colab):<br>I don't recommend using phase remix on the Instrumental v1e model. I recommend combined methods or phase rotate for models producing fuller instrumentals.<br></li></ul><ul><li>The mixture is first separated into stems.</li><li>The phase of the vocal stem is inverted and mixed with the filtered instrumental to produce a modified "mixture." Another inference pass is performed on this new mixture.</li><li>The vocal stem extracted from the modified mixture is then reintroduced into the original mixture, creating a cleaner instrumental.</li><li>This method is only recommended for models that produce very muddy instrumentals!</li></ul><ul><li>Combine Methods:<br></li></ul><ul><li>It's basically a weighted mix of the final instrumentals generated by "Phase Rotate", "Phase Remix," and the initial instrumental.<br></li></ul>
+<p>Demudder in UVR doesn’t work on 4GB VRAM Intel/AMD GPUs <br>(<a href="edit-280826-models-for-roformersscnetbandit-arch-are-located.html#h.u1hv6utk5vj"><span style="color:#1155cc">more demudder troubleshooting</span></a>)</p>
+<h6 id="h.j14b9cv2s5d9">Phase fixer/swapper<br>(decreases vocal residues in instrumentals)<br></h6>
+<p>The method was invented by Aufr33 to fix noise in Roformers models trained with instrumental or other stem target. It copies phase from instrumental from a model trained with vocal stem target which usually gives muddy instrumentals but better bleedless metric (e.g. Kim’s or Becruily’s vocal) and copies it into the instrumental model result. Initially it was added only to x-minus/uvronline (iirc for premium users), but later Becruily wrote his own script doing the same (both torch and librosa implementations if you fail to use one of them). <br></p>
+<p>Later Anjok implemented it into one of the UVR Roformer beta <a href="edit-280826-bsmel-roformer-uvr-beta-patch-for-gpu-accelerati.html#h.6y2plb943p9v"><span style="color:#1155cc">patches</span></a> (Tools&gt;Phase Swapper), although there it only allows changing high and low cutoff, but no high frequency weight, and santilli_ (Michael) found out that increasing it from 0.8 to 2 is beneficial for phase swapping from Becruily vocal to instrumental model, and that it’s much better than manipulating with high and low cutoff. </p>
+<p>The common mistake people make when phase fixing manually is that, you still need instrumental result of a vocal model as reference, not vocal result, and instrumental from instrumental model as target, ofc.</p>
+<p>Also, don't use separated stems in various formats (lossy and lossless will start in different places), and rather also from different sources - e.g. on MVSEP only 32-bit float for premium is not normalized - rather refrain from use it with results from e.g. Colab, which are not normalized. Even the normalization option in UVR might work a bit differently, but feel free to ensure.</p>
+<p>Use <a href="https://colab.research.google.com/drive/1CMnVdG1DqF9FHJrw9d3pYW20qadikfTP"><span style="color:#1155cc">manual phase fix Colab</span></a> (by A5/Squid) - fork of Michael's Colab, but without inference.<br><br>(OG santilli_/Michael Colab <a href="https://colab.research.google.com/drive/1uDXiZAHYk7dQajOLtaq8QmYXL1VtybM2?usp=sharing"><span style="color:#1155cc">here</span></a> was <a href="https://colab.research.google.com/drive/1PMQmFRZb_XRIKnBjXhYlxNlZ5XcKMWXm"><span style="color:#1155cc">fixed</span></a> (it allowed inferencing and batch separation with phase fixing automatically), although since Google's changes to the env, the Colab got broken and the fix started giving weird results both with FLAC and FLOAT, while the local scripts give only slightly less muddy results than the manual Colab - dca). </p>
+<p>Optionally you can also check the phase fixer in <a href="https://colab.research.google.com/drive/1CH2JWd6YculmKSug9zpzuxvM6mSYysdB?usp=sharing"><span style="color:#1155cc">SESA Colab</span></a> and <a href="https://colab.research.google.com/github/noblebarkrr/mvsepless/blob/dzeta/MVSepLess_Dzeta_Colab.ipynb"><span style="color:#1155cc">MVSepless Colab</span></a>.</p>
+<p>Or MVSEP preset called “phase corrected instrumental”. </p>
+<p>This specific preset is currently only for premium because by default it uses HyperACE V2 inst with (currently paywalled) BS-Roformer 124 bands.</p>
+<p>But you can just click “<a href="https://mvsep.com/presets"><span style="color:#1155cc">Editor</span></a>” option in the presets menu, and pick “phase corrected instrumental” preset in the editor on a free account, and on the displayed graph pick whatever models you want for phase fixing instead (e.g. becruily vocals [even instead of BS-Roformer 2025.07], which might work better for phase fixing than default BS-Roformer 124 bands, and is free model), and maybe run the job from there. Solely presets functionality and the editor is not paid, but such a modified preset on your main MVSep page will be paywalled. “If 2+ algorithm nodes, it is premium only”. </p>
+<p>Currently you can only save your preset on your account and sharing is possible only by screenshotting or copying the graph code manually and sharing on your own.</p>
+<p>- You can use and edit the original phase swap Python scripts for previously separated files <a href="https://drive.google.com/drive/folders/1JOa198ALJ0SnEreCq2y2kVj-sktvPePy?usp=drive_link"><span style="color:#1155cc">here</span></a>, and use it as a reference (iirc - be aware it has hardcoded file names into script to work, so Kim as voc model, so while using any other model, you still need the same file name).</p>
+<p>The result of phase fixer - less noise in the instrumental, but more muddiness - it's not necessary in all cases (instructions of usage of the script is described in the link above).</p>
+<p>Cutoffs </p>
+<p>Optionally to the default settings in the Phase Fixer Colab you could set:</p>
+<p>- 420 for low and 4200 for high or </p>
+<p>- 500/500 and e.g. Mel-Kim model for source; </p>
+<p>and bleed suppressor (by unwa/97chris) to alleviate the noise further (e.g. phase fixer on its own works better with v1 model to alleviate the residues). </p>
+<p>- Besides the default UVR default 500/5000 and </p>
+<p>- Colab default 500/9000 values, you could potentially “even try like </p>
+<p>- 200/1000 or even below for 2nd value.”  “I would say that the more noisy the input is, the lower you have to set the frequency for the phase fixer.” - jarredou</p>
+<p>(“200/1000 is probably the most aggressive setting”, “for v1e 200/1000 def works better, v1e is very noisy”)</p>
+<p>- 200/10000 is the least aggressive </p>
+<p>Phase fixer models suggestions<br></p>
+<p>Usually, I post suggested models in the descriptions of instrumental models along with values for phase fixer/swapper <a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html#h.2vdz5zlpb27h"><span style="color:#1155cc">here</span></a>, but you have some suggestions gathered in one place also in phase fixer <a href="https://colab.research.google.com/drive/1PMQmFRZb_XRIKnBjXhYlxNlZ5XcKMWXm"><span style="color:#1155cc">Colab</span></a>.</p>
+<p>E.g. </p>
+<p>a) becruily voc/becruily inst (very bleedless, but muddy)</p>
+<p>b) becruily voc/flowersv10 (not as muddy)</p>
+<p>c) FT2 Bleedless/flowersv10 (can be more effective, but FT3 might cut fewer instruments)</p>
+<p>d) BS-Roformer 2025.07 (exclusive to MVSEP)/(any other inst model)</p>
+<p>e) Mel-Roformer Bas Curtiz Edition on MVSEP/(any other inst model) - less bleeding/vocal shells than while using becruily voc, and might be even less than 2025.07 (bigger vocal bleedless metric)</p>
+<p>Other models occasionally used for phase fixer with certain models: bigbeta5e, Unwa beta 6 (or experiment some newer models with potentially high bleedless metric)</p>
+<p>Scale factor:</p>
+<p>“Personally, I think leaving the scale factor as 0.8 is fine, increasing it to like 1.4 as in the notebook creates "holes" where the vocals are originally heard, so I don't think that's good.</p>
+<p>Higher than 0.8 makes it muddy, v1e is great at being the fullest model so I would not touch scale factor if I were you (if you use v1e)”</p>
+<h6 id="h.8rocw7cwj55">Phase-fixed output used in UVR’s Manual ensemble</h6>
+<p>(method explained by objectbed, corrected by Ari/arxynr)</p>
+<p>On example of dca’s <a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html#h.nk4nvhlv1pnt"><span style="color:#1155cc">ensemble</span></a> in the doc:</p>
+<p>"0) Unwa BS Roformer Resurrection Inst (BS 2025.07 as a reference for phase fix) + MVSEP BS Roformer 2025.07 (Max Spec)</p>
+<p> —-&gt; the least vocal crossbleeding. </p>
+<p>Alternatively, you can use becruily vocal model instead of 2025.07 for the ensemble -</p>
+<p>“Becruily vocal correctly recognize instruments far better than the instrumental one” - dca100fb8"</p>
+<p>“This would equate to the following steps:</p>
+<p>[guide corrected; didn't give correct results before]</p>
+<p>1. Separate your mixture using the Unwa BS Roformer Resurrection Inst model.</p>
+<p>  • Output: inst_unwa.wav (instrumental) + optional vocal.</p>
+<p>2. Separate your mixture using the MVSEP BS Roformer 2025.07 model.</p>
+<p>  • Output: inst_mvsep.wav + vox_mvsep.wav.</p>
+<p>[Note: Set WAV output. Then MVSEP won't turn down the volume to accommodate for clipping, and in such cases it should use 32-bit float instead of 16-bit automatically, despite 16-bit being set for free user]</p>
+<p>3. Build the ensemble with UVR’s Manual Ensemble mode:</p>
+<p>  4a. Inputs =</p>
+<p>• inst_unwa.wav (from Step 1)</p>
+<p>• inst_mvsep.wav (from Step 2)</p>
+<p>  4b. Set Algorithm = “Max Spec.”</p>
+<p>  4c. Click Start Processing</p>
+<p>4. Phase fix with UVR’s Phase Swapper:</p>
+<p>  3a. Target Audio = inst_unwa+inst_mvsep (ensembled).wav (from Step 3).</p>
+<p>  3b. Reference Audio = inst_mvsep.wav (from Step 2).</p>
+<p>  3c. Click Start Processing.</p>
+<p>  3d. Note the resulting new file (~~~_phaseswapped.wav or similar).</p>
+<p>The resulting file = your final instrumental stem (the one referenced in the Google Doc instructions as having the least cross-bleed).”</p>
+<p>FAQ</p>
+<p>Q: Question about MVSEP BS Roformer 2025.07. Is this a model I can download, or do I have to do it online on their site? I can't find it.</p>
+<p>A: It's mvsep site only. No download. So you want to use this model, must go <a href="http://mvsep.com"><span style="color:#1155cc">mvsep.com</span></a></p>
+<p>Q: What exactly are we doing with a Phase Fixer/Swapper? As an audio engineer, I understand phase as how it relates to frequency over time. When a vocal stem is used as a "reference" for the target instrumental stem, what's actually happening?</p>
+<p>A: “There is a phase in the waveform domain, like audio engineers experience it every day, and there is a phase in the STFT domain. In STFT domain phase means how each STFT bins content is organized with other bins.</p>
+<p>The math concept is similar to phase in the waveform domain, but instead of having 1 phase value for 1 waveform, you have 1 value for each STFT bin and for each STFT frame, so it's way more complex... (to make it really short).</p>
+<p>The phase fixer/swapper thing is operating in the STFT domain, so for each STFT bins, it will use the magnitude data of 1 model, and it will use the phase data from another model, and hopefully this can improve the final result”. - jarredou</p>
+<p>“In short, what the script does is blend the stft phase of the "donor" file into the target, it uses different blending scales for different frequencies so that it'll only affect the parts that are directly related to the perceived noise” - santilli_ / Michael </p>
+<p>Q: Apparently the original Resurrection model only has two models (BS-Roformer 1296/1297 by viperx and BS Large V1 by unwa) that work for phase fixer, but the Gabox one says to use 2025.7 for phase fixer (which works almost perfectly) How does that happen? How did the working models change for Gabox's fine tune?</p>
+<p>A: ML models are black boxes. You never know what you'll get. Like in Forrest Gump. It depends on the specific instrumental model, which vocal model as the source for the phase fixer will work the best.</p>
+<p>__</p>
+<h6 id="h.uy1eml9xi0lx">Pitch shifting/stretching algorithms' comparison</h6>
+<p><a href="https://www.youtube.com/watch?v=gaSFt0tT2u4"><span style="color:#1155cc">https://www.youtube.com/watch?v=gaSFt0tT2u4</span></a></p>
+<p><a href="https://www.youtube.com/watch?v=s-5g4I30_eY"><span style="color:#1155cc">https://www.youtube.com/watch?v=s-5g4I30_eY</span></a></p>
+<p><a href="https://www.youtube.com/watch?v=WH8KDQALYQY"><span style="color:#1155cc">https://www.youtube.com/watch?v=WH8KDQALYQY</span></a></p>
+<p>“I've had much better results with Izotope RX than Studio One for example for stretching.”</p>
+<p>Also, Bitwig can be good.</p>
+<p>You can also try out paid Lossless Pitch AI on dango.ai (<a href="http://tuanziai.com"><span style="color:#1155cc">tuanziai.com/en-US</span></a>).<br><br>or paulstretch</p>
+<p>“if you want to retain the original pitch this is the first tool that comes to mind”</p>
+<p>Research: <a href="https://discord.com/channels/708579735583588363/911050124661227542/1303058610934382675"><span style="color:#1155cc">https://discord.com/channels/708579735583588363/911050124661227542/1303058610934382675</span></a></p>
+<h6 id="h.3j9hmk1ri4di">Restoring hi-end in pitched-down tracks - <a href="https://docs.google.com/document/d/1GLWvwNG5Ity2OpTe_HARHQxgwYuoosseYcxpzVjL_wY/edit?tab=t.0#heading=h.gko0a4vvgwqs"><span style="color:#1155cc">click</span></a></h6>
+<p>____</p>
+<p>What does changing batch_size from 1 to 2<br>(it wasn’t used in Rofo beta UVR for 9 Jan 2025, but maybe it got changed)</p>
+<p>“if your input is batch time sequence, it looks like this:</p>
+<p>[ batch1-&gt;[time-&gt;[sequence],time2-&gt;[sequence]..], batch2-&gt;[time-&gt;[sequence],time2-&gt;[sequence]..] ]</p>
+<p>As you increase batch_size you increase the amount of data the model gets to churn through.</p>
+<p>So higher batch_size allows the model to see more data before you do a thing called backward prop which calculates another thing called gradients,</p>
+<p>which are used to improve the model by tuning loads of little values inside the neurons so that the next pass through is more accurate” frazer</p>
+<p>Q: They told me that increasing batch size to 2 makes it process faster</p>
+<p>A: “So when that user says you can increase the batch_size what they mean is you can use more than one song to process - i.e. instead of running a single song at batch_size = 1 you can run 2 at the same time (batch_size = 2)</p>
+<p><br>Q: Ah so batch_size param is used for the amount of chunks of the input, so if I set [batch_size] to 4 my audio is chunked into 4”</p>
+<p><br>A: “No, the chunks are split based on defined chunk_size in config (which is more related to STFT settings), and then the script is stacking 'batch_size' number of chunks in same tensor to process them at same time (for inference).” jarredou</p>
+<p>A: “Increasing the batch size increases the number of chunks that can be processed at one time, which may speed up processing, but also increases memory usage.</p>
+<p>It will probably not affect quality.” - unwa</p>
+<p>Inference Colab by jarredou forces batch_size=1. Iirc the clicking issue with such value was fixed in MSST repo later, and you can stick to it. Probably in UVR too, since latest patches where newer inference code from MSST was implemented.</p>
+<p>Someone was once telling that a value not bigger than 2 takes no more than 4GB of VRAM, but it will rather differ from AMD/Intel when the VRAM usage is higher due to lack of garbage collector present in CUDA.</p>
+<h6 id="h.zemq3xnpnjse">TL;DR<br>models list shortened<br>04.08.26<br><br>There's no single model always for everything. Usually it's a matter of testing a few models or even <a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html#h.i7k483hodhhu"><span style="color:#1155cc">ensembling</span></a> till you get the best results (also, be aware that sometimes your taste or listening environment determines how sensitive you're to certain artefacts of separation models and how passable the results are for you).</h6>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html#h.n8ac32fhltgg"><span style="color:#1155cc">ACAPELLA</span></a> (vocals) </p>
+<p>- MVSEP BS-Roformer 124 bands becruily (fine-tune of the below, good mix of fullness and bleedless, premium only)</p>
+<p>- MVSEP BS-Roformer 124 bands (premium only, the best SDR, more bleedless)</p>
+<p>MVSep BS-PolarFormer 124 bands (the 2nd best)</p>
+<p>- MVSep BS-Roformer 2025.07 (bleedless, and accuracy, muddy)</p>
+<p>- Becruily Deux (fullness, but still a bit similar to the PolarFormer),</p>
+<p>BS_RoFormer_mag (fullness with more bleedless; very noisy at quiet parts), </p>
+<p>BS_Roformer_mag_v2 (worse SDR, bigger fullness, you might like it more),</p>
+<p>- unwa BS-Roformer-Leap Xe (best metrics for public model, e.g. the non Xe more highs, less mids vs Deux)</p>
+<p>- HyperACE voc v2 (bleedless, with more fullness),</p>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html#h.2vdz5zlpb27h"><span style="color:#1155cc">INSTRUMENTALS</span></a></p>
+<p>- MVSEP BS-Roformer 124 bands becruily (good mix of fullness and bleedless, premium only, duality model with also dedicated instrumental stem, so not an inversion)</p>
+<p>Deux (former perfect compromise of bleedless and fullness, also duality model) </p>
+<p>bs_roformer_inst_hyperacev2 (fuller; doesn’t work with UVR)</p>
+<p><br>(older but still might work)</p>
+<p>BS-Roformer Resurrection inst (sometimes noisier than Deux)</p>
+<p>V1e+ (the above tend to be better)</p>
+<p>Inst_GaboxFv8 (sometimes can be more destructive the top)</p>
+<p>BS-Roformer-Leap Xe (fine-tuned Deux, sometimes flaws in BVs)</p>
+<p>inst_gaboxFlowersV10 (can be noisy)</p>
+<p>(bleedless models)</p>
+<p>Fv7z</p>
+<p>Inst_FV8</p>
+<p>Rifforge</p>
+<p>Phase fixed becruily inst with becruily voc<br>Vocal models for instrumentals (e.g. Big Beta 5e FT/Mel Kim FT by Unwa/MVSEP Polarformer/BS-Roformers)</p>
+<p>(vocal models for instrumentals</p>
+<p>- sometimes more bleedless)</p>
+<p>E.g. Big Beta 5, FT2 Bleedless, Mel Kim, or some MVSEP-exclusive mentioned in the vocals section above </p>
+<p>(ensembles)</p>
+<p>Mel deux + BS 2025.07 (Max FFT/Spec) (“the best Ensemble for vocals for now”) </p>
+<p>MVSep Polarformer, Deux and MVSep 2025.07 (Max FFT) </p>
+<p>deux + big beta 7 (Max FFT) (“another good ensemble”)</p>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-3.html#h.vg1wnx1dc4g0"><span style="color:#1155cc">Lead Vocals</span></a> (KARAOKE/LVs)</p>
+<p>small_karaoke_gaboxauf</p>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-4.html#h.kkeba46q17rq"><span style="color:#1155cc">BACKING VOCALS </span></a>(BVs)</p>
+<p>anvuew’s Karaoke BS-Roformer </p>
+<p>Ensemble of becruily frazer karaoke + anvuew karaoke (Max Spec)</p>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-4.html#h.9h585vwqgcvg"><span style="color:#1155cc">HARMONIES</span></a></p>
+<p>becruily &amp; frazer BS-Roformer Karaoke</p>
+<p>Stereo width feature for uvr bve v2</p>
+<p>MVSep SATB Choir </p>
+<p>MVSep Choir </p>
+<p>ADLIBS</p>
+<p>(probably some models for BVs)</p>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-4.html#h.7bakw3ajb3ii"><span style="color:#1155cc">MULTISINGER</span></a> (two singers/duets)</p>
+<p>MVSep SATB Choir </p>
+<p>becruily &amp; frazer BS Karaoke </p>
+<p>Becruily Mel Karaoke</p>
+<p>Dry Paint Dealer Undr MelBand Roformer Duet</p>
+<p>MedleyVox </p>
+<p>MVSEP Multispeaker model </p>
+<p>MULTICHANNEL</p>
+<p>MVSEP Multichannel</p>
+<p><a href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-2.html#h.3c6n9m7vjxul"><span style="color:#1155cc">PHANTOM CENTER</span></a> (center/similarity/mid extraction)</p>
+<p>CenterWide model MDX23c dual fullness a.k.a. v2e</p>
+<p>Ensemble Avg/Avg of SCNet V2 by gilliaan + gilliaan_mdx23c_centerwide_v2e </p>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-4.html#h.sjf0vefmplt"><span style="color:#1155cc">4-6 STEMS</span></a> (drums, bass, other, vocals / piano, guitar)</p>
+<p>MVSep Ensemble (4 stems) (2025.06.30) - for premium</p>
+<p>BS-Roformer SW (6 stems - /w piano &amp; guitar)<br><a href="mdx23-by-zfturbo-jarredou-fork---2-4-stems.html#h.jmb1yj7x3kj7"><span style="color:#1155cc">MDX23 fork</span></a><br>SCNet XL IHF by ZFTurbo</p>
+<p>Demucs_ft</p>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-5.html#h.93froqq0fnq6"><span style="color:#1155cc">DRUMSEP</span></a> (expects drums as input; hihat/cymbals/ride/crash, snare, toms, kick)<br>MVSEP 8 stems ensemble</p>
+<p>MVSEP SCNet 4 stem <br>MVSEP SCNet 5 stem</p>
+<p>MVSEP SCNet 6 stem model</p>
+<p>jarredou MDX23C 5 stem model<br>jarredou MDX23C 6 stem model</p>
+<p><a href="https://docs.google.com/document/d/1GLWvwNG5Ity2OpTe_HARHQxgwYuoosseYcxpzVjL_wY/edit?tab=t.0#heading=h.i7mm2bj53u07"><span style="color:#1155cc">UPSCALING</span></a> (music)</p>
+<p>AudioSR</p>
+<p>Apollo Universal</p>
+<p>UniverSR</p>
+<p>A2SB</p>
+<p>RE-USE<br><br>UPSCALING (voice/vocals)<br>AP-BWE</p>
+<p>Clearer voice studio's clear voice </p>
+<p><a href="no-longer-necessary-fork-of-uvr-gui-and-how-to-install---s-6.html#h.k34y1vaaneb1"><span style="color:#1155cc">MASTERING</span></a></p>
+<p>emastered.com (paid; or free for downloaded preview mp3 320kbps with browser’s devtools)</p>
+<p>Matchering (for reference song master matching)</p>
+<p>Masterknecht (-||-)</p>
+<p><br>See also <a href="https://docs.google.com/document/d/19A9Z32LgqTUdI7z0LUAoGXjm07BO-IkRNS_QNnUxaYA/edit?tab=t.0"><span style="color:#1155cc">isling’s short separation guide</span></a><br>(at the moment it has some older models)</p>
+<p><br>_____________________________________________________________________</p>
+<h6 id="h.te4ehbg2b15x"><br>Section with miscellanies -</h6>
+<p>Random stuff or quotations from below waiting to be added to relevant sections above with added authors and corrected. Possible duplicates. A mess, but potentially useful. Some stuff might be outdated. Random notes from our Discord server. Not working hyperlinks yet.</p>
+<p>(added from the newest info to the oldest, currently 143 pages)</p>
+<p>It won’t fit the GDoc limit, so it was moved <a href="https://docs.google.com/document/d/1yGJYk7zI8i_Oi3yszLygWNaA9rM5WCfmcdmolsyJamw/edit?usp=sharing"><span style="color:#1155cc">here</span></a>.</p>
+<p>_______</p>
+<p>Done by deton24, 2021-2026</p>
+<p>Special thanks to <a href="https://discord.gg/ZPtAU5R6rP"><span style="color:#1155cc">Audio Separation</span></a> Discord,</p>
+<p>and all the people mentioned in the credits (Hall of Fame) section above.</p>
+<p>Without you, it wouldn't happen.</p>
+<p>_____________________</p>
+<p>For help and discussion, visit our Audio Separation Discord: <a href="https://discord.gg/ZPtAU5R6rP"><span style="color:#1155cc">https://discord.gg/ZPtAU5R6rP</span></a> | Download <a href="edit-280826-bsmel-roformer-uvr-beta-patch-for-gpu-accelerati.html#h.6y2plb943p9v"><span style="color:#1155cc">UVR</span></a> or<a href="bleedness-and-fullness-leaderboard-python-evaluation-scrip-5.html#h.2y2nycmmf53"><span style="color:#1155cc"> MSST-GUI</span></a> </p>
+<p>For inst/voc separation in cloud, try out free Colabs: <a href="https://colab.research.google.com/drive/1zKLU3q4h063fglZzFo_W7t4Ti9NnAdru"><span style="color:#1155cc">BS/Mel-Roformer</span></a> | <a href="mdx23-by-zfturbo-jarredou-fork---2-4-stems.html#h.jmb1yj7x3kj7"><span style="color:#1155cc">MDX23</span></a> (2-4 stems) | <a href="https://colab.research.google.com/github/NaJeongMo/Colab-for-MDX_B/blob/main/MDX-Net_Colab.ipynb"><span style="color:#1155cc">MDX-Net</span></a> | <a href="https://colab.research.google.com/drive/16Q44VBJiIrXOgTINztVDVeb0XKhLKHwl"><span style="color:#1155cc">VR</span></a> | <a href="https://colab.research.google.com/drive/117SWWC0k9N2MBj7biagHjkRZpmd_ozu1"><span style="color:#1155cc">Demucs 4</span></a> (2-6)</p>
+</div>
+<nav class="pager"><a class="prev" href="ai-killing-tracks---difficult-ones-to-get-instrumentals-or-v.html">← AI-killing tracks - difficult ones to get instrumentals (or vocals) - a lot of e.g. vocal (or instrumental) leftovers in current models</a></nav>
+<footer>Mirror of <a href="https://docs.google.com/document/d/17fjNvJzj8ZGSer7c7OFe_CNfUKbAxEh_OBv94ZdRG5c/edit">the Google Doc</a> — 65 sections · generated 2026-08-29 15:23 UTC</footer>
+</main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

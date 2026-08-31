@@ -19,8 +19,9 @@ from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath
 from ui.theme import theme_manager, UIConstants
 from backend import update_checker as uc
 from ui.widgets.common import (
-    PageHeader, outline_button_ss, ChevronCombo, EllipsisButton, add_button_hover,
-    GlyphButton, _outline_icon_color,
+    PageHeader, outline_button_ss, solid_button_ss, ChevronCombo,
+    EllipsisButton, add_button_hover,
+    GlyphButton, _outline_icon_color, _solid_icon_color,
 )
 
 from backend.downloader import HuggingFaceDownloader
@@ -1858,11 +1859,11 @@ class SettingsPage(QWidget):
 
         ll.addSpacing(8)
 
-        self._reg_btn = GlyphButton("Register Model", "+", _outline_icon_color,
+        self._reg_btn = GlyphButton("Register Model", "+", _solid_icon_color,
                                     glyph_size=18, text_size=12)
         self._reg_btn.setFixedHeight(44)
         self._reg_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self._reg_btn.setStyleSheet(outline_button_ss())
+        self._reg_btn.setStyleSheet(solid_button_ss())
         self._reg_btn.clicked.connect(self._register)
         ll.addWidget(self._reg_btn)
 
@@ -1873,11 +1874,11 @@ class SettingsPage(QWidget):
         dl.setContentsMargins(0, 0, 0, 0)
         dl.setSpacing(12)
 
-        self._download_btn = GlyphButton("Download Model", "+", _outline_icon_color,
+        self._download_btn = GlyphButton("Download Model", "+", _solid_icon_color,
                                          glyph_size=18, text_size=12)
         self._download_btn.setFixedHeight(44)
         self._download_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self._download_btn.setStyleSheet(outline_button_ss())
+        self._download_btn.setStyleSheet(solid_button_ss())
         self._download_btn.clicked.connect(self._start_download)
         dl.addWidget(self._download_btn)
 
