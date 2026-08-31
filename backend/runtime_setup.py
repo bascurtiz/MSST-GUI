@@ -318,6 +318,60 @@ _BENIGN_WARN = re.compile(
 _ASTEROID_PIN = "asteroid>=0.7.0"
 
 
+def _probe_onnx(py):
+    """(importable, has_gpu_provider) for the runtime's onnxruntime.
+    (None, False) when the package is missing or cannot be imported."""
+    try:
+        r = subprocess.run(
+            [py, "-c",
+             "import onnxruntime as ort;"
+             "print(','.join(ort.get_available_providers()))"],
+            capture_output=True, text=True, timeout=180,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if r.returncode != 0:
+            return (None, False)
+        provs = r.stdout.strip().split(",")
+        return (True, "CUDAExecutionProvider" in provs
+                or "DmlExecutionProvider" in provs)
+    except Exception:
+        return (None, False)
+
+
+def _ensure_onnx_gpu(py, log_cb, cancel_check):
+    """Swap the CPU-only onnxruntime wheel for the CUDA build when the
+    runtime's PyTorch is a working CUDA build.
+
+    The zoo's MDX-Net models run through onnxruntime; with the default CPU
+    wheel they ignore the GPU entirely (several times slower than the torch
+    models on the same card). The CUDA provider needs cudart/cublas/cuDNN,
+    which the CUDA torch wheel already bundles — models/mdx_net.py exposes
+    torch's lib dir to onnxruntime before creating its session."""
+    probe = _probe_torch(py)
+    if not probe or probe[1] is None or not probe[2]:
+        return  # CPU torch (or CUDA not usable): keep the CPU wheel
+    importable, has_gpu = _probe_onnx(py)
+    if not importable or has_gpu:
+        return  # onnxruntime missing (set up later) or already GPU-capable
+    log_cb("Upgrading onnxruntime to the CUDA build for MDX-Net models…")
+    if _run_pip_retries(py, ["uninstall", "-y", "onnxruntime",
+                             "onnxruntime-directml"],
+                        log_cb, cancel_check) != 0:
+        log_cb("WARNING: could not remove the CPU onnxruntime — "
+               "MDX-Net models stay on CPU.")
+        return
+    ok = False
+    if _run_pip_retries(py, ["install", "onnxruntime-gpu>=1.20"],
+                        log_cb, cancel_check) == 0:
+        p = _probe_onnx(py)
+        ok = bool(p and p[0] and p[1])
+    if not ok:
+        log_cb("WARNING: onnxruntime-gpu install failed — restoring the "
+               "CPU wheel; MDX-Net models run on CPU.")
+        _run_pip_retries(py, ["install", "onnxruntime>=1.16.0"],
+                         log_cb, cancel_check)
+
+
 def _install_asteroid_no_deps(py, log_cb, cancel_check):
     """Install `asteroid` without its transitive evaluation deps.
 
@@ -452,6 +506,7 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
         if _install_asteroid_no_deps(py, log_cb, cancel_check) != 0:
             return False, "asteroid (Bandit) installation failed — installed packages are kept."
         _write_requirements_marker()
+        _ensure_onnx_gpu(py, log_cb, cancel_check)
         if not runtime_ready():
             return False, "Runtime updated but 'import torch' failed."
         return True, "Runtime libraries updated."
@@ -529,6 +584,7 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
         if _install_asteroid_no_deps(py, log_cb, cancel_check) != 0:
             return False, "asteroid (Bandit) installation failed — installed packages are kept."
         _write_requirements_marker()
+        _ensure_onnx_gpu(py, log_cb, cancel_check)
     if progress_cb:
         progress_cb(0.93)
 

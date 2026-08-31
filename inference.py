@@ -250,9 +250,27 @@ def run_folder(
                     else:
                         sum_selected += waveforms_orig[s]
                 if sum_selected is not None:
-                    waveforms_orig["rest"] = mix_orig - sum_selected
-                    if "rest" not in instruments:
-                        instruments.append("rest")
+                    rest = mix_orig - sum_selected
+                    # Skip a redundant Rest. When the selected stems already
+                    # reconstruct the mix (e.g. a 2-stem vocal model where
+                    # "instrumental" is already mix − vocals), "rest" would
+                    # just duplicate an existing stem or be silence.
+                    redundant = False
+                    for s in waveforms_orig:
+                        if s == "rest":
+                            continue
+                        try:
+                            if float(np.max(np.abs(
+                                    rest - waveforms_orig[s]))) <= 1e-4:
+                                redundant = True
+                                break
+                        except Exception:
+                            continue
+                    if not redundant and float(
+                            np.max(np.abs(rest))) > 1e-4:
+                        waveforms_orig["rest"] = rest
+                        if "rest" not in instruments:
+                            instruments.append("rest")
 
         for instr in instruments:
             estimates = waveforms_orig[instr]
@@ -334,6 +352,13 @@ def format_filename(template, **kwargs):
     *dirnames, fname = result.split("/")
     return dirnames, fname
 
+def _progress(pct, msg):
+    """Emit a machine-readable progress line the GUI parses to move the card
+    bar incrementally, even during phases that produce no tqdm output (e.g.
+    model architecture load, checkpoint load, .to(device) warm-up)."""
+    print(f"Processing: {int(pct)}% {msg}", flush=True)
+
+
 def proc_folder(dict_args):
     args = parse_args_inference(dict_args)
     device = "cpu"
@@ -358,11 +383,18 @@ def proc_folder(dict_args):
     model_load_start_time = time.time()
     torch.backends.cudnn.benchmark = True
 
+    _progress(5, "loading model architecture")
+
+    _progress(10, "building model")
     model, config = get_model_from_config(args.model_type, args.config_path,
-                                           custom_backend=args.custom_backend)
+                                           custom_backend=args.custom_backend,
+                                           checkpoint_path=args.start_check_point)
     if 'model_type' in config.training:
         args.model_type = config.training.model_type
-    if args.start_check_point:
+    if args.start_check_point and args.model_type != 'mdxnet':
+        _progress(20, "loading checkpoints")
+        # MDX-Net models are ONNX checkpoints loaded by onnxruntime inside
+        # get_model_from_config; the torch.load path below is torch-only.
         _bitsandbytes_stub()
         checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
         # SCNet has "masked" and "tran" variants that the GUI routes to the
@@ -395,13 +427,15 @@ def proc_folder(dict_args):
     print("Instruments: {}".format(config.training.instruments))
 
     # in case multiple CUDA GPUs are used and --device_ids arg is passed
-    if isinstance(args.device_ids, list) and len(args.device_ids) > 1 and not args.force_cpu:
+    if (isinstance(args.device_ids, list) and len(args.device_ids) > 1
+            and not args.force_cpu and args.model_type != 'mdxnet'):
         model = nn.DataParallel(model, device_ids=args.device_ids)
 
     model = model.to(device)
 
     print("Model load time: {:.2f} sec".format(time.time() - model_load_start_time))
 
+    _progress(25, "model ready - processing audio")
     run_folder(model, args, config, device, verbose=True)
 
 

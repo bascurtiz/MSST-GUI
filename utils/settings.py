@@ -398,7 +398,8 @@ def _fit_model_kwargs(cls, kwargs: dict) -> dict:
 
 
 def get_model_from_config(model_type: str, config_path: str,
-                          custom_backend: str = None) -> Tuple[nn.Module, Union[ConfigDict, OmegaConf]]:
+                          custom_backend: str = None,
+                          checkpoint_path: str = None) -> Tuple[nn.Module, Union[ConfigDict, OmegaConf]]:
     """
     Load and instantiate a model using a configuration file.
 
@@ -552,6 +553,11 @@ def get_model_from_config(model_type: str, config_path: str,
             inf.chunk_size = 44100 * 50
         if not hasattr(inf, 'num_overlap'):
             inf.num_overlap = 2
+    elif model_type == 'mdxnet':
+        # MDX-Net zoo models are ONNX checkpoints (kuielab layout), not
+        # torch modules — loaded via onnxruntime, see models/mdx_net.py.
+        from models.mdx_net import MDXNetModel
+        model = MDXNetModel(config, checkpoint_path or "")
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 

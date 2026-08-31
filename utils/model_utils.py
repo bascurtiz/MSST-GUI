@@ -103,6 +103,11 @@ def demix(
 
     should_print = not dist.is_initialized() or dist.get_rank() == 0
 
+    if model_type == 'mdxnet':
+        # MDX-Net zoo models are ONNX checkpoints with their own chunked
+        # STFT-based demix loop (models/mdx_net.py).
+        return model.demix(mix, device, pbar)
+
     mix = torch.tensor(mix, dtype=torch.float32)
 
     if model_type == 'htdemucs':

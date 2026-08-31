@@ -77,6 +77,14 @@ pedalboard>=0.9.0
 # torch-pitch-shift + primePy (pure-python wheels).
 torch_audiomentations>=0.6.0
 
+# === ONNX inference (MDX-Net zoo models) ===
+# The mvsepless zoo ships 45 "MDX-Net Architecture" models as ONNX
+# checkpoints (mdx_*.onnx, kuielab layout). The CPU wheel installed here is
+# the baseline; runtime_setup.py (_ensure_onnx_gpu) swaps it for the
+# onnxruntime-gpu wheel whenever the runtime's torch is a working CUDA
+# build, so MDX-Net models run on the GPU like every other model.
+onnxruntime>=1.16.0
+
 # === Networking ===
 requests>=2.31.0
 urllib3>=2.0.0

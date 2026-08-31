@@ -283,6 +283,14 @@ class _SmoothBar(QWidget):
         self._anim = QPropertyAnimation(self, b"animated_value", self)
         self._anim.setDuration(300)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        # Indeterminate "loading" mode: a short band sweeps back and forth
+        # while the real percent is unknown (e.g. model load phase).
+        self._indeterminate = False
+        self._sweep_pos = 0.0
+        self._sweep_dir = 1.0
+        self._sweep_timer = QTimer(self)
+        self._sweep_timer.setInterval(33)
+        self._sweep_timer.timeout.connect(self._sweep_tick)
 
     def _get_animated(self):
         return self._current
@@ -308,6 +316,29 @@ class _SmoothBar(QWidget):
         self._target = v
         self.update()
 
+    def set_indeterminate(self, on):
+        self._indeterminate = bool(on)
+        if self._indeterminate:
+            self._anim.stop()
+            self._current = 0.0
+            if not self._sweep_timer.isActive():
+                self._sweep_timer.start()
+        else:
+            self._sweep_timer.stop()
+            self._sweep_pos = 0.0
+            self._sweep_dir = 1.0
+        self.update()
+
+    def _sweep_tick(self):
+        self._sweep_pos += 0.045 * self._sweep_dir
+        if self._sweep_pos >= 1.0:
+            self._sweep_pos = 1.0
+            self._sweep_dir = -1.0
+        elif self._sweep_pos <= 0.0:
+            self._sweep_pos = 0.0
+            self._sweep_dir = 1.0
+        self.update()
+
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
@@ -316,7 +347,14 @@ class _SmoothBar(QWidget):
         p.setBrush(bg)
         p.setPen(Qt.NoPen)
         p.drawRoundedRect(r, 3, 3)
-        if self._current > 0:
+        if self._indeterminate:
+            band = max(0.16, min(0.45, r.width() / 240.0))
+            x0 = int((r.width() - r.width() * band) * self._sweep_pos)
+            grad = QColor(theme_manager.accent)
+            grad.setAlpha(170)
+            p.setBrush(grad)
+            p.drawRoundedRect(x0, 0, int(r.width() * band), r.height(), 3, 3)
+        elif self._current > 0:
             fw = int(r.width() * self._current / 100.0)
             if fw > 0:
                 p.setBrush(QColor(theme_manager.accent))
@@ -1106,6 +1144,12 @@ class _TaskCard(QFrame):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
 
+        # Loading state: a static "Loading..." label (the dots don't animate —
+        # a changing label shifts the text position on every tick) plus an
+        # indeterminate sweep on the bar, shown while the model/runtime is
+        # preparing and no real chunk progress has arrived yet.
+        self._loading = False
+
     def _apply_style(self):
         if self._is_selected:
             border = theme_manager.accent
@@ -1189,7 +1233,19 @@ class _TaskCard(QFrame):
         self._is_selected = v
         self._apply_style()
 
-    def set_progress(self, pct):
+    def _stop_loading(self):
+        self._loading = False
+        self._bar.set_indeterminate(False)
+
+    def set_progress(self, pct, from_tqdm=False):
+        if self._loading:
+            # Staged "load" percents (5..25%) are not the job's real progress;
+            # keep the spinner until actual audio processing starts. Only a
+            # tqdm chunk update ("N%|..." from the demix loop) ends loading.
+            if not from_tqdm:
+                return
+            self._stop_loading()
+            self._status_lbl.setText("Processing...")
         if pct < 0:
             pct = 0
         if pct > 100:
@@ -1241,6 +1297,7 @@ class _TaskCard(QFrame):
         self._start_time = time.time()
         self._is_complete = False
         self._failed = False
+        self._stop_loading()
         self._bar.setValueImmediate(0)
         self._pct_lbl.setText("0%")
         self._status_lbl.setText("Processing...")
@@ -1249,8 +1306,25 @@ class _TaskCard(QFrame):
         self._icon.update()
         self._apply_style()
 
+    def mark_loading(self):
+        """Model/runtime preparation phase: static "Loading..." status +
+        indeterminate bar sweep, no fake percent. Switched to Processing by
+        the first real marker."""
+        self._start_time = time.time()
+        self._loading = True
+        self._pct_lbl.setText("")
+        self._eta_lbl.setText("")
+        self._bar.set_indeterminate(True)
+        self._status_lbl.setText("Loading...")
+        if not self._timer.isActive():
+            self._timer.start(1000)
+        self._icon._completed = False
+        self._icon.update()
+        self._apply_style()
+
     def mark_complete(self):
         self._timer.stop()
+        self._stop_loading()
         self._is_complete = True
         self._bar.setValueImmediate(100)
         self._pct_lbl.setText("100%")
@@ -1267,6 +1341,7 @@ class _TaskCard(QFrame):
 
     def mark_queued(self):
         self._progress = 0
+        self._stop_loading()
         self._bar.setValueImmediate(0)
         self._pct_lbl.setText("0%")
         self._status_lbl.setText("Queued")
@@ -1279,6 +1354,7 @@ class _TaskCard(QFrame):
 
     def mark_active(self):
         self._start_time = time.time()
+        self._stop_loading()
         self._status_lbl.setText("Processing...")
         if not self._timer.isActive():
             self._timer.start(1000)
@@ -1286,6 +1362,7 @@ class _TaskCard(QFrame):
 
     def mark_failed(self):
         self._timer.stop()
+        self._stop_loading()
         self._failed = True
         self._status_lbl.setText("Failed")
         self._icon._completed = False
@@ -2050,6 +2127,7 @@ class ConsolePage(QWidget):
         super().__init__(parent)
         self._job_active = False  # True while an inference/ensemble job runs
         self._song_cards = {}
+        self._song_run = {}  # normalized song -> run counter, for re-run keys
         self._unmatched_exports = []
         self._current_song = None
         self._followed_song = None
@@ -2179,9 +2257,14 @@ class ConsolePage(QWidget):
 
     def _on_card_deleted(self, card):
         self._output_list.remove_card(card)
-        self._song_cards.pop(getattr(card, "_key", None), None)
-        self._song_cards.pop(_norm(card._song_name), None)
-        if self._current_song == getattr(card, "_key", None):
+        key = getattr(card, "_key", None)
+        self._song_cards.pop(key, None)
+        # Only drop the plain-name alias when it maps to THIS card — a re-run
+        # duplicate ("<song> #2") shares its song name with the original card.
+        nk = _norm(card._song_name)
+        if self._song_cards.get(nk) is card:
+            self._song_cards.pop(nk, None)
+        if self._current_song == key:
             self._current_song = None
         # If the deleted card was shown in the detail view, clear it and
         # stop playback so file handles are released before deletion.
@@ -2250,6 +2333,33 @@ class ConsolePage(QWidget):
     def _is_media_file(self, raw):
         return bool(raw) and os.path.splitext(raw)[1].lower() in _AUDIO_EXTS
 
+    def _create_card(self, display_name, base_key, input_full):
+        """Create a task card with a unique key. A song that already has a
+        card (a re-run of the same input, e.g. with a different model) gets
+        its own card keyed "<base> #N" so the previous result stays intact."""
+        key = base_key
+        if key in self._song_cards:
+            n = self._song_run.get(base_key, 1) + 1
+            self._song_run[base_key] = n
+            key = f"{base_key} #{n}"
+        else:
+            self._song_run.setdefault(base_key, 1)
+        card = _TaskCard(display_name, input_path=input_full)
+        card._key = key
+        self._song_cards[key] = card
+        self._output_list.add_card(card)
+        return card
+
+    def _incomplete_card_for_song(self, base_key):
+        """Unfinished card whose normalized song name matches `base_key`.
+        Used when a completion/export refers to a song that exists as both a
+        finished original and an in-progress re-run duplicate."""
+        for c in self._song_cards.values():
+            if (_norm(c._song_name) == base_key and not c._is_complete
+                    and not c._failed):
+                return c
+        return None
+
     def _ensure_active_card(self):
         """Enforce that _current_song points to the alphabetically first
         incomplete card.  MSST processes files in alphabetical order."""
@@ -2293,12 +2403,16 @@ class ConsolePage(QWidget):
             if self._is_media_file(raw):
                 name = os.path.splitext(os.path.basename(raw))[0]
                 key = _norm(name)
-                if key and key not in self._song_cards:
+                card = self._song_cards.get(key)
+                # Create for a new song — and also for a re-run of a song
+                # whose earlier card already finished or failed, so the new
+                # job gets its own entry. Stale Queued cards from an aborted
+                # run are reused rather than duplicated.
+                reuse = (card is not None and not card._is_complete
+                         and not card._failed)
+                if key and not reuse:
                     full = self._input_path_map.get(name) or self._input_path_map.get(name.lower()) or raw
-                    card = _TaskCard(name, input_path=full)
-                    card._key = key
-                    self._song_cards[key] = card
-                    self._output_list.add_card(card)
+                    card = self._create_card(name, key, full)
                     card.mark_queued()
                     card.set_model_name(self._current_model)
                     if self._output_dir:
@@ -2312,18 +2426,27 @@ class ConsolePage(QWidget):
             raw_q = _extract_raw_input_path(text)
             if self._is_media_file(raw_q):
                 key = _norm(qname)
-                if key not in self._song_cards:
+                card = self._song_cards.get(key)
+                reuse = (card is not None and not card._is_complete
+                         and not card._failed
+                         and card._status_lbl.text() != "Complete")
+                if not reuse:
+                    # New song — add a card. A re-run of an already-finished
+                    # or failed song (e.g. a different model on the same
+                    # input) gets its own fresh card; the previous result
+                    # stays untouched in the list. New cards start in the
+                    # loading state (spinner + indeterminate bar) because
+                    # model/runtime setup precedes the actual processing.
                     full = (self._input_path_map.get(qname)
                             or self._input_path_map.get(qname.lower())
                             or raw_q or qname)
-                    card = _TaskCard(qname, input_path=full)
-                    card._key = key
-                    self._song_cards[key] = card
-                    self._output_list.add_card(card)
-                    card.mark_queued()
+                    card = self._create_card(qname, key, full)
+                    card.mark_loading()
                     card.set_model_name(self._current_model)
                     if self._output_dir:
                         card.set_output_dir(self._output_dir)
+                    self._current_song = card._key
+                    self._followed_song = card._key
                     self._reconcile_unmatched()
                     self._sort_card_order()
                     self._ensure_active_card()
@@ -2333,6 +2456,12 @@ class ConsolePage(QWidget):
         if completed_name:
             key = _norm(completed_name)
             card = self._song_cards.get(key)
+            # With re-run duplicates the direct key may hit the *previous*
+            # run's finished card; prefer an unfinished card of the same song.
+            if card is not None and (card._is_complete or card._failed):
+                alt = self._incomplete_card_for_song(key)
+                if alt is not None:
+                    card = alt
             # If direct match fails, try fuzzy: find a card whose song name is
             # contained in the completed name (handles metadata display names).
             if card is None:
@@ -2388,7 +2517,9 @@ class ConsolePage(QWidget):
 
         pct = _extract_progress(text)
         if pct is not None:
-            card.set_progress(pct)
+            # tqdm chunk updates ("N%|...") are real processing progress;
+            # staged "Processing: N%" loader lines are not.
+            card.set_progress(pct, from_tqdm=bool(_RE_TQDM_PCT.search(text)))
 
         export = _extract_export(text)
         if export:
@@ -2397,7 +2528,12 @@ class ConsolePage(QWidget):
 
     def _active_card(self):
         for c in self._song_cards.values():
-            if c._status_lbl.text() == "Processing..." and not c._is_complete:
+            if c._is_complete or c._failed:
+                continue
+            status = c._status_lbl.text()
+            if status == "Queued":
+                continue
+            if status == "Processing..." or getattr(c, "_loading", False):
                 return c
         return None
 
@@ -2420,6 +2556,13 @@ class ConsolePage(QWidget):
         stemless = re.sub(r'\s*\([^)]*\)\s*$', '', name_no_ext).strip() if m else name_no_ext
         nstem = _norm(stemless)
 
+        # 0) A re-run creates a second card for the same song; its exports
+        #    must land on the in-progress card, not the previous run's
+        #    finished one. Only when the active card IS this exact song.
+        active = self._active_card()
+        if (active is not None and not active._is_complete
+                and _norm(active._song_name) == nstem):
+            return active
         # 1) exact normalized stem (most reliable)
         if nstem in self._song_cards:
             return self._song_cards[nstem]
@@ -2436,7 +2579,9 @@ class ConsolePage(QWidget):
             if not key:
                 continue
             if key in nstem or nstem in key:
-                if best is None or len(key) > len(best[0]):
+                if (best is None or len(key) > len(best[0])
+                        or (len(key) == len(best[0])
+                            and best[1]._is_complete and not card._is_complete)):
                     best = (key, card)
         if best:
             return best[1]

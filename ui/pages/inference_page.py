@@ -1993,7 +1993,7 @@ class InferencePage(QWidget):
         self._dev_row = _ComboRow(
             None, "Device", list_gpus())
         self._device_combo = self._dev_row.combo
-        if self._device_combo.count > 1:
+        if self._device_combo.count() > 1:
             # Default to the first GPU when one is available (index 0 is CPU).
             self._device_combo.setCurrentIndex(1)
         cfg.addWidget(self._dev_row)

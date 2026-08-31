@@ -46,6 +46,12 @@ class ProcessRunner(QThread):
 
     def run(self):
         """Called automatically by QThread.start()."""
+        env = os.environ.copy()
+        # The child inherits a pipe, so cp.stdio buffers print()/tqdm output
+        # in multi-KB blocks unless we force unbuffered mode — otherwise the
+        # GUI sees progress in bursts, or only after the process exits. Read
+        # that batch as it's produced.
+        env['PYTHONUNBUFFERED'] = '1'
         try:
             self._process = subprocess.Popen(
                 self._cmd,
@@ -54,16 +60,29 @@ class ProcessRunner(QThread):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                bufsize=1,
+                env=env,
                 cwd=self._cwd,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
-            for raw_line in self._process.stdout:
-                line = raw_line.rstrip("\n")
-                self.log_line.emit(line)
-                pct = _parse_tqdm_percent(line)
-                if pct is not None:
-                    self.progress.emit(pct)
+            # tqdm updates use '\r' (in-place redraw) not '\n', so a plain
+            # line-by-line reader would only see progress after a real '\n'
+            # arrives. Split on BOTH delimiters to stream every update.
+            buf = ""
+            for chunk in self._process.stdout:
+                buf += chunk.replace("\r", "\n")
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    self.log_line.emit(line)
+                    pct = _parse_tqdm_percent(line)
+                    if pct is not None:
+                        self.progress.emit(pct)
+            if buf.strip():
+                self.log_line.emit(buf.strip())
 
             self._process.wait()
             self.finished.emit(self._process.returncode)
