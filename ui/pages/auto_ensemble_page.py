@@ -1157,8 +1157,14 @@ class AutoEnsemblePage(QWidget):
         self._refresh_stem_buttons()
 
     def on_model_registered(self, model):
-        if any(m.get("name") == model.get("name") for m in self._models):
-            return
+        for i, m in enumerate(self._models):
+            if m.get("name") == model.get("name"):
+                # Re-registration (e.g. a type reconciliation): replace in
+                # place so the corrected type is used.
+                self._models[i] = model
+                self._refresh_stem_buttons()
+                self._refresh_models()
+                return
         self._models.append(model)
         self._refresh_stem_buttons()
         self._refresh_models()

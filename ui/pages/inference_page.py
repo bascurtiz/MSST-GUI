@@ -1915,8 +1915,8 @@ class InferencePage(QWidget):
         self._target_cards   = {}  # model_type -> _ArchCard (sort-by-target mode)
         self._sort_by_target = False
         self._friendly_names = {}  # ckpt filename -> zoo full name
-        self._pending_stems = None        # saved stems to re-apply when a model
-        self._pending_save_rest = False   # with a matching stem set is selected
+        self._stems_by_model = {}  # model name -> {"stems": [...], "save_rest": bool}
+        self._loaded_stems_by_model = {}  # stems loaded from settings, applied per-model
         self._mvsepless_archs = None  # archs listed in the mvsepless zoo (index fetch)
         self._library_finalized = False  # trailing stretch added to _model_layout?
         self._build_ui()
@@ -2361,7 +2361,11 @@ class InferencePage(QWidget):
         name = model["name"]
         display = self._friendly_names.get(os.path.basename(name).lower(), "")
         if arch in self._arch_cards:
-            self._arch_cards[arch].add_model(
+            card = self._arch_cards[arch]
+            # Re-registration (e.g. a type reconciliation) refreshes the item
+            # in place so its badge shows the corrected type.
+            card.remove_model(name)
+            card.add_model(
                 name, model.get("ckpt", ""),
                 model.get("yaml", ""), arch,
                 model.get("type", ""),
@@ -2408,6 +2412,8 @@ class InferencePage(QWidget):
             self._filter_models(txt)
 
     def on_model_removed(self, name: str):
+        self._stems_by_model.pop(name, None)
+        self._loaded_stems_by_model.pop(name, None)
         for card in self._arch_cards.values():
             card.remove_model(name)
         for card in self._target_cards.values():
@@ -2429,6 +2435,7 @@ class InferencePage(QWidget):
             old_name = self._selected_model.get("name")
             old_arch = self._selected_model.get("arch")
             if old_name == name and old_arch == arch:
+                self._snapshot_model_stems(old_name)
                 self._deselect_item_everywhere(name)
                 self._selected_model = None
                 self._output_stems_row.set_stems([])
@@ -2438,6 +2445,10 @@ class InferencePage(QWidget):
             if old_card and old_arch != arch:
                 old_card.deselect_all_models()
             self._deselect_item_everywhere(old_name)
+            # Remember the outgoing model's stem choice so it can be restored
+            # when the user switches back to it.
+            if old_name:
+                self._snapshot_model_stems(old_name)
 
         self._selected_model = {
             "name": name, "ckpt": ckpt, "yaml": yaml_path, "arch": arch,
@@ -2458,16 +2469,41 @@ class InferencePage(QWidget):
             except Exception:
                 pass
         self._output_stems_row.set_stems(instruments, primary_target=target_inst)
-        if self._pending_stems is not None:
-            self._output_stems_row.restore_selection(
-                self._pending_stems, self._pending_save_rest)
+        # Default: all stems. Only restore a selection the user explicitly
+        # made for THIS model (never carry one model's choice to another).
+        saved = self._loaded_stems_by_model.pop(name, None) or self._stems_by_model.get(name)
+        if saved is not None:
+            stems = saved.get("stems", [])
+            rest = saved.get("save_rest", False)
+            if stems or rest:  # non-default choice only; empty == "all stems"
+                self._output_stems_row.restore_selection(stems, rest)
 
     def _on_ckpt_settings_requested(self, name, ckpt, yaml_path, arch):
         self.ckpt_settings_requested.emit(name, ckpt, yaml_path, arch)
 
     # ── Settings ──────────────────────────────────────────────────────
 
+    def _snapshot_model_stems(self, model_name):
+        """Store a model's current stem choice, collapsing the default
+        "all stems" state to an empty marker so only genuine user
+        customizations are persisted."""
+        row = self._output_stems_row
+        stems = row.get_selected_stems()
+        rest = row.get_save_rest()
+        all_lower = {s.lower() for s in row._all_stems}
+        if all_lower:
+            is_default = (not rest and {s.lower() for s in stems} == all_lower)
+        else:
+            is_default = not rest
+        self._stems_by_model[model_name] = {
+            "stems": [] if is_default else stems,
+            "save_rest": rest,
+        }
+
     def save_settings(self):
+        # Snapshot the current model's stem choice so it survives relaunches.
+        if self._selected_model and self._selected_model.get("name"):
+            self._snapshot_model_stems(self._selected_model["name"])
         return {
             "input_files":   self._input_row.value()
                              if isinstance(self._input_row.value(), list) else [],
@@ -2478,6 +2514,7 @@ class InferencePage(QWidget):
             "device":        self._device_combo.currentText(),
             "stems":         self._output_stems_row.get_selected_stems(),
             "save_rest":     self._output_stems_row.get_save_rest(),
+            "stems_by_model": dict(self._stems_by_model),
         }
 
     def load_settings(self, d):
@@ -2499,9 +2536,20 @@ class InferencePage(QWidget):
         if not isinstance(dev, str): dev = ""
         idx = self._device_combo.findText(dev)
         if idx >= 0: self._device_combo.setCurrentIndex(idx)
-        stems = d.get("stems", None)
-        self._pending_stems = stems if isinstance(stems, list) else None
-        self._pending_save_rest = bool(d.get("save_rest", False))
+        sbm = d.get("stems_by_model", None)
+        if isinstance(sbm, dict):
+            clean = {}
+            for mname, sv in sbm.items():
+                if (isinstance(mname, str) and mname and isinstance(sv, dict)
+                        and isinstance(sv.get("stems", []), list)):
+                    clean[mname] = {
+                        "stems": [s for s in sv["stems"] if isinstance(s, str)],
+                        "save_rest": bool(sv.get("save_rest", False)),
+                    }
+            self._loaded_stems_by_model = clean
+        # NOTE: legacy global "stems" is intentionally ignored — a stem choice
+        # must never be carried to a different model; models default to all
+        # stems unless the user customized them for that specific model.
 
     # ── Runner ────────────────────────────────────────────────────────
 

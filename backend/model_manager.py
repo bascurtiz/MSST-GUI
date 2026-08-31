@@ -51,6 +51,7 @@ MODEL_TYPE_TO_ARCH = {
 }
 
 STEM_MAP = {
+    # Core families
     "Вокал": "vocals",
     "Инструментал": "instrumental",
     "Инструментал и вокал": "dual target (instrumental & vocals)",
@@ -60,6 +61,44 @@ STEM_MAP = {
     "Реверб": "dereverb / deecho",
     "Шум": "denoise",
     "Дуэт": "vocals",
+    # Instruments (RU → app type vocabulary)
+    "Ударные": "drums",                  # drums
+    "DrumSep": "drums",
+    "Бас": "bass",
+    "Басс": "bass",                      # zoo spelling variant
+    "Перкуссия": "percussion",
+    "Клавишные": "keys",                 # keys
+    "Синтезатор": "keys",                # synthesizer → keyboard family
+    "Струнные": "strings",               # strings
+    "Смычковые струнные": "strings",     # bowed strings
+    "Щипковые струнные": "strings",      # plucked strings
+    "Оркестр": "strings",                # orchestra (string-led ensemble)
+    "Духовые": "wind",                   # wind instruments
+    "Деревянные духовые": "wind",        # woodwinds
+    "Медные духовые": "wind",            # brass
+    "Саксофон": "wind",                  # saxophone
+    "Гармоники": "wind",                 # free-reed aerophones (accordion/harmonica)
+    # Cleanup / processing
+    "Реверб и эхо": "dereverb / deecho",  # reverb + echo
+    "Эхо": "dereverb / deecho",          # echo
+    "Дыхание": "denoise",                # de-breath
+    "Скретч": "denoise",                 # scratch removal
+    "Фантомный центр": "phantom centre",
+    # Multi-stem splits
+    "6 стемов": "multi stems",
+    "Все стемы": "multi stems",
+    "Объёмный звук": "multi stems",       # surround channel split
+    # Vocal family
+    "Хор": "vocals",                     # choir / voice parts
+    "Разделение голосов": "vocals",       # singing-voice separation
+    "Мужской/Женский вокал": "vocals",    # male/female vocal
+    # Instrumental extractors ("other"-target models)
+    "Прочее": "instrumental",             # misc → other/instrumental
+    # Movie-audio family (bgm / musicless / sfx, mixed stems)
+    "Кинематограф": "multi stems",
+    # Sound design
+    "Звуковые эффекты": "effects",        # sound effects (ambience/explosions/…)
+    "Звуки толпы": "crowd",               # crowd sounds
 }
 
 

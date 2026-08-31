@@ -259,6 +259,8 @@ MODEL_TYPE_COLORS = {
     "strings": "#76C043",
     "percussion": "#F36E21",
     "keys": "#21B3A3",
+    "effects": "#FFFFFF",
+    "crowd": "#94A3B8",
 }
 
 
@@ -317,6 +319,8 @@ _TYPE_TITLES = {
     "strings": "STRINGS",
     "percussion": "PERCUSSION",
     "keys": "KEYS",
+    "effects": "EFFECTS",
+    "crowd": "CROWD",
 }
 
 

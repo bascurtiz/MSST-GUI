@@ -129,6 +129,8 @@ MODEL_TYPES = [
     "strings",
     "percussion",
     "keys",
+    "effects",
+    "crowd",
 ]
 
 ARCH_TO_MODEL_FOLDER = {
@@ -399,6 +401,15 @@ class _EditTypeDialog(QDialog):
 class _ModelCard(QFrame):
     remove_requested = Signal(str)
     type_changed = Signal(str, str)
+
+    def set_type(self, model_type):
+        """Update this card's type text in place (e.g. after a zoo-driven
+        type reconciliation)."""
+        self._type = model_type
+        try:
+            self._type_label.setText((model_type or "").capitalize())
+        except RuntimeError:
+            pass
 
     def __init__(self, name, arch, model_type, ckpt, yaml, added=None, parent=None,
                  backend_module="", custom_backend_enabled=False):
@@ -1034,6 +1045,7 @@ class _FolderIcon(QWidget):
 
 class _FolderManagerWidget(QWidget):
     model_installed = Signal()
+    index_loaded = Signal(object)  # zoo index arrived → registered-type reconcile
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1173,6 +1185,9 @@ class _FolderManagerWidget(QWidget):
             self._model_type_map[key].append(m)
         self._folder_order.sort()  # alphabetical, like the MODEL LIBRARY
         self._render()
+        # Let the page reconcile registered models' types against the zoo
+        # (older installs stored the "vocals" fallback for uncovered cats).
+        self.index_loaded.emit(models)
 
     def _on_error(self, msg):
         self._fetch_thread = None  # the thread retires itself when done
@@ -1881,6 +1896,7 @@ class SettingsPage(QWidget):
 
         self._model_mgr = _FolderManagerWidget()
         self._model_mgr.model_installed.connect(self._refresh_registered)
+        self._model_mgr.index_loaded.connect(self._reconcile_model_types)
         self._model_mgr.setVisible(False)
         self._folder_search.textChanged.connect(self._model_mgr.set_search_text)
         ll.addWidget(self._model_mgr, 2)
@@ -1982,6 +1998,49 @@ class SettingsPage(QWidget):
             self._ckpt_url.edit.setFocus()
         self.update()
         self.repaint()
+
+    def _reconcile_model_types(self, models):
+        """Align registered models' types with the zoo's categories. Older
+        installs stored "vocals" as the stem-map fallback for categories the
+        map didn't cover (e.g. drum models), so the badge and the by-target
+        grouping put them in the wrong group. The zoo index is the source of
+        truth: update any registered model whose derived type differs, save,
+        refresh its card, and re-home it live in the inference/ensemble pages."""
+        from backend.model_manager import STEM_MAP, _ckpt_name_from_url
+        from backend import settings as settings_store
+        by_ckpt = {}
+        for m in models or []:
+            ck = os.path.basename(
+                _ckpt_name_from_url(getattr(m, "checkpoint_url", ""))).lower()
+            if ck:
+                by_ckpt[ck] = m
+        changed = []
+        for reg in self._registered:
+            key = os.path.basename(reg.get("ckpt", "")).lower()
+            info = by_ckpt.get(key)
+            if not info:
+                continue  # manually registered model — keep the user's type
+            new_type = STEM_MAP.get(getattr(info, "category", ""), "")
+            if new_type and reg.get("type") != new_type:
+                reg["type"] = new_type
+                changed.append(reg)
+        if not changed:
+            return
+        data = settings_store.load()
+        data["registered_models"] = self._registered
+        settings_store.save(data)
+        # Refresh the registered-list cards in place, then re-home the
+        # model everywhere it is listed (inference library, ensembles).
+        items = {}
+        for i in range(self._list_layout.count()):
+            w = self._list_layout.itemAt(i).widget()
+            if isinstance(w, _ModelCard):
+                items[w._name] = w
+        for reg in changed:
+            item = items.get(reg.get("name", ""))
+            if item:
+                item.set_type(reg.get("type", ""))
+            self.model_registered.emit(reg)
 
     def _refresh_registered(self):
         from backend import settings as settings_store

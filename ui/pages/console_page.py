@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QTimer, Property, QUrl, QPropertyAnimation, QEasi
 from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QPainterPath, QDesktopServices, QFont, QPixmap, QCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from ui.theme import theme_manager, FONT_FAMILY, FONT_STACK
-from ui.widgets.common import PageHeader, add_button_hover
+from ui.widgets.common import PageHeader, add_button_hover, MODEL_TYPE_COLORS
 from mutagen import File as _MutagenFile
 
 
@@ -129,8 +129,54 @@ def _stem_color(label):
     return _resolve_stem_color(label)
 
 
-def _stem_bg_color(label):
-    base = _resolve_stem_color(label)
+def _stem_override_for_model(card, label):
+    """Model-type driven color override for the model's TARGET stem.
+    Karaoke/guitar/dereverb-deecho/denoise models paint their primary
+    output (the stem the model actually extracts) in the same color as
+    the model-type badge in the library. The complement "Other" stem
+    keeps its normal green."""
+    mt = (getattr(card, "_model_type", "") or "").strip().lower()
+    if not mt:
+        low = (getattr(card, "_model_name", "") or "").lower()
+        for kw, t in _MODEL_NAME_KEYWORDS:
+            if kw in low:
+                mt = t
+                break
+    ov = _MODEL_TYPE_OVERRIDES.get(mt)
+    if not ov:
+        return None
+    target = (getattr(card, "_target_stem", "") or "").strip()
+    if target and _normalize_stem(label) == _normalize_stem(target):
+        return ov
+    return None
+
+
+# Stem-color overrides by model type, applied to the model's TARGET stem
+# (training.target_instrument from its config): the stem the model was
+# built to extract takes the same color as the model-type badge in the
+# library. "Other" and every other complement stem keep their normal colors.
+_MODEL_TYPE_OVERRIDES = {
+    "karaoke": MODEL_TYPE_COLORS["karaoke"],
+    "guitar": MODEL_TYPE_COLORS["guitar"],
+    "dereverb / deecho": MODEL_TYPE_COLORS["dereverb / deecho"],
+    "denoise": MODEL_TYPE_COLORS["denoise"],
+}
+
+# Fallback: recognize the type from the checkpoint name itself when the
+# registry lookup comes up empty.
+_MODEL_NAME_KEYWORDS = (
+    ("karaoke", "karaoke"),
+    ("guitar", "guitar"),
+    ("dereverb", "dereverb / deecho"),
+    ("deecho", "dereverb / deecho"),
+    ("de-echo", "dereverb / deecho"),
+    ("denoise", "denoise"),
+    ("de-noise", "denoise"),
+)
+
+
+def _stem_bg_color(label, override=None):
+    base = override or _resolve_stem_color(label)
     c = QColor(base)
     h, _, _, _ = c.getHsvF()
     bg = QColor()
@@ -984,8 +1030,9 @@ class _WaveformContainer(QFrame):
             name_no_ext, _ = os.path.splitext(basename)
             m = re.search(r'\(([^)]+)\)$', name_no_ext)
             label = m.group(1).strip().capitalize() if m else name_no_ext
-            line_c = _stem_color(label)
-            bg_c = _stem_bg_color(label)
+            ov = _stem_override_for_model(card_ref, label)
+            line_c = ov or _stem_color(label)
+            bg_c = _stem_bg_color(label, ov)
             if i < old_count:
                 track = self._tracks[i]
                 track.load_audio(path)
@@ -1010,8 +1057,9 @@ class _WaveformContainer(QFrame):
             name_no_ext, _ = os.path.splitext(basename)
             m = re.search(r'\(([^)]+)\)$', name_no_ext)
             label = m.group(1).strip().capitalize() if m else name_no_ext
-            line_c = _stem_color(label)
-            bg_c = _stem_bg_color(label)
+            ov = _stem_override_for_model(card_ref, label)
+            line_c = ov or _stem_color(label)
+            bg_c = _stem_bg_color(label, ov)
             if i < old_count:
                 track = self._tracks[i]
                 track._label = label
@@ -1141,6 +1189,11 @@ class _TaskCard(QFrame):
 
         self._apply_text_style()
 
+        # Recency rank used by the list panel: bumped every time this card is
+        # created or starts processing; higher value = more recent = higher
+        # position in the list.
+        self._activity_seq = 0
+
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
 
@@ -1259,16 +1312,20 @@ class _TaskCard(QFrame):
         if basename not in self._output_files:
             self._output_files.append(basename)
             self._output_paths.append(path)
-            if not self._output_dir:
-                d = os.path.dirname(path)
-                if d:
-                    self._output_dir = d
+            # Track the folder the file actually landed in — the per-
+            # checkpoint subfolder when inference writes into one — so the
+            # folder buttons open where the outputs really are.
+            d = os.path.dirname(path)
+            if d:
+                self._output_dir = d
             self._refresh_output_label()
             return True
         return False
 
-    def set_model_name(self, name):
+    def set_model_name(self, name, model_type="", target_stem=""):
         self._model_name = name or ""
+        self._model_type = (model_type or "").strip().lower()
+        self._target_stem = (target_stem or "").strip().lower()
         self._refresh_output_label()
 
     def _refresh_output_label(self):
@@ -1458,9 +1515,22 @@ class _TaskCard(QFrame):
             QPoint(0, self._menu_btn.height() + 2))
         self._menu.exec(pos)
 
-    def _menu_open_folder(self):
+    def _open_folder_path(self):
+        """Folder to open for this card: the directory the outputs actually
+        landed in (the per-checkpoint subfolder), falling back to the
+        top-level output directory while no files exist yet."""
+        for p in self._output_paths:
+            d = os.path.dirname(p)
+            if d and os.path.isdir(d):
+                return d
         d = getattr(self, "_output_dir", None)
         if d and os.path.isdir(d):
+            return d
+        return None
+
+    def _menu_open_folder(self):
+        d = self._open_folder_path()
+        if d:
             QDesktopServices.openUrl(QUrl.fromLocalFile(d))
 
     def _menu_delete_outputs(self):
@@ -1530,12 +1600,16 @@ class _OutputListPanel(QWidget):
         self._container = QWidget()
         self._container.setStyleSheet("background:transparent;")
         self._card_layout = QVBoxLayout(self._container)
-        self._card_layout.setContentsMargins(0, 0, 0, 0)
+        # Right inset keeps the card rows — and their status dots at the row
+        # edge — clear of the vertical scrollbar, which sits flush against
+        # the viewport's right side when it appears.
+        self._card_layout.setContentsMargins(0, 0, 12, 0)
         self._card_layout.setSpacing(6)
         self._card_layout.addStretch()
 
         scroll.setWidget(self._container)
         root.addWidget(scroll, 1)
+        self._scroll = scroll
 
     def _make_dot_widget(self, card):
         dot = QWidget()
@@ -1571,8 +1645,10 @@ class _OutputListPanel(QWidget):
         container = QWidget()
         container.setStyleSheet("background:transparent;")
         container.setLayout(row)
-        self._card_layout.insertWidget(self._card_layout.count() - 1, container)
+        # Newest entry on top: insert before every existing card row.
+        self._card_layout.insertWidget(0, container)
         card._container = container
+        self._scroll.verticalScrollBar().setValue(0)
 
         # Track status changes to update dot
         orig_mark = card.mark_complete
@@ -1611,7 +1687,8 @@ class _OutputListPanel(QWidget):
         return list(self._cards.values())
 
     def reorder(self, card_order):
-        """Rearrange containers so cards appear in *card_order* sequence."""
+        """Rearrange containers so cards appear in *card_order* sequence
+        (first entry of the sequence at the top)."""
         containers = []
         for card in card_order:
             c = getattr(card, '_container', None)
@@ -1620,6 +1697,7 @@ class _OutputListPanel(QWidget):
                 containers.append(c)
         for i, c in enumerate(containers):
             self._card_layout.insertWidget(min(i, self._card_layout.count() - 1), c)
+        self._scroll.verticalScrollBar().setValue(0)
 
     def clear(self):
         self._cards.clear()
@@ -2065,8 +2143,9 @@ class _DetailView(QFrame):
 
     def _open_folder(self):
         card = self._card
-        if card and card._output_dir and os.path.isdir(card._output_dir):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(card._output_dir))
+        d = card._open_folder_path() if card is not None else None
+        if d:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(d))
 
     def reapply_theme(self):
         self.setStyleSheet(f"_DetailView{{background:{theme_manager.theme.card};border-radius:12px;}}")
@@ -2128,6 +2207,7 @@ class ConsolePage(QWidget):
         self._job_active = False  # True while an inference/ensemble job runs
         self._song_cards = {}
         self._song_run = {}  # normalized song -> run counter, for re-run keys
+        self._card_seq = 0   # monotonically increasing card recency rank
         self._unmatched_exports = []
         self._current_song = None
         self._followed_song = None
@@ -2135,6 +2215,8 @@ class ConsolePage(QWidget):
         self._output_dir = None
         self._input_path_map = {}
         self._current_model = ""
+        self._model_type_map = None  # ckpt basename -> registered model type
+        self._model_target_map = None  # ckpt basename -> target stem from its config yaml
         self._input_order = []
         self._build_ui()
         self._debug_path = os.path.join(
@@ -2155,9 +2237,65 @@ class ConsolePage(QWidget):
 
     def set_current_model(self, name):
         self._current_model = name or ""
+        # Refresh the type registry on every selection change so freshly
+        # installed models are covered without an app restart.
+        self._model_type_map = None
+        self._model_target_map = None
         card = self._song_cards.get(self._current_song)
         if card:
-            card.set_model_name(self._current_model)
+            card.set_model_name(self._current_model,
+                                self._model_type_for(self._current_model),
+                                self._model_target_for(self._current_model))
+
+    def _registered_model_types(self):
+        """{ckpt basename lower: model type} and {ckpt basename lower:
+        target stem} from the settings registry + each model's config yaml."""
+        if self._model_type_map is None:
+            self._model_type_map = {}
+            self._model_target_map = {}
+            try:
+                from backend import settings as settings_store
+                import yaml as _yaml
+                for m in settings_store.load().get("registered_models", []):
+                    key = os.path.basename(m.get("ckpt", "")).lower()
+                    if key:
+                        self._model_type_map[key] = (m.get("type") or "").strip().lower()
+                        tgt = ""
+                        yp = m.get("yaml", "")
+                        if yp and os.path.isfile(yp):
+                            try:
+                                with open(yp, encoding="utf-8") as f:
+                                    cfg = _yaml.load(f, Loader=_yaml.FullLoader)
+                                tgt = (cfg.get("training", {}).get("target_instrument") or "").strip().lower()
+                            except Exception:
+                                pass
+                        self._model_target_map[key] = tgt
+            except Exception:
+                pass
+        return self._model_type_map
+
+    def _model_type_for(self, name):
+        """Model-type label for a checkpoint name: registry "type" first,
+        then a keyword match on the name itself."""
+        name = (name or "").strip()
+        if not name:
+            return ""
+        t = self._registered_model_types().get(os.path.basename(name).lower(), "")
+        if not t:
+            low = name.lower()
+            for kw, mt in _MODEL_NAME_KEYWORDS:
+                if kw in low:
+                    return mt
+        return t
+
+    def _model_target_for(self, name):
+        """Target stem (training.target_instrument) for a checkpoint name,
+        read from the model's config yaml via the settings registry."""
+        name = (name or "").strip()
+        if not name:
+            return ""
+        self._registered_model_types()  # ensure both maps are built
+        return self._model_target_map.get(os.path.basename(name).lower(), "")
 
     def set_input_files(self, paths):
         self._input_order.clear()
@@ -2346,9 +2484,14 @@ class ConsolePage(QWidget):
             self._song_run.setdefault(base_key, 1)
         card = _TaskCard(display_name, input_path=input_full)
         card._key = key
+        card._activity_seq = self._next_card_seq()
         self._song_cards[key] = card
         self._output_list.add_card(card)
         return card
+
+    def _next_card_seq(self):
+        self._card_seq += 1
+        return self._card_seq
 
     def _incomplete_card_for_song(self, base_key):
         """Unfinished card whose normalized song name matches `base_key`.
@@ -2384,8 +2527,11 @@ class ConsolePage(QWidget):
         if card._status_lbl.text() not in ("Processing...", "Failed"):
             card.reset_progress()
         card.mark_active()
+        card._activity_seq = self._next_card_seq()
         self._current_song = best
         self._followed_song = best
+        # Raise the newly-activated card to the top of the list.
+        self._sort_card_order()
 
     def _parse_and_update(self, text):
         m_dir = _RE_OUTPUT_DIR.search(text)
@@ -2414,7 +2560,9 @@ class ConsolePage(QWidget):
                     full = self._input_path_map.get(name) or self._input_path_map.get(name.lower()) or raw
                     card = self._create_card(name, key, full)
                     card.mark_queued()
-                    card.set_model_name(self._current_model)
+                    card.set_model_name(self._current_model,
+                                        self._model_type_for(self._current_model),
+                                        self._model_target_for(self._current_model))
                     if self._output_dir:
                         card.set_output_dir(self._output_dir)
                     self._reconcile_unmatched()
@@ -2442,7 +2590,10 @@ class ConsolePage(QWidget):
                             or raw_q or qname)
                     card = self._create_card(qname, key, full)
                     card.mark_loading()
-                    card.set_model_name(self._current_model)
+                    card._activity_seq = self._next_card_seq()
+                    card.set_model_name(self._current_model,
+                                        self._model_type_for(self._current_model),
+                                        self._model_target_for(self._current_model))
                     if self._output_dir:
                         card.set_output_dir(self._output_dir)
                     self._current_song = card._key
@@ -2617,7 +2768,16 @@ class ConsolePage(QWidget):
 
 
     def _sort_card_order(self):
-        cards = sorted(self._song_cards.values(), key=lambda c: c._key or "")
+        """Order cards by recency: the most recently created/activated entry
+        sits on top, previous entries follow below it. Active (loading/
+        processing) cards always lead so the running job stays visible, and
+        the rest are ordered newest-first."""
+        def _rank(c):
+            active = (not c._is_complete and not c._failed
+                      and c._status_lbl.text() in ("Loading...", "Processing..."))
+            # reverse-sorted: active cards (higher bucket) lead the list.
+            return (1 if active else 0, getattr(c, "_activity_seq", 0))
+        cards = sorted(self._song_cards.values(), key=_rank, reverse=True)
         self._output_list.reorder(cards)
 
     def get_full_log(self):
