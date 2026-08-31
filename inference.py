@@ -139,6 +139,15 @@ def run_folder(
 
     sample_rate: int = getattr(config.audio, "sample_rate", 44100)
 
+    # Subfolder per checkpoint: separating the same track with different
+    # models (e.g. mdx-net de-echo vs bandit_plus) must never overwrite
+    # each other's output, so each model writes into
+    # <store_dir>/<ckpt-name>/...
+    ckpt_name = ""
+    if args.start_check_point:
+        ckpt_name = sanitize_filename(
+            os.path.splitext(os.path.basename(args.start_check_point))[0])
+
     print(f"Total files found: {len(mixture_paths)}. Using sample rate: {sample_rate}")
 
     instruments: list[str] = list(getattr(config.training, "instruments", []) or [])[:]
@@ -272,8 +281,10 @@ def run_folder(
                 )[0],
             )
 
-            # Create output directory
+            # Create output directory (per-checkpoint subfolder first)
             output_dir: str = os.path.join(args.store_dir, *dirnames)
+            if ckpt_name:
+                output_dir = os.path.join(output_dir, ckpt_name)
             os.makedirs(output_dir, exist_ok=True)
 
             output_path: str = os.path.join(output_dir, f"{fname}.{codec}")

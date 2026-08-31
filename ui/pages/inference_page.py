@@ -1019,6 +1019,15 @@ class _OutputStemsRow(QFrame):
         self._save_rest = False
         self._update_summary()
 
+    def restore_selection(self, selected_stems, save_rest):
+        """Re-apply a previously saved stem selection, keeping only stems
+        this model actually produces (models differ in their stem sets)."""
+        valid = {s.lower() for s in self._all_stems}
+        self._selected_stems = {s.lower() for s in (selected_stems or [])
+                                if s.lower() in valid}
+        self._save_rest = bool(save_rest)
+        self._update_summary()
+
     def _update_summary(self):
         n = len(self._selected_stems)
         total = len(self._all_stems)
@@ -1906,6 +1915,8 @@ class InferencePage(QWidget):
         self._target_cards   = {}  # model_type -> _ArchCard (sort-by-target mode)
         self._sort_by_target = False
         self._friendly_names = {}  # ckpt filename -> zoo full name
+        self._pending_stems = None        # saved stems to re-apply when a model
+        self._pending_save_rest = False   # with a matching stem set is selected
         self._mvsepless_archs = None  # archs listed in the mvsepless zoo (index fetch)
         self._library_finalized = False  # trailing stretch added to _model_layout?
         self._build_ui()
@@ -1966,7 +1977,7 @@ class InferencePage(QWidget):
 
         self._fmt_row = _ComboRow(
             None, "Quality",
-            ["WAV (PCM 32-bit)", "WAV (PCM 16-bit)", "FLAC", "MP3 320kbps", "MP3 128kbps"])
+            ["FLAC", "WAV (PCM 32-bit)", "WAV (PCM 16-bit)", "MP3 320kbps", "MP3 128kbps"])
         self._fmt_combo = self._fmt_row.combo
         cfg.addWidget(self._fmt_row)
 
@@ -1982,6 +1993,9 @@ class InferencePage(QWidget):
         self._dev_row = _ComboRow(
             None, "Device", list_gpus())
         self._device_combo = self._dev_row.combo
+        if self._device_combo.count > 1:
+            # Default to the first GPU when one is available (index 0 is CPU).
+            self._device_combo.setCurrentIndex(1)
         cfg.addWidget(self._dev_row)
 
         ll.addLayout(cfg)
@@ -2444,6 +2458,9 @@ class InferencePage(QWidget):
             except Exception:
                 pass
         self._output_stems_row.set_stems(instruments, primary_target=target_inst)
+        if self._pending_stems is not None:
+            self._output_stems_row.restore_selection(
+                self._pending_stems, self._pending_save_rest)
 
     def _on_ckpt_settings_requested(self, name, ckpt, yaml_path, arch):
         self.ckpt_settings_requested.emit(name, ckpt, yaml_path, arch)
@@ -2459,6 +2476,8 @@ class InferencePage(QWidget):
             "output_format": self._fmt_combo.currentText(),
             "tta":           self._tta_combo.currentText(),
             "device":        self._device_combo.currentText(),
+            "stems":         self._output_stems_row.get_selected_stems(),
+            "save_rest":     self._output_stems_row.get_save_rest(),
         }
 
     def load_settings(self, d):
@@ -2480,6 +2499,9 @@ class InferencePage(QWidget):
         if not isinstance(dev, str): dev = ""
         idx = self._device_combo.findText(dev)
         if idx >= 0: self._device_combo.setCurrentIndex(idx)
+        stems = d.get("stems", None)
+        self._pending_stems = stems if isinstance(stems, list) else None
+        self._pending_save_rest = bool(d.get("save_rest", False))
 
     # ── Runner ────────────────────────────────────────────────────────
 
