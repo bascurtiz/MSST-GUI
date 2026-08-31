@@ -21,7 +21,7 @@ from backend import update_checker as uc
 from ui.widgets.common import (
     PageHeader, outline_button_ss, solid_button_ss, ChevronCombo,
     EllipsisButton, add_button_hover,
-    GlyphButton, _outline_icon_color, _solid_icon_color,
+    GlyphButton, _outline_icon_color, _solid_icon_color, _custom_badge_ss,
 )
 
 from backend.downloader import HuggingFaceDownloader
@@ -442,12 +442,7 @@ class _ModelCard(QFrame):
 
         if custom_backend_enabled and backend_module:
             badge = QLabel("CUSTOM")
-            badge.setStyleSheet(
-                f"font-family:'Montserrat';font-size:8px;font-weight:700;"
-                f"color:{theme_manager.accent};background:{theme_manager._accent_soft};"
-                f"padding:2px 7px;border-radius:3px;letter-spacing:0.5px;"
-                f"border:1px solid {theme_manager._accent_glow};"
-            )
+            badge.setStyleSheet(_custom_badge_ss())
             badge.setFixedHeight(18)
             name_row.addWidget(badge)
 

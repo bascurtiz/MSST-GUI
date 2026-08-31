@@ -27,6 +27,7 @@ from ui.widgets.common import (
     outline_button_ss, solid_button_ss, paint_chevron, EllipsisButton,
     GlyphButton,
     _outline_icon_color, _solid_icon_color, _stop_icon_color, _add_icon_color,
+    _type_badge_ss, _custom_badge_ss, _type_badge_color, _type_title,
 )
 
 AUDIO_FILTER = ("Audio files (*.wav *.flac *.mp3 *.ogg *.aiff *.m4a *.opus *.wv);;"
@@ -1213,30 +1214,15 @@ class _ModelItem(QFrame):
 
         if custom_backend_enabled and backend_module:
             ctag = QLabel("CUSTOM")
-            _ac = QColor(theme_manager.accent)
-            _ac_bg = QColor(theme_manager.accent)
-            _ac_bg.setAlpha(20)
-            _ac_border = QColor(theme_manager.accent)
-            _ac_border.setAlpha(38)
-            ctag.setStyleSheet(
-                "font-family:'Montserrat';font-size:8px;font-weight:700;"
-                f"color:rgba({_ac.red()},{_ac.green()},{_ac.blue()},0.70);"
-                f"background:rgba({_ac_bg.red()},{_ac_bg.green()},{_ac_bg.blue()},{_ac_bg.alpha()});"
-                "padding:1px 6px;border-radius:3px;letter-spacing:0.5px;"
-                f"border:1px solid rgba({_ac_border.red()},{_ac_border.green()},{_ac_border.blue()},{_ac_border.alpha()});"
-            )
+            ctag.setStyleSheet(_custom_badge_ss())
             ctag.setFixedHeight(17)
             hl.addWidget(ctag)
 
         if model_type:
-            display = "INSTRUMENTAL" if model_type == "instrumental" else model_type.upper()[:10]
+            display = _type_title(model_type)
             tag = QLabel(display)
-            t = theme_manager.theme
-            tag.setStyleSheet(
-                "font-family:'Montserrat';font-size:8px;font-weight:700;"
-                f"color:{t.text_label};background:{t.surface_alt};"
-                "padding:1px 6px;border-radius:3px;letter-spacing:0.5px;"
-            )
+            tag.setToolTip(model_type)
+            tag.setStyleSheet(_type_badge_ss(model_type))
             tag.setFixedHeight(17)
             hl.addWidget(tag)
 
@@ -1468,11 +1454,14 @@ class _ArchCard(QFrame):
     model_selected = Signal(str, str, str, str, str, bool)
     ckpt_settings_requested = Signal(str, str, str, str)
 
-    def __init__(self, arch_name, parent=None):
+    def __init__(self, arch_name, parent=None, dot_color=None,
+                 title_display=None, info_url=None):
         super().__init__(parent)
         self._arch = arch_name
         self._expanded = False
         self._items = []
+        self._custom_dot = dot_color
+        self._title_display = title_display
         self.setObjectName("archCard")
         self.setStyleSheet(
             "#archCard{"
@@ -1503,14 +1492,20 @@ class _ArchCard(QFrame):
         hh.setContentsMargins(12, 0, 8, 0)
         hh.setSpacing(6)
 
-        dot_key = f"arch_dot_{_arch_dot_token(arch_name)}"
-        dot_clr = getattr(theme_manager.theme, dot_key, theme_manager.theme.text_label)
+        if dot_color is not None:
+            dot_clr = dot_color
+        else:
+            dot_key = f"arch_dot_{_arch_dot_token(arch_name)}"
+            dot_clr = getattr(theme_manager.theme, dot_key, theme_manager.theme.text_label)
         dot = QFrame()
         dot.setFixedSize(8, 8)
         dot.setStyleSheet(f"background:{dot_clr};border:none;border-radius:4px;")
         hh.addWidget(dot)
 
-        display = ARCH_DISPLAY_NAMES.get(arch_name, arch_name.replace(" Architecture", ""))
+        if title_display is not None:
+            display = title_display
+        else:
+            display = ARCH_DISPLAY_NAMES.get(arch_name, arch_name.replace(" Architecture", ""))
         title_lbl = QLabel(display.upper())
         title_lbl.setStyleSheet(
             "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:700;"
@@ -1524,10 +1519,12 @@ class _ArchCard(QFrame):
         title_row.setSpacing(6)
         title_row.addWidget(title_lbl)
 
-        # link chip — opens the architecture's paper / project page.
-        info_url = ARCH_INFO_LINKS.get(arch_name)
+        # link chip — opens the architecture's paper / project page. Pass
+        # info_url="" to suppress (target-mode cards have no link).
+        if info_url is None:
+            info_url = ARCH_INFO_LINKS.get(arch_name)
         self._info_lbl = None
-        if info_url:
+        if info_url and info_url != "":
             info = _LinkBadge(f"About {display}")
             info.clicked.connect(lambda u=info_url: QDesktopServices.openUrl(QUrl(u)))
             title_row.addWidget(info)
@@ -1790,6 +1787,101 @@ class _ArchCard(QFrame):
             self._toggle_expand(animated=False)
 
 
+# ── Sort toggle ───────────────────────────────────────────────────────────
+
+class _SortToggle(QWidget):
+    """Compact architecture/target sort switch for the Model Library header:
+    two small labels around a painted pill switch. `changed` emits True when
+    the user switches to "sort by target", False for architecture."""
+    changed = Signal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._on = False
+        hl = QHBoxLayout(self)
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(5)
+        self._arch_lbl = QLabel("sort by architecture")
+        self._target_lbl = QLabel("sort by target")
+        for lbl in (self._arch_lbl, self._target_lbl):
+            lbl.setStyleSheet(
+                "font-family:'Montserrat';font-size:8px;font-weight:600;"
+            )
+        self._sw = _MiniSwitch()
+        self._sw.toggled.connect(self._set_on)
+        hl.addWidget(self._arch_lbl)
+        hl.addWidget(self._sw)
+        hl.addWidget(self._target_lbl)
+        self._relabel()
+        self.setCursor(Qt.PointingHandCursor)
+
+    def _set_on(self, on):
+        self._on = on
+        self._relabel()
+        self.changed.emit(on)
+
+    def _relabel(self):
+        accent = theme_manager.accent
+        dim = theme_manager.theme.text_muted
+        self._arch_lbl.setStyleSheet(
+            "font-family:'Montserrat';font-size:8px;font-weight:600;"
+            f"color:{dim if self._on else accent};"
+        )
+        self._target_lbl.setStyleSheet(
+            "font-family:'Montserrat';font-size:8px;font-weight:600;"
+            f"color:{accent if self._on else dim};"
+        )
+
+    def is_target(self):
+        return self._on
+
+    def reapply_theme(self):
+        self._sw.update()
+        self._relabel()
+
+
+class _MiniSwitch(QWidget):
+    toggled = Signal(bool)
+
+    def __init__(self, checked=False, parent=None):
+        super().__init__(parent)
+        self._on = checked
+        self.setFixedSize(30, 16)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def is_checked(self):
+        return self._on
+
+    def set_checked(self, on):
+        on = bool(on)
+        if on != self._on:
+            self._on = on
+            self.toggled.emit(on)
+            self.update()
+
+    def mousePressEvent(self, e):
+        self.set_checked(not self._on)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        # Off-state track: fixed near-black in dark theme (#101318), a
+        # slate blue on the bright theme (#203048); the on-state turns accent.
+        # (Don't feed it the theme's rgba(...) string — QColor can't parse
+        # float-alpha and would fall back to full black.)
+        if self._on:
+            track = QColor(theme_manager.accent)
+        else:
+            track = QColor("#101318" if theme_manager.mode == "dark" else "#203048")
+        p.setPen(Qt.NoPen)
+        p.setBrush(track)
+        p.drawRoundedRect(self.rect(), 8, 8)
+        k, m = 12, 2
+        x = self.width() - k - m if self._on else m
+        p.setBrush(QColor("#FFFFFF"))
+        p.drawEllipse(int(x), (self.height() - k) // 2, k, k)
+
+
 # ── InferencePage ─────────────────────────────────────────────────────────────
 
 class InferencePage(QWidget):
@@ -1811,6 +1903,8 @@ class InferencePage(QWidget):
         self._tmp_yaml       = None
         self._selected_model = None
         self._arch_cards     = {}
+        self._target_cards   = {}  # model_type -> _ArchCard (sort-by-target mode)
+        self._sort_by_target = False
         self._friendly_names = {}  # ckpt filename -> zoo full name
         self._mvsepless_archs = None  # archs listed in the mvsepless zoo (index fetch)
         self._library_finalized = False  # trailing stretch added to _model_layout?
@@ -1947,6 +2041,11 @@ class InferencePage(QWidget):
         hdr_row.addWidget(_sec_hdr("Model Library"))
         hdr_row.addStretch()
 
+        self._sort_toggle = _SortToggle()
+        self._sort_toggle.changed.connect(self._on_sort_changed)
+        hdr_row.addWidget(self._sort_toggle)
+        hdr_row.addSpacing(8)
+
         self._search_bar = _SearchBar("Search models\u2026")
         self._search_bar.textChanged.connect(self._filter_models)
         self._search_bar.setMaximumWidth(155)
@@ -2024,13 +2123,16 @@ class InferencePage(QWidget):
 
         # Update search bar
         self._search_bar.reapply_theme()
+        self._sort_toggle.reapply_theme()
 
         # Update filter buttons
         for fb in self.findChildren(_FilterButton):
             fb.reapply_theme()
 
-        # Update arch cards
-        for arch_name, card in self._arch_cards.items():
+        # Update arch cards (architecture + target groupings)
+        all_cards = [(arch, card, False) for arch, card in self._arch_cards.items()]
+        all_cards += [(tk, card, True) for tk, card in self._target_cards.items()]
+        for arch_name, card, is_target in all_cards:
             card.setStyleSheet(
                 "#archCard{"
                 "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
@@ -2041,8 +2143,11 @@ class InferencePage(QWidget):
                 f"border:1px solid {theme_manager.accent};"
                 f"background:{theme_manager._accent_soft};}}"
             )
-            dot_key = f"arch_dot_{_arch_dot_token(arch_name)}"
-            dot_clr = getattr(t, dot_key, t.text_label)
+            if is_target:
+                dot_clr = _type_badge_color(arch_name) or "#9A9FB3"
+            else:
+                dot_key = f"arch_dot_{_arch_dot_token(arch_name)}"
+                dot_clr = getattr(t, dot_key, t.text_label)
             for child in card.findChildren(QFrame):
                 if child.objectName() == "cardHdr":
                     for c in child.findChildren(QFrame):
@@ -2101,24 +2206,9 @@ class InferencePage(QWidget):
                         continue
                     txt = tag_lbl.text()
                     if txt == "CUSTOM":
-                        _ac = QColor(theme_manager.accent)
-                        _ac_bg = QColor(theme_manager.accent)
-                        _ac_bg.setAlpha(20)
-                        _ac_border = QColor(theme_manager.accent)
-                        _ac_border.setAlpha(38)
-                        tag_lbl.setStyleSheet(
-                            "font-family:'Montserrat';font-size:8px;font-weight:700;"
-                            f"color:rgba({_ac.red()},{_ac.green()},{_ac.blue()},0.70);"
-                            f"background:rgba({_ac_bg.red()},{_ac_bg.green()},{_ac_bg.blue()},{_ac_bg.alpha()});"
-                            "padding:1px 6px;border-radius:3px;letter-spacing:0.5px;"
-                            f"border:1px solid rgba({_ac_border.red()},{_ac_border.green()},{_ac_border.blue()},{_ac_border.alpha()});"
-                        )
+                        tag_lbl.setStyleSheet(_custom_badge_ss())
                     else:
-                        tag_lbl.setStyleSheet(
-                            "font-family:'Montserrat';font-size:8px;font-weight:700;"
-                            f"color:{t.text_label};background:{t.surface_alt};"
-                            "padding:1px 6px;border-radius:3px;letter-spacing:0.5px;"
-                        )
+                        tag_lbl.setStyleSheet(_type_badge_ss(item._type))
 
         # Re-apply config row styles
         for row in self.findChildren(_BrowseRow):
@@ -2171,25 +2261,81 @@ class InferencePage(QWidget):
             self._model_layout.addWidget(card)
         return card
 
+    def _create_target_card(self, type_key):
+        """Build a grouping card keyed by model type for "sort by target" mode.
+        Only categories that actually have models are shown (see
+        _apply_library_visibility). The colored dot is the model type's color."""
+        card = _ArchCard(
+            type_key,
+            dot_color=_type_badge_color(type_key) or "#9A9FB3",
+            title_display=_type_title(type_key),
+            info_url="",
+        )
+        card.model_selected.connect(self._on_model_selected)
+        card.ckpt_settings_requested.connect(self._on_ckpt_settings_requested)
+        self._target_cards[type_key] = card
+        if self._library_finalized:
+            self._model_layout.insertWidget(max(self._model_layout.count() - 1, 0), card)
+        else:
+            self._model_layout.addWidget(card)
+        return card
+
     def _apply_library_visibility(self):
-        """Default the library to the architectures listed in the mvsepless
-        zoo. Archs outside it stay hidden unless a model is registered under
-        them — user-added architectures always get a card. When the zoo index
-        is unavailable (_mvsepless_archs is None) everything is shown."""
+        """Default the arch grouping to the architectures listed in the
+        mvsepless zoo (archs outside it stay hidden unless registered); the
+        target grouping only shows categories that have models. The active
+        grouping's cards are shown, the inactive grouping's are hidden."""
         for arch, card in self._arch_cards.items():
             card._default_visible = (
                 self._mvsepless_archs is None
                 or arch in self._mvsepless_archs
                 or bool(card._items))
+        for card in self._target_cards.values():
+            card._default_visible = bool(card._items)
+        self._order_target_cards()
         try:
             txt = self._search_bar.text()
         except RuntimeError:
             txt = ""
         self._filter_models(txt)
 
+    def _order_target_cards(self):
+        """Sort the by-target grouping cards alphabetically by title (so, e.g.,
+        VOCALS sits at the end rather than first). Cards are moved into a
+        contiguous block just before the trailing stretch; in architecture mode
+        they are hidden anyway, so their layout position is invisible there."""
+        if not self._target_cards:
+            return
+        lay = self._model_layout
+        in_layout = set(id(w) for i in range(lay.count())
+                        if (w := lay.itemAt(i).widget()) is not None)
+        tcards = [w for w in self._target_cards.values() if id(w) in in_layout]
+        if len(tcards) < 2:
+            return
+        for w in tcards:
+            lay.removeWidget(w)
+        tcards.sort(key=lambda w: _type_title(w._arch).lower())
+        idx = max(lay.count() - 1, 0)
+        for w in tcards:
+            lay.insertWidget(idx, w)
+            idx += 1
+
     def _filter_models(self, text):
+        show_target = self._sort_by_target
         for arch_name, card in self._arch_cards.items():
             card.filter_models(text)
+            if show_target:
+                card.setVisible(False)
+        for card in self._target_cards.values():
+            card.filter_models(text)
+            if not show_target:
+                card.setVisible(False)
+
+    def _on_sort_changed(self, target_mode):
+        self._sort_by_target = bool(target_mode)
+        # Re-derive visibility: the active grouping's cards show, the inactive
+        # grouping's are hidden. Search matching applies to both.
+        self._apply_library_visibility()
 
     # ── Slots ─────────────────────────────────────────────────────────
 
@@ -2198,13 +2344,26 @@ class InferencePage(QWidget):
         if arch and arch not in self._arch_cards:
             # Arch label outside the static list — give it a card dynamically.
             self._create_arch_card(arch)
+        name = model["name"]
+        display = self._friendly_names.get(os.path.basename(name).lower(), "")
         if arch in self._arch_cards:
-            name = model["name"]
-            display = self._friendly_names.get(os.path.basename(name).lower(), "")
             self._arch_cards[arch].add_model(
                 name, model.get("ckpt", ""),
                 model.get("yaml", ""), arch,
                 model.get("type", ""),
+                model.get("backend_module", ""),
+                model.get("custom_backend_enabled", False),
+                display=display)
+        # Mirror into the by-target grouping (a re-registration re-homes the
+        # model across categories if its type changed).
+        type_key = model.get("type", "") or ""
+        if type_key:
+            for card in self._target_cards.values():
+                card.remove_model(name)
+            tcard = self._target_cards.get(type_key) or self._create_target_card(type_key)
+            tcard.add_model(
+                name, model.get("ckpt", ""), model.get("yaml", ""),
+                arch, type_key,
                 model.get("backend_module", ""),
                 model.get("custom_backend_enabled", False),
                 display=display)
@@ -2220,7 +2379,7 @@ class InferencePage(QWidget):
             full = getattr(m, "full_name", "")
             if ck and full:
                 self._friendly_names.setdefault(ck, full)
-        for card in self._arch_cards.values():
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
             for i in range(card._list_vl.count()):
                 w = card._list_vl.itemAt(i).widget()
                 if isinstance(w, _ModelItem):
@@ -2237,8 +2396,18 @@ class InferencePage(QWidget):
     def on_model_removed(self, name: str):
         for card in self._arch_cards.values():
             card.remove_model(name)
+        for card in self._target_cards.values():
+            card.remove_model(name)
         # Re-hide unlisted archs whose last model was just removed.
         self._apply_library_visibility()
+
+    def _deselect_item_everywhere(self, name):
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem) and w._name == name:
+                    w.set_selected(False)
+                    break
 
     def _on_model_selected(self, name, ckpt, yaml_path, arch,
                            backend_module="", custom_backend_enabled=False):
@@ -2246,27 +2415,15 @@ class InferencePage(QWidget):
             old_name = self._selected_model.get("name")
             old_arch = self._selected_model.get("arch")
             if old_name == name and old_arch == arch:
-                card = self._arch_cards.get(arch)
-                if card:
-                    for i in range(card._list_vl.count()):
-                        w = card._list_vl.itemAt(i).widget()
-                        if isinstance(w, _ModelItem) and w._name == name:
-                            w.set_selected(False)
-                            break
+                self._deselect_item_everywhere(name)
                 self._selected_model = None
                 self._output_stems_row.set_stems([])
                 return
 
             old_card = self._arch_cards.get(old_arch)
-            if old_card:
-                if old_arch == arch:
-                    for i in range(old_card._list_vl.count()):
-                        w = old_card._list_vl.itemAt(i).widget()
-                        if isinstance(w, _ModelItem) and w._name == old_name:
-                            w.set_selected(False)
-                            break
-                else:
-                    old_card.deselect_all_models()
+            if old_card and old_arch != arch:
+                old_card.deselect_all_models()
+            self._deselect_item_everywhere(old_name)
 
         self._selected_model = {
             "name": name, "ckpt": ckpt, "yaml": yaml_path, "arch": arch,

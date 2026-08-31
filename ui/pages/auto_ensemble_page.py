@@ -14,7 +14,7 @@ from PySide6.QtGui import QPainter, QColor, QPen, QFont, QFontMetrics
 from backend.yaml_analyzer import get_stems_for_type
 from backend.auto_ensemble_runner import AutoEnsembleRunner
 from ui.theme import theme_manager, UIConstants
-from ui.widgets.common import PageHeader
+from ui.widgets.common import PageHeader, _type_badge_ss, _custom_badge_ss, _type_title
 
 def _accent():
     return theme_manager.accent
@@ -385,7 +385,9 @@ class _ModelCard(QFrame):
         meta.addWidget(self._arch_label)
 
         model_type = model.get("type", "unknown")
-        self._type_badge = QLabel(model_type.capitalize())
+        self._type = model_type
+        self._type_badge = QLabel(_type_title(model_type))
+        self._type_badge.setToolTip(model_type)
         self._type_badge.setFixedHeight(18)
         meta.addWidget(self._type_badge)
 
@@ -430,19 +432,14 @@ class _ModelCard(QFrame):
         super().mouseReleaseEvent(e)
 
     def _apply_badge_styles(self):
-        self._type_badge.setStyleSheet(
-            f"font-family:'Montserrat';font-size:8px;font-weight:700;color:{_accent()};background:transparent;"
-            f"border:1px solid {_rgba_str(_accent(), 0.35)};border-radius:3px;padding:1px 7px;"
-        )
+        self._type_badge.setStyleSheet(_type_badge_ss(self._type))
         is_custom = self._official_badge.text() == "CUSTOM"
-        badge_clr = theme_manager.theme.arch_dot_vr if is_custom else theme_manager.theme.text_dim
-        badge_border = (
-            _rgba_str(theme_manager.theme.arch_dot_vr, 0.35)
-            if is_custom else theme_manager.theme.border_dim
-        )
+        if is_custom:
+            self._official_badge.setStyleSheet(_custom_badge_ss())
+            return
         self._official_badge.setStyleSheet(
-            f"font-family:'Montserrat';font-size:8px;font-weight:700;color:{badge_clr};background:transparent;"
-            f"border:1px solid {badge_border};border-radius:3px;padding:1px 7px;"
+            f"font-family:'Montserrat';font-size:8px;font-weight:700;color:{theme_manager.theme.text_dim};background:transparent;"
+            f"border:1px solid {theme_manager.theme.border_dim};border-radius:3px;padding:1px 7px;"
         )
 
     def _update_style(self):

@@ -238,6 +238,109 @@ def solid_button_ss(font_size=12):
     )
 
 
+# Type-badge colors per model type — reuses the waveform stem palette where
+# the two overlap (vocals, instrumental, drums, bass, piano, guitar...). Used
+# by the model library and auto-ensemble model cards.
+MODEL_TYPE_COLORS = {
+    "vocals": "#A855F7",
+    "instrumental": "#60A5FA",
+    "dereverb / deecho": "#DDDDDD",
+    "denoise": "#888888",
+    "phantom centre": "#9176FF",
+    "karaoke": "#C91578",
+    "dual target (instrumental & vocals)": "#10B981",
+    "multi stems": "#FFCA28",
+    "super resolution": "#B55064",
+    "drums": "#F59E0B",
+    "bass": "#EF4444",
+    "piano": "#485FAB",
+    "guitar": "#C1090B",
+    "wind": "#00B8D3",
+    "strings": "#76C043",
+    "percussion": "#F36E21",
+    "keys": "#21B3A3",
+}
+
+
+def _type_badge_color(model_type):
+    """Badge tint color for a model type, or None to fall back to the theme's
+    neutral badge chip."""
+    return MODEL_TYPE_COLORS.get((model_type or "").lower())
+
+
+def _type_badge_ss(model_type):
+    """Stylesheet for a model-type badge: text tinted with the type's color on
+    a translucent tint of the same color. The bright palette is dimmed on the
+    dark theme (kept distinguishable but less glaring) and darkened further on
+    the light theme for contrast against the light badge chip."""
+    t = theme_manager.theme
+    hexc = _type_badge_color(model_type)
+    if not hexc:
+        return (
+            "font-family:'Montserrat';font-size:8px;font-weight:700;"
+            f"color:{t.text_label};background:{t.surface_alt};"
+            "padding:1px 6px;border-radius:3px;letter-spacing:0.5px;"
+        )
+    c = QColor(hexc)
+    rgb = f"{c.red()},{c.green()},{c.blue()}"
+    if theme_manager.mode == "light":
+        text = c.darker(230).name()
+        bg_a, bd_a = 32, 70
+    else:
+        text = c.darker(140).name()
+        bg_a, bd_a = 22, 48
+    return (
+        "font-family:'Montserrat';font-size:8px;font-weight:700;"
+        f"color:{text};"
+        f"background:rgba({rgb},{bg_a});"
+        f"border:1px solid rgba({rgb},{bd_a});"
+        "padding:1px 6px;border-radius:3px;letter-spacing:0.5px;"
+    )
+
+
+# Compact titles for the category badges / "sort by target" grouping rows.
+_TYPE_TITLES = {
+    "dual target (instrumental & vocals)": "DUAL TARGET",
+    "dereverb / deecho": "DEREVERB / DEECHO",
+    "phantom centre": "PHANTOM CENTRE",
+    "multi stems": "MULTI STEMS",
+    "super resolution": "SUPER RESOLUTION",
+    "vocals": "VOCALS",
+    "instrumental": "INSTRUMENTAL",
+    "denoise": "DENOISE",
+    "karaoke": "KARAOKE",
+    "drums": "DRUMS",
+    "bass": "BASS",
+    "piano": "PIANO",
+    "guitar": "GUITAR",
+    "wind": "WIND",
+    "strings": "STRINGS",
+    "percussion": "PERCUSSION",
+    "keys": "KEYS",
+}
+
+
+def _type_title(type_key):
+    return _TYPE_TITLES.get(type_key or "", (type_key or "").upper() or "UNKNOWN")
+
+
+def _custom_badge_ss():
+    """Stylesheet for the CUSTOM model-control badge — grayscale instead of the
+    accent tint, matching the neutral 'rest' gray of the waveform palette."""
+    t = theme_manager.theme
+    base = "#9A9FB3"
+    c = QColor(base)
+    rgb = f"{c.red()},{c.green()},{c.blue()}"
+    text = c.darker(230).name() if theme_manager.mode == "light" else base
+    return (
+        "font-family:'Montserrat';font-size:8px;font-weight:700;"
+        f"color:{text};"
+        f"background:rgba({rgb},32);"
+        f"border:1px solid rgba({rgb},70);"
+        "padding:1px 6px;border-radius:3px;letter-spacing:0.5px;"
+    )
+
+
 class FilePicker(QWidget):
     path_changed = Signal(str)
     def __init__(self, mode="file", filter="All (*.*)", placeholder="", drag_drop=False, parent=None):

@@ -306,12 +306,16 @@ def load_config(model_type: str, config_path: str) -> Union[ConfigDict, OmegaCon
         ValueError: If the configuration cannot be parsed or is otherwise invalid.
     """
     try:
-        with open(config_path, 'r') as f:
-            if model_type == 'htdemucs':
-                config = OmegaConf.load(config_path)
-            else:
-                config = ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
-            return config
+        if model_type == 'htdemucs':
+            config = OmegaConf.load(config_path)
+        else:
+            # Read the raw bytes so PyYAML auto-detects the encoding. Configs
+            # may be UTF-8 (e.g. comments in Cyrillic), which text-mode reading
+            # mangles under the Windows default cp1252 codec.
+            with open(config_path, 'rb') as f:
+                raw = f.read()
+            config = ConfigDict(yaml.load(raw, Loader=yaml.FullLoader))
+        return config
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
     except Exception as e:
