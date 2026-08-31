@@ -30,10 +30,8 @@ from ui.widgets.model_installer_dialog import _ModelInstallerDialog
 from backend.model_installer import check_models, REQUIRED_MODELS, ModelInstaller
 from ui.theme import theme_manager
 
-_LOGO_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "resources", "mvsep.png",
-)
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_LOGO_PATH = os.path.join(_BASE_DIR, "resources", "mvsep-logo.png")
 
 
 class _NavTab(QFrame):
@@ -644,11 +642,15 @@ class _HeaderBar(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, progress_cb=None):
         super().__init__()
+        # Startup-only progress hook consumed by the splash screen; cleared
+        # by main() once the window is shown so theme rebuilds don't fire it.
+        self._progress_cb = progress_cb
         self.setWindowTitle("MUSIC SOURCE SEPARATION — MODERN GUI")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowMinimizeButtonHint)
         self.setMinimumSize(QSize(1100, 700))
+        self._report_progress("Preparing workspace...", 12)
 
         self._central = QWidget()
         cv = QVBoxLayout(self._central)
@@ -695,7 +697,9 @@ class MainWindow(QMainWindow):
         self._blur_step = 0
         self._blur_callback = None
 
+        self._report_progress("Loading saved settings & models...", 74)
         self._load_all()
+        self._report_progress("Finalising interface...", 86)
         theme_manager.theme_changed.connect(self._on_theme_changed)
         theme_manager.theme_about_to_change.connect(self._on_theme_about_to_change)
         if self._NATIVE_RESIZE:
@@ -704,13 +708,28 @@ class MainWindow(QMainWindow):
         from ui.widgets.update_dialog import run_startup_check
         QTimer.singleShot(2500, lambda: run_startup_check(self))
 
+    def set_progress_callback(self, cb):
+        """Install/clear the startup progress hook (splash screen)."""
+        self._progress_cb = cb
+
+    def _report_progress(self, message, pct):
+        cb = self._progress_cb
+        if cb:
+            try:
+                cb(message, pct)
+            except Exception:
+                pass
+
     # —— Theme switching ————————————————————————————————————————————————
     def _create_pages(self):
+        self._report_progress("Building inference page...", 28)
         self.inference_page = InferencePage()
+        self._report_progress("Building ensemble pages...", 44)
         self.ensemble_landing = EnsembleLandingPage()
         self.auto_ensemble = AutoEnsemblePage()
         self.manual_ensemble = ManualEnsemblePage()
         self.iterative_ensemble = IterativeEnsemblePage()
+        self._report_progress("Building console & settings...", 56)
         self.console_page = ConsolePage()
         self.settings_page = SettingsPage()
 
@@ -1044,6 +1063,7 @@ class MainWindow(QMainWindow):
         self._update_brand()
         brand.setStyleSheet("background:transparent;border:none;")
         hl.addWidget(brand)
+        self._nav_center_delta = 0
 
         hl.addStretch(1)
 
@@ -1080,24 +1100,50 @@ class MainWindow(QMainWindow):
         equal stretches the tabs would sit left of center. Insert a fixed
         spacer = controls + right_margin - left_margin - brand (the tab-group
         width and split-point shift cancel out, so this is exact and
-        width-independent)."""
+        width-independent).
+
+        Widths are measured via sizeHint()/width() whichever is valid — the
+        splash screen's processEvents() pumps can fire this timer
+        mid-construction, before the window is shown and the layout has
+        activated, where width() alone reports bogus pre-activation geometry
+        (e.g. 640px for the window buttons) and mis-centers the tabs by
+        ~100px."""
         hl = self._header.layout()
         if hl is None or not isinstance(hl, QHBoxLayout):
             return
-        brand_w = self._brand_label.width()
-        toggle_w = self._theme_toggle.width()
-        buttons_w = self._window_buttons.width()
+
+        def _measured(w):
+            # sizeHint() is the final laid-out width and is valid even before
+            # the layout activates — but is -1 for fixed-size widgets (theme
+            # toggle), whose width() is authoritative instead. Conversely a
+            # plain frame's width() is bogus pre-activation (default 640px),
+            # while its layout-driven sizeHint() is right. The splash's
+            # processEvents() pumps can fire this timer mid-construction, so
+            # neither reading alone is safe.
+            hint = w.sizeHint().width()
+            return hint if hint > 0 else w.width()
+
+        brand_w = _measured(self._brand_label)
+        toggle_w = _measured(self._theme_toggle)
+        buttons_w = _measured(self._window_buttons)
         if brand_w <= 0 or toggle_w <= 0 or buttons_w <= 0:
             # Not laid out yet; retry on the next event-loop pass.
             QTimer.singleShot(0, self._center_nav)
             return
         delta = (toggle_w + 12 + buttons_w) + 16 - 28 - brand_w
-        if delta > 0:
-            # index 2 = right after the left stretch (brand, stretch, ...)
-            hl.insertSpacing(2, delta)
-            self._nav_center_delta = delta
-            if self._header._active_tab:
-                self._indicator.snap_to(self._header._active_tab)
+        if delta <= 0:
+            return
+        # Idempotent: replace a previously inserted spacer rather than
+        # stacking a second one if this pass runs again after show.
+        if self._nav_center_delta:
+            old = hl.itemAt(2)
+            if old is not None and old.spacerItem() is not None:
+                hl.takeAt(2)
+        # index 2 = right after the left stretch (brand, stretch, ...)
+        hl.insertSpacing(2, delta)
+        self._nav_center_delta = delta
+        if self._header._active_tab:
+            self._indicator.snap_to(self._header._active_tab)
 
     def _init_indicator(self):
         self._header._active_tab = self._nav_tabs[0]

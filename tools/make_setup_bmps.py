@@ -24,7 +24,7 @@ def main():
     app = QApplication([])
 
     icon = QImage(os.path.join(ROOT, "resources", "app_icon.png"))
-    wordmark = QImage(os.path.join(ROOT, "resources", "mvsep.png"))
+    wordmark = QImage(os.path.join(ROOT, "resources", "mvsep-logo.png"))
     if icon.isNull() or wordmark.isNull():
         print("branding images missing", file=sys.stderr)
         return 1

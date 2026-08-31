@@ -161,14 +161,37 @@ def main():
     saved_theme = settings_store.load().get("ui", {}).get("theme", "dark")
     theme_manager.set_mode(saved_theme, persist=False)
 
-    window = MainWindow()
+    # Startup splash: logo + title + a live progress bar over the heavy
+    # synchronous startup phases (page construction, settings load).
+    from ui.widgets.splash import SplashPanel
+    try:
+        from backend import update_checker as _uc
+        _version = _uc.app_version()
+    except Exception:
+        _version = ""
+    splash = SplashPanel(BASE, version=_version)
+    splash.set_stage("Starting application...", 5)
+    splash.show()
+    app.processEvents()
+
+    try:
+        window = MainWindow(progress_cb=splash.set_stage)
+    except Exception:
+        splash.close_now()
+        raise
     window.show()
+    splash.raise_()
+    # Startup phases are done — theme rebuilds must not drive the splash.
+    window.set_progress_callback(None)
 
     # Kick off the background runtime probe immediately so the job-start gate
     # reads a cached verdict instead of cold-importing torch on the UI thread
-    # the first (and every) time the user hits a job button.
+    # the first (and every) time the user hits a job button. The splash shows
+    # this as its last stage; the probe keeps running after the splash fades.
     from ui.widgets.runtime_dialog import prime_runtime_check
+    splash.set_stage("Checking runtime environment...", 92)
     prime_runtime_check()
+    splash.finish("Ready")
 
     sys.exit(app.exec())
 

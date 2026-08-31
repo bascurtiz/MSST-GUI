@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QScrollArea, QSizePolicy, QGridLayout, QButtonGroup,
     QLayout, QWidgetItem,
 )
-from PySide6.QtCore import Qt, Signal, QPointF, QRectF, QSize
+from PySide6.QtCore import Qt, Signal, QPointF, QRectF, QSize, QTimer
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QFontMetrics
 
 from backend.yaml_analyzer import get_stems_for_type
@@ -710,6 +710,14 @@ class AutoEnsemblePage(QWidget):
         self._output_dir = ""
         self._runner = None
         self._needs_model_refresh = False
+        # Coalesced model-grid rebuild: model_registered arrives ~60x during
+        # a cold settings load; rebuilding the grid per signal made startup
+        # and theme switches take ~5s. One flush per event-loop pass instead.
+        self._refresh_pending = False
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.setInterval(0)
+        self._refresh_timer.timeout.connect(self._flush_model_refresh)
         self._build_ui()
 
     def _build_ui(self):
@@ -1162,15 +1170,24 @@ class AutoEnsemblePage(QWidget):
                 # Re-registration (e.g. a type reconciliation): replace in
                 # place so the corrected type is used.
                 self._models[i] = model
-                self._refresh_stem_buttons()
-                self._refresh_models()
+                self._schedule_model_refresh()
                 return
         self._models.append(model)
-        self._refresh_stem_buttons()
-        self._refresh_models()
+        self._schedule_model_refresh()
 
     def on_model_removed(self, name):
         self._models = [m for m in self._models if m.get("name") != name]
+        self._schedule_model_refresh()
+
+    def _schedule_model_refresh(self):
+        """Coalesce model_registered fan-outs into one grid rebuild."""
+        if self._refresh_pending:
+            return
+        self._refresh_pending = True
+        self._refresh_timer.start()
+
+    def _flush_model_refresh(self):
+        self._refresh_pending = False
         self._refresh_stem_buttons()
         self._refresh_models()
 

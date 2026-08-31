@@ -2361,8 +2361,11 @@ class SettingsPage(QWidget):
         item.remove_requested.connect(self._remove_model)
         item.type_changed.connect(self._on_type_changed)
         self._list_layout.insertWidget(self._list_layout.count() - 1, item)
-        self._list_layout.activate()
-        self._list_container.updateGeometry()
+        # No activate()/updateGeometry() here: insertWidget already marks the
+        # layout dirty and Qt reflows it once on the next event-loop pass.
+        # Forcing activation per card re-lays-out the whole (growing) list
+        # every time — O(n²) ≈ 5s for ~60 cards whenever the page is attached
+        # to a visible window (app start and every theme switch).
 
     def _on_type_changed(self, name, new_type):
         for m in self._registered:

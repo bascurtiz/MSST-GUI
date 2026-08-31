@@ -31,8 +31,9 @@ def _error_rgba(alpha):
 # Stem colors fixed to a palette that fits the GUI.
 #
 # Known stems map to a set color; any other/unrecognized label falls back to
-# the neutral "rest" gray. A matching dark background is derived from the same
-# hue so the waveform track keeps its subtle color wash.
+# the distinct fallback palette below. A matching dark background is derived
+# from the same hue so the waveform track keeps its subtle color wash.
+_REST_COLOR = "#9A9FB3"
 _STEM_COLORS = {
     "instrumental": "#60A5FA",
     "vocals": "#A855F7",
@@ -42,8 +43,10 @@ _STEM_COLORS = {
     "guitar": "#C1090B",
     "piano": "#485FAB",
     "effects": "#FFFFFF",
+    # "Rest" is the leftover-of-the-leftover stem; fixed slate so it never
+    # lands on a fallback hue that could collide with "Other"'s green.
+    "rest": _REST_COLOR,
 }
-_REST_COLOR = "#9A9FB3"
 
 # Distinct fallback palette for unrecognized stem names. Known stems keep
 # their fixed `_STEM_COLORS`; any other name is colored from here, assigned in
@@ -98,6 +101,7 @@ _STEM_ALIASES = {
     "no reverb": "other",
     "no_reverb": "other",
     "speech": "vocals",
+    "voices": "vocals",
     "music": "instrumental",
     "sfx": "effects",
     "sound effects": "effects",

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import (Qt, Signal, Property, QEasingCurve, QSize, QPoint,
                             QRectF, QPropertyAnimation, QVariantAnimation,
-                            QEvent, QUrl, QThread)
+                            QEvent, QUrl, QThread, QTimer)
 from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
 
 from backend.runner import ProcessRunner
@@ -1919,6 +1919,14 @@ class InferencePage(QWidget):
         self._loaded_stems_by_model = {}  # stems loaded from settings, applied per-model
         self._mvsepless_archs = None  # archs listed in the mvsepless zoo (index fetch)
         self._library_finalized = False  # trailing stretch added to _model_layout?
+        # Coalesced library re-render: model_registered arrives ~60x during a
+        # cold settings load; rendering per signal made startup and theme
+        # switches take ~5s. One flush per event-loop pass instead.
+        self._vis_pending = False
+        self._vis_timer = QTimer(self)
+        self._vis_timer.setSingleShot(True)
+        self._vis_timer.setInterval(0)
+        self._vis_timer.timeout.connect(self._flush_library_visibility)
         self._build_ui()
         self._names_thread = _NamesFetchThread()
         self._names_thread.done.connect(self._on_friendly_names)
@@ -2385,6 +2393,17 @@ class InferencePage(QWidget):
                 model.get("backend_module", ""),
                 model.get("custom_backend_enabled", False),
                 display=display)
+        self._schedule_library_visibility()
+
+    def _schedule_library_visibility(self):
+        """Coalesce model_registered fan-outs into one visibility pass."""
+        if self._vis_pending:
+            return
+        self._vis_pending = True
+        self._vis_timer.start()
+
+    def _flush_library_visibility(self):
+        self._vis_pending = False
         self._apply_library_visibility()
 
     def _on_friendly_names(self, models):
