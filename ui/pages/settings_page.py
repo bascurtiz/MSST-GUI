@@ -2044,9 +2044,9 @@ class SettingsPage(QWidget):
 
     def _refresh_registered(self):
         from backend import settings as settings_store
-        path = getattr(self, '_export_settings_timer', None)
-        if path:
-            path.stop()
+        timer = getattr(self, '_export_settings_timer', None)
+        if timer:
+            timer.stop()
         while self._list_layout.count():
             item = self._list_layout.takeAt(0)
             w = item.widget() if item else None
@@ -2054,9 +2054,27 @@ class SettingsPage(QWidget):
                 w.setParent(None)
                 w.deleteLater()
         self._list_layout.addStretch()
+        # Snapshot what the other pages already know BEFORE clearing, so only
+        # genuinely new or changed entries are re-broadcast. Re-emitting every
+        # registered model here made each page rebuild its whole model grid
+        # once per model (~59 full rebuilds after a single install) — the
+        # multi-second stall right after the install dialog closed.
+        known = {}
+        for m in self._registered:
+            k = dict(m)
+            k.setdefault("backend_module", "")
+            k.setdefault("custom_backend_enabled", False)
+            known[m.get("name")] = k
         self._registered.clear()
         data = settings_store.load()
-        self.load_settings(data.get("registered_models", []))
+        for m in data.get("registered_models", []):
+            if "backend_module" not in m:
+                m["backend_module"] = ""
+                m["custom_backend_enabled"] = False
+            self._registered.append(m)
+            self._add_item_widget(m)
+            if known.get(m.get("name")) != m:
+                self.model_registered.emit(m)
 
     def reapply_theme(self):
         self.setStyleSheet(f"#settingsPage{{background:{theme_manager.theme.bg};}}")

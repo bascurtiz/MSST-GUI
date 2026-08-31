@@ -235,14 +235,31 @@ def _yaml_name_from_url(url: str) -> str:
 
 
 def is_installed(info: ModelInfo) -> bool:
-    """Check if model already registered in settings."""
-    data = settings_store.load()
-    models = data.get("registered_models", [])
+    """Check if model already registered in settings.
+
+    Uses an mtime-guarded cache: the manager re-renders its full card list
+    after every install/refresh and used to re-read + re-parse the settings
+    JSON once per model (~hundreds of reads per render). The cache is
+    invalidated whenever the settings file changes on disk, so results stay
+    correct across installs and removals.
+    """
+    try:
+        mtime = os.path.getmtime(settings_store._SETTINGS_FILE)
+    except OSError:
+        mtime = 0.0
+    cache = is_installed._cache
+    if cache.get("mtime") != mtime:
+        data = settings_store.load()
+        cache["mtime"] = mtime
+        cache["names"] = {
+            os.path.basename(m.get("ckpt", "")).lower()
+            for m in data.get("registered_models", [])
+        }
     ckpt_name = _ckpt_name_from_url(info.checkpoint_url)
-    for m in models:
-        if os.path.basename(m.get("ckpt", "")).lower() == ckpt_name.lower():
-            return True
-    return False
+    return ckpt_name.lower() in cache["names"]
+
+
+is_installed._cache = {"mtime": -1.0, "names": set()}
 
 
 def install_model(

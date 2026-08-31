@@ -229,11 +229,15 @@ def parallel_download(
     """Download *url* using multiple parallel HTTP Range requests.
 
     For large files behind CDNs that throttle per-connection throughput,
-    this splits the file into *N* segments and downloads them concurrently,
-    then concatenates the parts (like IDM).
+    this splits the file into *N* segments and downloads them concurrently.
+    Each segment is written **directly at its byte offset in the destination
+    file** (like IDM) — there are no .part files and no reassembly pass, so
+    the file is complete the moment the last byte lands. This removes the
+    multi-second silent merge that used to follow the progress bar reaching
+    100% (the reassembly used to re-read and re-write the whole file).
 
-    Falls back to ``stream_download`` for small files or servers that do
-    not support Range requests.
+    Falls back to ``stream_download`` for small files or servers that do not
+    support Range requests.
     """
     filename = os.path.basename(dest)
     parent = os.path.dirname(dest)
@@ -264,13 +268,30 @@ def parallel_download(
     def _cancelled() -> bool:
         return bool(should_cancel and should_cancel())
 
+    # Pre-size the destination so every segment can write directly at its
+    # own byte offset (no .part files, no reassembly pass afterwards).
+    def _remove_dest():
+        try:
+            if os.path.exists(dest):
+                os.remove(dest)
+        except OSError:
+            pass
+
+    try:
+        with open(dest, "wb") as f:
+            f.truncate(file_size)
+    except OSError as e:
+        if own_session:
+            sess.close()
+        return False, f"cannot create destination file: {e}"
+
     seg_progress: list[int] = [0] * num
     seg_ok: list[bool] = [False] * num
     seg_msg: list[str] = [""] * num
     lock = threading.Lock()
 
     def _download_seg(idx: int, start: int, end: int):
-        part_path = f"{dest}.part.{idx}"
+        rng_len = end - start + 1
         attempt = 0
         max_attempts = 4
         while attempt < max_attempts and not _cancelled():
@@ -279,34 +300,54 @@ def parallel_download(
                 headers = {"Range": f"bytes={start}-{end}"}
                 resp = sess.get(url, stream=True, timeout=timeout, headers=headers)
                 if resp.status_code == 416:
+                    # Requested range not satisfiable -> treat as complete.
                     resp.close()
-                    seg_ok[idx] = True
-                    seg_progress[idx] = end - start + 1
+                    with lock:
+                        seg_ok[idx] = True
+                        seg_progress[idx] = rng_len
                     return
-                resp.raise_for_status()
-                with open(part_path, "wb") as f:
+                if resp.status_code != 206:
+                    # Server ignored the Range request — positional writing
+                    # would corrupt the file. Bail out; the caller falls back
+                    # to a single-stream download below.
+                    resp.close()
+                    with lock:
+                        seg_msg[idx] = "range not honored"
+                    return
+                written = 0
+                with open(dest, "r+b") as f:
+                    f.seek(start)
                     for chunk in resp.iter_content(chunk_size=1048576):
                         if _cancelled():
                             resp.close()
                             return
                         if chunk:
                             f.write(chunk)
+                            written += len(chunk)
                             with lock:
-                                seg_progress[idx] += len(chunk)
+                                # Assigned (not accumulated) so a retry reports
+                                # honest progress from zero instead of stacking
+                                # counts and faking a premature 100%.
+                                seg_progress[idx] = written
                 resp.close()
-                if os.path.getsize(part_path) >= end - start + 1:
-                    seg_ok[idx] = True
-                    seg_msg[idx] = ""
+                if written >= rng_len:
+                    with lock:
+                        seg_ok[idx] = True
+                        seg_msg[idx] = ""
                     return
+                # Short body — retry this segment from scratch; the next
+                # attempt rewrites the same offsets.
             except requests.exceptions.RequestException:
                 if attempt >= max_attempts:
-                    seg_msg[idx] = f"segment {idx} failed"
+                    with lock:
+                        seg_msg[idx] = f"segment {idx} failed"
                     return
                 time.sleep(min(0.5 * attempt, 3))
-        if _cancelled():
-            seg_msg[idx] = "cancelled"
-        else:
-            seg_msg[idx] = f"segment {idx} failed after retries"
+        with lock:
+            if _cancelled():
+                seg_msg[idx] = "cancelled"
+            elif not seg_ok[idx]:
+                seg_msg[idx] = f"segment {idx} failed after retries"
 
     threads = []
     for i, (s, e) in enumerate(ranges):
@@ -346,45 +387,31 @@ def parallel_download(
     monitor.join(timeout=1)
 
     if _cancelled():
-        for i in range(num):
-            p = f"{dest}.part.{i}"
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except OSError:
-                    pass
+        _remove_dest()
         if own_session:
             sess.close()
         return False, "cancelled"
 
     for i in range(num):
         if not seg_ok[i]:
-            for j in range(num):
-                p = f"{dest}.part.{j}"
-                if os.path.exists(p):
-                    try:
-                        os.remove(p)
-                    except OSError:
-                        pass
+            range_broken = seg_msg[i] == "range not honored"
+            _remove_dest()
             if own_session:
                 sess.close()
+            if range_broken:
+                # The server advertised Range support (HEAD) but ignored it —
+                # restart cleanly as one stream so the download still works.
+                return stream_download(url, dest, progress_callback=progress_callback,
+                                       speed_callback=speed_callback,
+                                       should_cancel=should_cancel, timeout=timeout,
+                                       chunk_size=1048576, session=None)
             return False, seg_msg[i] or f"segment {i} incomplete"
 
-    try:
-        with open(dest, "wb") as out:
-            for i in range(num):
-                part_path = f"{dest}.part.{i}"
-                with open(part_path, "rb") as f:
-                    while True:
-                        buf = f.read(1048576)
-                        if not buf:
-                            break
-                        out.write(buf)
-                os.remove(part_path)
-    except OSError as e:
+    if os.path.getsize(dest) != file_size:
+        _remove_dest()
         if own_session:
             sess.close()
-        return False, f"reassembly failed: {e}"
+        return False, "size mismatch after segmented download"
 
     if progress_callback:
         progress_callback(filename, file_size, file_size)
