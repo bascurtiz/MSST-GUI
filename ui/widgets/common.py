@@ -247,7 +247,7 @@ MODEL_TYPE_COLORS = {
     "dereverb / deecho": "#DDDDDD",
     "denoise": "#888888",
     "phantom centre": "#9176FF",
-    "karaoke": "#C91578",
+    "karaoke": "#F07CA8",
     "dual target (instrumental & vocals)": "#10B981",
     "multi stems": "#FFCA28",
     "super resolution": "#B55064",
