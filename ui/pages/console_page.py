@@ -73,6 +73,8 @@ _STEM_COLORS = {
     "digital piano": MODEL_TYPE_COLORS["keys"],
     "keys": MODEL_TYPE_COLORS["keys"],
     "synth": "#00DF95",
+    "dry": "#9CA3AF",
+    "wet": "#FFFFFF",
     "center": MODEL_TYPE_COLORS["phantom centre"],
     "effects": "#FFFFFF",
     # "Rest" is the leftover-of-the-leftover stem; fixed slate so it never
