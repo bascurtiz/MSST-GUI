@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QSizePolicy, QLabel, QFrame, QTextEdit, QComboBox,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent
-from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QFont, QFontMetrics
+from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QFont, QFontMetrics, QImage
 from ui.theme import theme_manager, FONT_FAMILY as FONT_FAMILY_DEFAULT
 
 
@@ -66,12 +66,50 @@ def _addfile_icon_color(btn):
     return theme_manager.accent if btn._hovered else t.text_muted
 
 
+def css_color(value, fallback="#808080"):
+    """QColor from a theme token, including CSS rgba() strings that
+    QColor() itself cannot parse (invalid → black when painted)."""
+    import re as _re
+    c = QColor(value)
+    if c.isValid():
+        return c
+    m = _re.match(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)", str(value).strip())
+    if m:
+        c = QColor(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        c.setAlphaF(float(m.group(4)))
+        return c
+    return QColor(fallback)
+
+
+DOWNLOAD_GLYPH = "download"  # marker: draw a download icon instead of text
+
+
+def _painted_ink_center(w):
+    """Vertical ink center of a small widget rendered offscreen, using the
+    probe red (#FF2020) set by the caller; None if nothing paints."""
+    img = QImage(w.width(), w.height(), QImage.Format_ARGB32_Premultiplied)
+    img.fill(0)
+    w.render(img)
+    rows = []
+    for y in range(img.height()):
+        for x in range(img.width()):
+            c = QColor(img.pixel(x, y))
+            if c.red() > 150 and c.green() < 100 and c.blue() < 100:
+                rows.append(y)
+                break
+    if not rows:
+        return None
+    return (min(rows) + max(rows)) / 2.0
+
+
 class _GlyphWidget(QWidget):
     """Leading glyph of a GlyphButton, hand-painted with an optical vertical
     offset. Symbols like '+' ride high inside their em box, so a plainly
     centered 18px '+' floats ~3px above its 12px text label; the offset is
     computed from the font metrics so the glyph's ink center lands on the
-    text's cap-height center (what the eye compares against)."""
+    text's cap-height center (what the eye compares against).
+    The special DOWNLOAD_GLYPH marker draws a download icon (arrow down with
+    a dash below) instead of text."""
 
     def __init__(self, text, size, family, parent=None):
         super().__init__(parent)
@@ -79,9 +117,14 @@ class _GlyphWidget(QWidget):
         self._size = size
         self._family = family
         self._color = QColor("#FFFFFF")
+        self._custom = text == DOWNLOAD_GLYPH
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         fm = self._metrics()
         from math import ceil
+        if self._custom:
+            self.setFixedSize(ceil(size * 0.72), fm.height())
+            self._dy = -2  # optically center on the neighboring text
+            return
         self.setFixedSize(ceil(fm.horizontalAdvance(text)) + 2, fm.height())
         self._dy = 0
 
@@ -94,37 +137,51 @@ class _GlyphWidget(QWidget):
         return QFontMetrics(self._font())
 
     def set_color(self, color):
-        self._color = QColor(color)
+        # Theme tokens may be CSS rgba() strings — parse them properly or the
+        # glyph paints invalid/black (e.g. text_muted, text_dim).
+        self._color = css_color(color)
         self.update()
-
-    def compute_offset(self, text_size):
-        """Vertical shift (px, positive = down) that puts the glyph's ink
-        center on the cap-height center of a `text_size` label of the same
-        family, assuming both boxes are vertically centered against each
-        other (tight metric boxes)."""
-        gfm = self._metrics()
-        tf = QFont(self._family)
-        tf.setPixelSize(text_size)
-        tfm = QFontMetrics(tf)
-        # Both tight metric boxes share a row and are centered: their tops
-        # are offset by (g_h - t_h)/2. Compute ink/cap centers in row space.
-        g_h, t_h = gfm.height(), tfm.height()
-        row = max(g_h, t_h)
-        g_top = (row - g_h) / 2.0
-        t_top = (row - t_h) / 2.0
-        br = gfm.boundingRect(self._text)
-        glyph_center = g_top + gfm.ascent() + (br.top() + br.bottom()) / 2.0
-        cap_center = t_top + tfm.ascent() - tfm.capHeight() / 2.0
-        dy = cap_center - glyph_center
-        # Clamp: cosmetic nudge only, never re-layout the button.
-        self._dy = int(round(max(-4.0, min(4.0, dy))))
 
     def paintEvent(self, event):
         p = QPainter(self)
+        p.translate(0, self._dy)
+        if self._custom:
+            self._paint_download(p)
+            return
         p.setFont(self._font())
         p.setPen(QPen(self._color))
-        rect = self.rect().translated(0, self._dy)
+        rect = self.rect()
         p.drawText(rect, Qt.AlignCenter, self._text)
+
+    def _paint_download(self, p):
+        """Download icon: arrow pointing down with a dash below it. Drawn at
+        ~60% of the glyph box so it reads as the same visual size as the
+        small caps text next to it."""
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(self._color, max(1.3, self._size / 13.0))
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        # Centered drawing area: ~52% of the box height, 72% of its width —
+        # sized to read like the small caps text, not larger.
+        bw = self.width() * 0.72
+        bh = self.height() * 0.52
+        x0 = (self.width() - bw) / 2.0
+        y0 = (self.height() - bh) / 2.0
+        cx = self.width() / 2.0
+        top = y0 + bh * 0.02
+        tip = y0 + bh * 0.66
+        head = bw * 0.32
+        # shaft
+        p.drawLine(cx, top, cx, tip)
+        # arrow head
+        p.drawLine(cx - head, tip - head, cx, tip)
+        p.drawLine(cx + head, tip - head, cx, tip)
+        # dash below
+        dash_y = y0 + bh * 0.96
+        dash = bw * 0.40
+        p.drawLine(cx - dash, dash_y, cx + dash, dash_y)
 
 
 class GlyphButton(QPushButton):
@@ -153,12 +210,48 @@ class GlyphButton(QPushButton):
         h.setSpacing(6)
         family = self.font().family() or FONT_FAMILY_DEFAULT
         self._glyph_lbl = _GlyphWidget(glyph, glyph_size, family)
-        self._glyph_lbl.compute_offset(text_size)
+        self._glyph_size = glyph_size
         self._text_lbl = QLabel(text)
         h.addWidget(self._glyph_lbl, 0, Qt.AlignVCenter)
         h.addWidget(self._text_lbl, 0, Qt.AlignVCenter)
         self._content.raise_()
         self._refresh_icon()
+        self._optical_align(text_size)
+
+    def _optical_align(self, text_size):
+        """Calibrate the glyph's vertical offset from painted pixels: font
+        metric bounds don't match the hinted rendering closely enough (a
+        metric-derived nudge left \u25B6/\u25A0 sitting visibly low). Renders
+        glyph and text once with a probe color and aligns the glyph's ink
+        center with the text's CAP-BAND center: the probe is the uppercase
+        text, whose ink spans exactly cap-top..baseline. (The mixed-case ink
+        center is dragged down by descenders, which makes the glyph float.)"""
+        real_cb = self._icon_color_cb
+        self._icon_color_cb = lambda b: "#FF2020"  # probe color for ink scan
+        self._glyph_lbl._dy = 0
+        self._refresh_icon()
+        original_text = self._text_lbl.text()
+        try:
+            self._text_lbl.setText(original_text.upper())
+            g = _painted_ink_center(self._glyph_lbl)
+            t = _painted_ink_center(self._text_lbl)
+        finally:
+            self._text_lbl.setText(original_text)
+            self._icon_color_cb = real_cb
+            self._refresh_icon()
+        if g is not None and t is not None:
+            # Both tight boxes are centered against each other in the row —
+            # map the text's ink center into the (taller) glyph box's space
+            # before comparing, or the offset absorbs the box height delta.
+            top_off = (self._glyph_lbl.height() - self._text_lbl.height()) / 2.0
+            dy = (t + top_off) - g
+            # Damped: apply half the measured correction. Full-strength
+            # nudges overcorrect depending on the machine's font hinting
+            # (±2px swings on the small '+ Add' label), and a residual of
+            # ~0.5px is invisible while a 2px overshoot is not.
+            dy *= 0.5
+            self._glyph_lbl._dy = int(round(max(-2.0, min(2.0, dy))))
+            self._glyph_lbl.update()
 
     def _refresh_icon(self):
         # own transparent backgrounds: page containers use bare `background:`
@@ -195,6 +288,26 @@ class GlyphButton(QPushButton):
         if e.type() == QEvent.Type.EnabledChange:
             self._refresh_icon()
         super().changeEvent(e)
+
+
+def dark_menu_qss():
+    """The app's always-dark QMenu look, as a widget-level stylesheet.
+
+    Menus parented inside page columns with bare `background:` stylesheets
+    inherit that cascade, which overrides the app-level dark QMenu rule in
+    light mode (white menu, near-white text — unreadable). Apply this to any
+    QMenu created under such an ancestor."""
+    t = theme_manager.theme
+    return (
+        f"QMenu{{background:{t.menu_bg};color:{t.menu_text};"
+        f"border:1px solid {t.menu_border};border-radius:6px;padding:6px;}}"
+        "QMenu::item{background:transparent;color:" + t.menu_text + ";"
+        "padding:7px 20px;border-radius:4px;font-size:11px;}"
+        "QMenu::item:selected{background:" + theme_manager.accent + ";color:#FFFFFF;}"
+        "QMenu::item:disabled{color:" + t.menu_disabled + ";}"
+        "QMenu::separator{height:1px;background:" + t.menu_sep + ";margin:5px 10px;}"
+        "QMenu::icon{padding-left:8px;}"
+    )
 
 
 def add_button_hover():

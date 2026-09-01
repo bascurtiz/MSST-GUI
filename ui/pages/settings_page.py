@@ -22,6 +22,7 @@ from ui.widgets.common import (
     PageHeader, outline_button_ss, solid_button_ss, ChevronCombo,
     EllipsisButton, add_button_hover,
     GlyphButton, _outline_icon_color, _solid_icon_color, _custom_badge_ss,
+    css_color as _css_color, DOWNLOAD_GLYPH,
 )
 
 from backend.downloader import HuggingFaceDownloader
@@ -1590,21 +1591,6 @@ class _FolderManagerWidget(QWidget):
             self.model_installed.emit()
 
 
-def _css_color(value, fallback="#808080"):
-    """QColor from a theme token, including CSS rgba() strings that
-    QColor() itself cannot parse (invalid → black, e.g. `text_dim`)."""
-    import re as _re
-    c = QColor(value)
-    if c.isValid():
-        return c
-    m = _re.match(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)", str(value).strip())
-    if m:
-        c = QColor(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        c.setAlphaF(float(m.group(4)))
-        return c
-    return QColor(fallback)
-
-
 class _GitHubIconButton(QPushButton):
     """Square button with the GitHub mark, tinted to the active theme.
     Opens the project's GitHub repository."""
@@ -1983,7 +1969,7 @@ class SettingsPage(QWidget):
         dl.setContentsMargins(0, 0, 0, 0)
         dl.setSpacing(12)
 
-        self._download_btn = GlyphButton("Download Model", "+", _solid_icon_color,
+        self._download_btn = GlyphButton("Download Model", DOWNLOAD_GLYPH, _solid_icon_color,
                                          glyph_size=18, text_size=12)
         self._download_btn.setFixedHeight(44)
         self._download_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)

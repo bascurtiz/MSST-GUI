@@ -8,12 +8,14 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
-    QDialogButtonBox,
+    QDialogButtonBox, QMenu,
 )
+from PySide6.QtGui import QCursor
 from PySide6.QtCore import (Qt, Signal, Property, QEasingCurve, QSize, QPoint,
-                            QRectF, QPropertyAnimation, QVariantAnimation,
+                            QRectF, QPointF, QPropertyAnimation, QVariantAnimation,
                             QEvent, QUrl, QThread, QTimer)
 from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
+
 
 from backend.runner import ProcessRunner
 from backend.model_manager import fetch_model_index
@@ -25,7 +27,7 @@ from ui.theme import theme_manager, UIConstants, FONT_STACK
 from ui.widgets.common import (
     ConsoleLog, SpectrogramPanel, WaveformPanel, ProcessingStatusPanel, PageHeader,
     outline_button_ss, solid_button_ss, paint_chevron, EllipsisButton,
-    GlyphButton,
+    GlyphButton, dark_menu_qss,
     _outline_icon_color, _solid_icon_color, _stop_icon_color, _add_icon_color,
     _type_badge_ss, _custom_badge_ss, _type_badge_color, _type_title,
 )
@@ -481,6 +483,89 @@ def _lbl_ss():
         f"color:{t.text_sec};background:transparent;letter-spacing:1.5px;"
     )
 
+
+class _InfoDot(QWidget):
+    """Small circled-'i' in front of a CONFIGURATION row label; the row's
+    explanation tooltip shows only when hovering this dot, not the row.
+    Hand-drawn (circle outline + i) so it renders identically everywhere —
+    the U+24D8 character depends on font fallback and looks off. Turns
+    accent blue on hover so it reads as interactive."""
+
+    def __init__(self, tooltip):
+        super().__init__()
+        self._hovered = False
+        self.setToolTip(tooltip)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(14, 14)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setAttribute(Qt.WA_NoSystemBackground)
+
+    def _color(self):
+        from ui.widgets.common import css_color
+        return css_color(theme_manager.accent if self._hovered
+                         else theme_manager.theme.text_muted)
+
+    def enterEvent(self, e):
+        self._hovered = True
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        c = self._color()
+        cx = cy = self.width() / 2.0
+        r = 5.6
+        pen = QPen(c, 1.2)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QPointF(cx, cy), r, r)
+        # the 'i': stem + dot
+        p.setPen(Qt.NoPen)
+        p.setBrush(c)
+        p.drawRoundedRect(QRectF(cx - 0.55, cy - 0.8, 1.1, 4.6), 0.55, 0.55)
+        p.drawEllipse(QPointF(cx, cy - 2.9), 0.8, 0.8)
+
+
+def _info_dot(tooltip):
+    """Small circled-'i' in front of a CONFIGURATION row label; the row's
+    explanation tooltip shows only when hovering this dot, not the row."""
+    dot = _InfoDot(tooltip)
+    return dot
+
+
+def _label_with_info(label, tooltip=""):
+    """The row's small-caps label, optionally followed by the ⓘ dot when a
+    tooltip is given (the 80px label column is shared between them)."""
+    if not tooltip:
+        lb = QLabel(label.upper())
+        lb.setStyleSheet(_lbl_ss())
+        lb.setFixedWidth(80)
+        lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        return lb
+    wrap = QWidget()
+    wrap.setStyleSheet("background:transparent;")
+    hl = QHBoxLayout(wrap)
+    hl.setContentsMargins(0, 0, 0, 0)
+    hl.setSpacing(4)
+    lb = QLabel(label.upper())
+    lb.setStyleSheet(_lbl_ss())
+    # Fixed dot slot: all rows line their ⓘ up at the same x (right after
+    # the widest label, QUALITY/DEVICE), with the value column unchanged at
+    # the 80px mark.
+    lb.setFixedWidth(58)
+    lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+    hl.addWidget(lb)
+    hl.addWidget(_info_dot(tooltip))
+    hl.addStretch()
+    wrap.setFixedWidth(80)
+    return wrap
+
 def _combo_ss():
     t = theme_manager.theme
     c = QColor(theme_manager.accent)
@@ -500,9 +585,20 @@ def _combo_ss():
 ROW_H = 46
 
 
+def _audio_files_in_folder(folder, extensions):
+    """All supported audio files under `folder`, walked recursively."""
+    found = []
+    for root, _dirs, names in os.walk(folder):
+        for n in names:
+            if os.path.splitext(n)[1].lower() in extensions:
+                found.append(os.path.join(root, n))
+    found.sort()
+    return found
+
+
 class _BrowseRow(QFrame):
     def __init__(self, icon, label, placeholder, mode="file",
-                 file_filter="All (*.*)", parent=None):
+                 file_filter="All (*.*)", tooltip="", parent=None):
         super().__init__(parent)
         self._mode   = mode
         self._filter = file_filter
@@ -524,11 +620,7 @@ class _BrowseRow(QFrame):
             hl.addWidget(icon)
             hl.addSpacing(6)
 
-        lb = QLabel(label.upper())
-        lb.setStyleSheet(_lbl_ss())
-        lb.setFixedWidth(80)
-        lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        hl.addWidget(lb)
+        hl.addWidget(_label_with_info(label, tooltip))
 
         self._edit = QLineEdit()
         self._edit.setReadOnly(True)
@@ -554,16 +646,48 @@ class _BrowseRow(QFrame):
             if path:
                 self._files = []
                 self._edit.setText(path)
-        else:
+            return
+        # File mode: pick individual files or a whole folder (the folder is
+        # walked recursively for supported audio files).
+        menu = QMenu(self)
+        # Re-assert the dark menu look: the page column's bare `background:`
+        # stylesheet cascades into popups and overrides the app-level dark
+        # QMenu rule in light mode (white menu, near-white text).
+        menu.setStyleSheet(dark_menu_qss())
+        act_files = menu.addAction("Select audio file(s)\u2026")
+        act_folder = menu.addAction("Select a folder\u2026")
+        chosen = menu.exec(QCursor.pos())
+        if chosen is act_files:
             files, _ = QFileDialog.getOpenFileNames(
                 self, "Select audio file(s)",
                 os.path.dirname(self._files[0]) if self._files else "",
                 self._filter)
-            if files:
-                self._files = files
-                self._edit.setText(
-                    os.path.basename(files[0]) if len(files) == 1
-                    else f"{len(files)} files selected")
+            self._set_files(files)
+        elif chosen is act_folder:
+            folder = QFileDialog.getExistingDirectory(
+                self, "Select folder", self._start_dir())
+            if folder:
+                self._set_files(_audio_files_in_folder(folder, self._extensions()))
+
+    def _start_dir(self):
+        for f in self._files:
+            if os.path.isfile(f):
+                return os.path.dirname(f)
+        return ""
+
+    def _extensions(self):
+        """Supported audio extensions parsed from the file filter, e.g.
+        {'.wav', '.flac', ...}."""
+        import re as _re
+        return {m.lower() for m in _re.findall(r"\*(\.\w+)", self._filter or "")}
+
+    def _set_files(self, files):
+        if not files:
+            return
+        self._files = files
+        self._edit.setText(
+            os.path.basename(files[0]) if len(files) == 1
+            else f"{len(files)} files selected")
 
     def value(self):
         return self._files if self._mode != "folder" else self._edit.text()
@@ -626,12 +750,14 @@ class _BrowseRow(QFrame):
                 self._edit.setText(folder)
             e.acceptProposedAction()
         else:
+            # Files are taken as-is; folders are walked recursively for
+            # supported audio files.
             files = [p for p in paths if os.path.isfile(p)]
+            for p in paths:
+                if os.path.isdir(p):
+                    files.extend(_audio_files_in_folder(p, self._extensions()))
             if files:
-                self._files = files
-                self._edit.setText(
-                    os.path.basename(files[0]) if len(files) == 1
-                    else f"{len(files)} files selected")
+                self._set_files(files)
             e.acceptProposedAction()
 
     def set_value(self, v):
@@ -646,7 +772,7 @@ class _BrowseRow(QFrame):
 
 
 class _ComboRow(QFrame):
-    def __init__(self, icon, label, items):
+    def __init__(self, icon, label, items, tooltip=""):
         super().__init__()
         self.setObjectName("cfgRow")
         self.setFixedHeight(ROW_H)
@@ -664,11 +790,7 @@ class _ComboRow(QFrame):
             hl.addWidget(icon)
             hl.addSpacing(6)
 
-        lb = QLabel(label.upper())
-        lb.setStyleSheet(_lbl_ss())
-        lb.setFixedWidth(80)
-        lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        hl.addWidget(lb)
+        hl.addWidget(_label_with_info(label, tooltip))
 
         self.combo = _ComboBox()
         self.combo.addItems(items)
@@ -973,7 +1095,7 @@ class _StemSelectionDialog(QDialog):
 # ── Output Stems Row (replaces _TargetRow) ─────────────────────────────────
 
 class _OutputStemsRow(QFrame):
-    def __init__(self, icon, label, parent=None):
+    def __init__(self, icon, label, tooltip="", parent=None):
         super().__init__(parent)
         self._all_stems = []
         self._selected_stems = set()
@@ -995,11 +1117,7 @@ class _OutputStemsRow(QFrame):
             hl.addWidget(icon)
             hl.addSpacing(6)
 
-        lb = QLabel(label.upper())
-        lb.setStyleSheet(_lbl_ss())
-        lb.setFixedWidth(80)
-        lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        hl.addWidget(lb)
+        hl.addWidget(_label_with_info(label, tooltip))
 
         self._summary = QLabel("Select stems\u2026")
         self._summary.setStyleSheet(
@@ -1874,14 +1992,15 @@ class _MiniSwitch(QWidget):
     def paintEvent(self, e):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        # Off-state track: fixed near-black in dark theme (#101318), a
-        # slate blue on the bright theme (#203048); the on-state turns accent.
+        # Off-state track: fixed near-black in dark theme (#101318), a soft
+        # gray on the bright theme (#C4CAD2 — low-contrast against the light
+        # background); the on-state turns accent.
         # (Don't feed it the theme's rgba(...) string — QColor can't parse
         # float-alpha and would fall back to full black.)
         if self._on:
             track = QColor(theme_manager.accent)
         else:
-            track = QColor("#101318" if theme_manager.mode == "dark" else "#203048")
+            track = QColor("#101318" if theme_manager.mode == "dark" else "#C4CAD2")
         p.setPen(Qt.NoPen)
         p.setBrush(track)
         p.drawRoundedRect(self.rect(), 8, 8)
@@ -1976,75 +2095,47 @@ class InferencePage(QWidget):
 
         self._input_row = _BrowseRow(
             None, "Input", "Select or drop audio file(s)\u2026",
-            mode="file", file_filter=AUDIO_FILTER)
+            mode="file", file_filter=AUDIO_FILTER,
+            tooltip="Audio file(s) to separate.\n"
+                    "Click to browse or drop files here.")
         cfg.addWidget(self._input_row)
 
         self._output_row = _BrowseRow(
-            None, "Output", "Select or drop output folder\u2026", mode="folder")
+            None, "Output", "Select or drop output folder\u2026", mode="folder",
+            tooltip="Folder where the stems are written.\n"
+                    "Each model gets its own subfolder per checkpoint.")
         cfg.addWidget(self._output_row)
 
         self._fmt_row = _ComboRow(
             None, "Quality",
-            ["FLAC", "WAV (PCM 32-bit)", "WAV (PCM 16-bit)", "MP3 320kbps", "MP3 128kbps"])
+            ["FLAC", "WAV (PCM 32-bit)", "WAV (PCM 16-bit)", "MP3 320kbps", "MP3 128kbps"],
+            tooltip="Output format for the stems.\n"
+                    "FLAC/WAV are lossless, MP3 is lossy but smaller.")
         self._fmt_combo = self._fmt_row.combo
         cfg.addWidget(self._fmt_row)
 
         self._output_stems_row = _OutputStemsRow(
-            None, "Stems")
+            None, "Stems",
+            tooltip="Which stems are saved to disk.\n"
+                    "All of the model's stems are saved by default.")
         cfg.addWidget(self._output_stems_row)
 
         self._tta_row = _ComboRow(
-            None, "TTA", ["Disabled", "Enabled"])
+            None, "TTA", ["Disabled", "Enabled"],
+            tooltip="Extra pass on flipped audio, averaged in.\n"
+                    "Cleaner stems, but roughly doubles the time.")
         self._tta_combo = self._tta_row.combo
         cfg.addWidget(self._tta_row)
 
         self._dev_row = _ComboRow(
-            None, "Device", list_gpus())
+            None, "Device", list_gpus(),
+            tooltip="GPU (CUDA) is by far the fastest.\n"
+                    "Use CPU only as a fallback.")
         self._device_combo = self._dev_row.combo
         if self._device_combo.count() > 1:
             # Default to the first GPU when one is available (index 0 is CPU).
             self._device_combo.setCurrentIndex(1)
         cfg.addWidget(self._dev_row)
-
-        # Explanatory tooltips for every configuration row (also applied to
-        # the row's children — a child widget that paints its own tooltip
-        # area would otherwise swallow the parent frame's tooltip).
-        _TOOLTIPS = {
-            self._input_row:
-                "Audio file(s) to separate. Click to browse or drop files "
-                "directly onto this row — multiple files are processed one "
-                "after another.",
-            self._output_row:
-                "Folder where the separated stems are written. Each model "
-                "gets its own subfolder named after its checkpoint, so "
-                "running another model on the same song never overwrites "
-                "earlier results.",
-            self._fmt_row:
-                "Output format for the separated stems.\n\n"
-                "FLAC — lossless and compressed (recommended)\n"
-                "WAV 32/16-bit — lossless, uncompressed, larger files\n"
-                "MP3 320/128 kbps — lossy, much smaller files",
-            self._output_stems_row:
-                "Which stems are written to disk. By default every stem the "
-                "selected model outputs is saved — untick the ones you don't "
-                "need. If the model supports it, a 'Rest' stem with whatever "
-                "remains can be saved as well.",
-            self._tta_row:
-                "Test-Time Adaptation: the model additionally processes a "
-                "horizontally flipped copy of the audio and averages both "
-                "passes. Slightly cleaner, more stable stems — but roughly "
-                "doubles the processing time.",
-            self._dev_row:
-                "Compute device for the separation. GPU (CUDA) is by far the "
-                "fastest; use CPU only as a fallback, e.g. to work around "
-                "VRAM limitations.",
-        }
-        for row, tip in _TOOLTIPS.items():
-            widgets = [row]
-            for child in row.findChildren(QWidget):
-                widgets.append(child)
-            for w in widgets:
-                w.setToolTip(tip)
 
         ll.addLayout(cfg)
 

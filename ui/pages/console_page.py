@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QTimer, Property, QUrl, QPropertyAnimation, QEasi
 from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QPainterPath, QDesktopServices, QFont, QPixmap, QCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from ui.theme import theme_manager, FONT_FAMILY, FONT_STACK
-from ui.widgets.common import PageHeader, add_button_hover, MODEL_TYPE_COLORS
+from ui.widgets.common import PageHeader, add_button_hover, MODEL_TYPE_COLORS, dark_menu_qss
 from mutagen import File as _MutagenFile
 
 
@@ -1222,6 +1222,9 @@ class _TaskCard(QFrame):
         # Options popup — styled dark with hand-cursor items via style.qss
         # and the app-wide interactive-cursor filter.
         self._menu = QMenu(self)
+        # Re-assert the dark menu look (page columns' bare `background:`
+        # stylesheets cascade into popups and break it in light mode).
+        self._menu.setStyleSheet(dark_menu_qss())
         self._menu.addAction("Open output folder").triggered.connect(
             self._menu_open_folder)
         self._menu.addAction("Delete output files").triggered.connect(
@@ -2403,8 +2406,8 @@ class ConsolePage(QWidget):
         # Header
         self._header = PageHeader(
             "CONSOLE",
-            "PROCESSING, REVIEW RESULTS & OUTPUT",
-            highlight="OUTPUTS",
+            "PROCESSING, PLAY & REVIEW OUTPUT",
+            highlight="OUTPUT",
         )
 
         self._btn_log = QPushButton("Log")
@@ -2420,6 +2423,7 @@ class ConsolePage(QWidget):
 
         self._btn_copy = QPushButton("Copy Log")
         self._btn_copy.setFixedSize(90, 30)
+        self._btn_copy.setStyleSheet(self._copy_btn_ss())
         self._btn_copy.clicked.connect(self._copy)
         self._header.add_extra(self._btn_copy)
 
@@ -2523,14 +2527,7 @@ class ConsolePage(QWidget):
             "font-size:9px;}"
             + add_button_hover()
         )
-        self._btn_copy.setStyleSheet(
-            f"QPushButton{{"
-            f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:600;"
-            "font-size:9px;}"
-            + add_button_hover()
-            + f"QPushButton:pressed{{background:{theme_manager.accent};}}"
-        )
+        self._btn_copy.setStyleSheet(self._copy_btn_ss())
 
     def _toggle_view(self, checked):
         self._stack.setCurrentIndex(1 if checked else 0)
@@ -2539,7 +2536,7 @@ class ConsolePage(QWidget):
             self._header.set_subtitle("INFERENCE PROCESS & PROGRESS", highlight="PROGRESS")
         else:
             self._header.set_title("CONSOLE")
-            self._header.set_subtitle("PROCESSING, REVIEW RESULTS & OUTPUT", highlight="OUTPUT")
+            self._header.set_subtitle("PROCESSING, PLAY & REVIEW OUTPUT", highlight="OUTPUT")
 
     def append_log(self, text):
         self._parse_and_update(text)
@@ -2874,6 +2871,11 @@ class ConsolePage(QWidget):
     def _copy(self):
         full_text = self.get_full_log()
         if not full_text.strip():
+            # The log edit can be empty (e.g. copying from the outputs list
+            # view or right after a page rebuild) — fall back to the raw log
+            # history which survives both.
+            full_text = "\n".join(self._LOG_HISTORY)
+        if not full_text.strip():
             return
         clipboard = QApplication.clipboard()
         clipboard.setText(full_text)
@@ -2891,13 +2893,22 @@ class ConsolePage(QWidget):
 
     def _reset_copy_btn(self):
         self._btn_copy.setText("Copy Log")
-        self._btn_copy.setStyleSheet(
-            f"QPushButton{{"
-            f"background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;border-radius:4px;"
+        self._btn_copy.setStyleSheet(self._copy_btn_ss())
+
+    def _copy_btn_ss(self):
+        """Copy Log: accented at rest (accent border + accent text, the log's
+        primary action); hover fills with the accent (bright text) like the
+        old solid rest state."""
+        t = theme_manager.theme
+        return (
+            f"QPushButton{{background:{t.surface};color:{theme_manager.accent};"
+            f"border:1px solid {theme_manager.accent};border-radius:4px;"
             "font-family:'Montserrat',sans-serif;font-weight:600;"
             "font-size:9px;}"
-            + add_button_hover()
-            + f"QPushButton:pressed{{background:{theme_manager.accent};}}"
+            f"QPushButton:hover{{background:{theme_manager.accent};"
+            f"color:{theme_manager._accent_text};border:1px solid {theme_manager.accent};}}"
+            f"QPushButton:pressed{{background:{theme_manager._accent_hover};"
+            f"color:{theme_manager._accent_text};border:1px solid {theme_manager.accent};}}"
         )
 
     def _clear(self):
