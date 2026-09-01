@@ -743,7 +743,7 @@ class AutoEnsemblePage(QWidget):
         content = QWidget()
         content.setStyleSheet("background:transparent;")
         root = QVBoxLayout(content)
-        root.setContentsMargins(32, 16, 32, 12)
+        root.setContentsMargins(32, 32, 32, 12)
         root.setSpacing(24)
 
         self._build_header(root)

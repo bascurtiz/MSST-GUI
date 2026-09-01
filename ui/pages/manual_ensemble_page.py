@@ -998,7 +998,7 @@ class ManualEnsemblePage(QWidget):
 
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(32, 24, 32, 32)
+        root.setContentsMargins(32, 32, 32, 32)
         root.setSpacing(0)
 
         hdr = PageHeader(
