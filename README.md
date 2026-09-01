@@ -4,7 +4,7 @@ A modern desktop GUI for [Music-Source-Separation-Training](https://github.com/Z
 
 Separate audio into stems (vocals, instrumental, drums, bass, guitar, piano, …) with state-of-the-art Roformer, MDX, Demucs, SCNet, Apollo and Bandit models — no command line required.
 
-![MSST GUI in action](msst-gui-ani-v1.gif)
+![MSST GUI in action](msst-gui-ani-v2.gif)
 
 ## Features
 
