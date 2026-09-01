@@ -1379,7 +1379,9 @@ class _TaskCard(QFrame):
 
     def _refresh_output_label(self):
         if self._model_name:
-            self._raw_output = self._model_display or self._model_name
+            # List card shows the raw .ckpt filename; the detail/waveform
+            # panel shows the friendly library name instead.
+            self._raw_output = self._model_name
         else:
             display = ", ".join(self._output_files)
             if len(display) > 60:
@@ -2401,7 +2403,7 @@ class ConsolePage(QWidget):
         # Header
         self._header = PageHeader(
             "CONSOLE",
-            "PROCESSING RESULTS & OUTPUTS",
+            "PROCESSING, REVIEW RESULTS & OUTPUT",
             highlight="OUTPUTS",
         )
 
@@ -2537,7 +2539,7 @@ class ConsolePage(QWidget):
             self._header.set_subtitle("INFERENCE PROCESS & PROGRESS", highlight="PROGRESS")
         else:
             self._header.set_title("CONSOLE")
-            self._header.set_subtitle("PROCESSING RESULTS & OUTPUTS", highlight="OUTPUTS")
+            self._header.set_subtitle("PROCESSING, REVIEW RESULTS & OUTPUT", highlight="OUTPUT")
 
     def append_log(self, text):
         self._parse_and_update(text)

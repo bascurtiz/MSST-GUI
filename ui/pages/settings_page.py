@@ -1590,6 +1590,21 @@ class _FolderManagerWidget(QWidget):
             self.model_installed.emit()
 
 
+def _css_color(value, fallback="#808080"):
+    """QColor from a theme token, including CSS rgba() strings that
+    QColor() itself cannot parse (invalid → black, e.g. `text_dim`)."""
+    import re as _re
+    c = QColor(value)
+    if c.isValid():
+        return c
+    m = _re.match(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)", str(value).strip())
+    if m:
+        c = QColor(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        c.setAlphaF(float(m.group(4)))
+        return c
+    return QColor(fallback)
+
+
 class _GitHubIconButton(QPushButton):
     """Square button with the GitHub mark, tinted to the active theme.
     Opens the project's GitHub repository."""
@@ -1656,9 +1671,11 @@ class _GitHubIconButton(QPushButton):
         self.initStyleOption(opt)
         opt.text = ""
         self.style().drawControl(QStyle.CE_PushButton, opt, p, self)
-        # …then the mark, accent-colored on hover.
-        color = QColor(theme_manager.accent if self._hovered
-                       else theme_manager.theme.text_dim)
+        # …then the mark, accent-colored on hover; at rest the same dim gray
+        # the "Check For Updates" label next to it uses (parsed properly —
+        # the token is a CSS rgba() string QColor() can't parse directly).
+        color = (QColor(theme_manager.accent) if self._hovered
+                 else _css_color(theme_manager.theme.text_dim))
         pix = self._mark_pixmap(color)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         p.drawPixmap((self.width() - 15) // 2, (self.height() - 15) // 2,
@@ -1727,7 +1744,7 @@ class SettingsPage(QWidget):
 
         header = PageHeader(
             "SETTINGS",
-            "ADD, REGISTER, AND CONFIGURE MODELS",
+            "ADD OR DELETE & CONFIGURE MODELS",
             highlight="MODELS",
         )
         header.add_extra(update_w)

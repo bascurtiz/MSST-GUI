@@ -5,8 +5,8 @@ from PySide6.QtWidgets import (
     QFileDialog, QSizePolicy, QLabel, QFrame, QTextEdit, QComboBox,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent
-from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor
-from ui.theme import theme_manager
+from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QFont, QFontMetrics
+from ui.theme import theme_manager, FONT_FAMILY as FONT_FAMILY_DEFAULT
 
 
 def paint_chevron(painter, cx, cy, angle=0.0, hovered=False):
@@ -66,6 +66,67 @@ def _addfile_icon_color(btn):
     return theme_manager.accent if btn._hovered else t.text_muted
 
 
+class _GlyphWidget(QWidget):
+    """Leading glyph of a GlyphButton, hand-painted with an optical vertical
+    offset. Symbols like '+' ride high inside their em box, so a plainly
+    centered 18px '+' floats ~3px above its 12px text label; the offset is
+    computed from the font metrics so the glyph's ink center lands on the
+    text's cap-height center (what the eye compares against)."""
+
+    def __init__(self, text, size, family, parent=None):
+        super().__init__(parent)
+        self._text = text
+        self._size = size
+        self._family = family
+        self._color = QColor("#FFFFFF")
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        fm = self._metrics()
+        from math import ceil
+        self.setFixedSize(ceil(fm.horizontalAdvance(text)) + 2, fm.height())
+        self._dy = 0
+
+    def _font(self):
+        f = QFont(self._family)
+        f.setPixelSize(self._size)
+        return f
+
+    def _metrics(self):
+        return QFontMetrics(self._font())
+
+    def set_color(self, color):
+        self._color = QColor(color)
+        self.update()
+
+    def compute_offset(self, text_size):
+        """Vertical shift (px, positive = down) that puts the glyph's ink
+        center on the cap-height center of a `text_size` label of the same
+        family, assuming both boxes are vertically centered against each
+        other (tight metric boxes)."""
+        gfm = self._metrics()
+        tf = QFont(self._family)
+        tf.setPixelSize(text_size)
+        tfm = QFontMetrics(tf)
+        # Both tight metric boxes share a row and are centered: their tops
+        # are offset by (g_h - t_h)/2. Compute ink/cap centers in row space.
+        g_h, t_h = gfm.height(), tfm.height()
+        row = max(g_h, t_h)
+        g_top = (row - g_h) / 2.0
+        t_top = (row - t_h) / 2.0
+        br = gfm.boundingRect(self._text)
+        glyph_center = g_top + gfm.ascent() + (br.top() + br.bottom()) / 2.0
+        cap_center = t_top + tfm.ascent() - tfm.capHeight() / 2.0
+        dy = cap_center - glyph_center
+        # Clamp: cosmetic nudge only, never re-layout the button.
+        self._dy = int(round(max(-4.0, min(4.0, dy))))
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setFont(self._font())
+        p.setPen(QPen(self._color))
+        rect = self.rect().translated(0, self._dy)
+        p.drawText(rect, Qt.AlignCenter, self._text)
+
+
 class GlyphButton(QPushButton):
     """QPushButton whose leading glyph icon (play / stop / plus) renders at a
     larger size than the button text, which keeps its own small font. Both are
@@ -90,10 +151,12 @@ class GlyphButton(QPushButton):
         h = QHBoxLayout(self._content)
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(6)
-        self._glyph_lbl = QLabel(glyph)
+        family = self.font().family() or FONT_FAMILY_DEFAULT
+        self._glyph_lbl = _GlyphWidget(glyph, glyph_size, family)
+        self._glyph_lbl.compute_offset(text_size)
         self._text_lbl = QLabel(text)
-        h.addWidget(self._glyph_lbl)
-        h.addWidget(self._text_lbl)
+        h.addWidget(self._glyph_lbl, 0, Qt.AlignVCenter)
+        h.addWidget(self._text_lbl, 0, Qt.AlignVCenter)
         self._content.raise_()
         self._refresh_icon()
 
@@ -105,7 +168,7 @@ class GlyphButton(QPushButton):
         base = ("background:transparent;border:none;"
                 "font-family:'Montserrat',sans-serif;"
                 f"color:{c};")
-        self._glyph_lbl.setStyleSheet(base + f"font-size:{self._glyph_size}px;")
+        self._glyph_lbl.set_color(c)
         self._text_lbl.setStyleSheet(base + f"font-size:{self._text_size}px;")
         self._layout_icon()
 

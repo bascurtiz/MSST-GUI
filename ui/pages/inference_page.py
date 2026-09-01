@@ -2006,6 +2006,46 @@ class InferencePage(QWidget):
             self._device_combo.setCurrentIndex(1)
         cfg.addWidget(self._dev_row)
 
+        # Explanatory tooltips for every configuration row (also applied to
+        # the row's children — a child widget that paints its own tooltip
+        # area would otherwise swallow the parent frame's tooltip).
+        _TOOLTIPS = {
+            self._input_row:
+                "Audio file(s) to separate. Click to browse or drop files "
+                "directly onto this row — multiple files are processed one "
+                "after another.",
+            self._output_row:
+                "Folder where the separated stems are written. Each model "
+                "gets its own subfolder named after its checkpoint, so "
+                "running another model on the same song never overwrites "
+                "earlier results.",
+            self._fmt_row:
+                "Output format for the separated stems.\n\n"
+                "FLAC — lossless and compressed (recommended)\n"
+                "WAV 32/16-bit — lossless, uncompressed, larger files\n"
+                "MP3 320/128 kbps — lossy, much smaller files",
+            self._output_stems_row:
+                "Which stems are written to disk. By default every stem the "
+                "selected model outputs is saved — untick the ones you don't "
+                "need. If the model supports it, a 'Rest' stem with whatever "
+                "remains can be saved as well.",
+            self._tta_row:
+                "Test-Time Adaptation: the model additionally processes a "
+                "horizontally flipped copy of the audio and averages both "
+                "passes. Slightly cleaner, more stable stems — but roughly "
+                "doubles the processing time.",
+            self._dev_row:
+                "Compute device for the separation. GPU (CUDA) is by far the "
+                "fastest; use CPU only as a fallback, e.g. to work around "
+                "VRAM limitations.",
+        }
+        for row, tip in _TOOLTIPS.items():
+            widgets = [row]
+            for child in row.findChildren(QWidget):
+                widgets.append(child)
+            for w in widgets:
+                w.setToolTip(tip)
+
         ll.addLayout(cfg)
 
         ll.addSpacing(36)
