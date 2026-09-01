@@ -114,6 +114,33 @@ def demix(
         mode = 'demucs'
     else:
         mode = 'generic'
+
+    # Channel alignment for the generic path. A mono model (config
+    # audio.num_channels == 1 — e.g. 16 kHz speech-denoise roformers) cannot
+    # accept a stereo mix and would abort on the model's channel assertion.
+    # Instead, each channel is processed independently as a mono mix and the
+    # results re-stacked, so the stereo image is preserved and every stem is
+    # returned with both channels. (The reverse — mono input into a stereo
+    # model — is duplicated in run_folder.)
+    if mode == 'generic' and mix.shape[0] > 1:
+        expected_channels = int(getattr(config.audio, 'num_channels', 2) or 2)
+        if mix.shape[0] != expected_channels:
+            if should_print:
+                print(
+                    f"Model expects {expected_channels} channel(s); "
+                    f"input has {mix.shape[0]} - processing each channel independently"
+                )
+            channel_sources = [
+                demix(config, model, mix[c:c + 1], device, model_type, pbar)
+                for c in range(mix.shape[0])
+            ]
+            if isinstance(channel_sources[0], dict):
+                return {
+                    k: np.concatenate([r[k] for r in channel_sources], axis=0)
+                    for k in channel_sources[0]
+                }
+            return np.concatenate(channel_sources, axis=0)
+
     # Define processing parameters based on the mode
     if mode == 'demucs':
         chunk_size = config.training.samplerate * config.training.segment

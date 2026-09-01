@@ -1,5 +1,6 @@
 import os
 import random
+import re
 import time
 import yaml
 try:
@@ -377,6 +378,66 @@ def _load_custom_backend(model_type, config, custom_backend):
     return model, config
 
 
+# Model families whose MaskEstimator MLP depth is a config knob that
+# occasionally disagrees with the shipped checkpoint (see
+# _align_mask_estimator_depth).
+_MASK_ESTIMATOR_MODEL_TYPES = {
+    'mel_band_roformer',
+    'mel_band_conformer',
+    'mel_band_roformer_experimental',
+    'bs_roformer',
+    'bs_conformer',
+    'bs_roformer_experimental',
+}
+
+
+def _align_mask_estimator_depth(config, checkpoint_path: str) -> None:
+    """Correct config.model.mask_estimator_depth to match the checkpoint.
+
+    Some zoo models ship configs copied from a sibling template whose
+    mask_estimator_depth disagrees with the actual checkpoint (e.g.
+    mbr_expl_jazzpear ships depth 2 while the checkpoint was trained with
+    depth 1). Building the model with the wrong depth makes the strict
+    checkpoint load fail with shape-mismatched/missing to_freqs keys.
+    Sniffing the checkpoint's MaskEstimator MLP structure (lazy mmap load,
+    tensor data is never materialized) and correcting the config before the
+    model is built fixes the load without touching the shipped config file.
+    """
+    try:
+        sd = torch.load(checkpoint_path, map_location='cpu', mmap=True, weights_only=True)
+    except Exception:
+        try:
+            sd = torch.load(checkpoint_path, map_location='cpu', mmap=True, weights_only=False)
+        except Exception:
+            return
+    if not isinstance(sd, dict):
+        return
+    for wrapper in ('state_dict', 'state'):
+        if isinstance(sd.get(wrapper), dict):
+            sd = sd[wrapper]
+            break
+
+    # The to_freqs MLP is nn.Sequential(Linear, act, Linear, act, ..., GLU):
+    # its Linear layers sit at even Sequential indices 0..2*depth.
+    linear_indices = set()
+    for key in sd:
+        m = re.match(r'mask_estimators\.0\.to_freqs\.0\.0\.(\d+)\.weight', key)
+        if m:
+            linear_indices.add(int(m.group(1)))
+    if not linear_indices or min(linear_indices) != 0 or any(i % 2 for i in linear_indices):
+        return
+    sniffed_depth = max(linear_indices) // 2
+
+    cfg_depth = config.model.get('mask_estimator_depth', None)
+    if cfg_depth is None or sniffed_depth == int(cfg_depth):
+        return
+    config.model.mask_estimator_depth = sniffed_depth
+    print(
+        f"Checkpoint MaskEstimator depth is {sniffed_depth} but the config says "
+        f"{cfg_depth}; building the model with {sniffed_depth} so the checkpoint loads"
+    )
+
+
 def _fit_model_kwargs(cls, kwargs: dict) -> dict:
     """Drop config keys a model constructor doesn't accept.
 
@@ -433,6 +494,14 @@ def get_model_from_config(model_type: str, config_path: str,
 
     if custom_backend:
         return _load_custom_backend(model_type, config, custom_backend)
+
+    # Real-world checkpoints occasionally ship with a config whose
+    # mask_estimator_depth doesn't match the trained MaskEstimator MLP
+    # (e.g. mbr_expl_jazzpear: config says 2, checkpoint was trained with
+    # depth 1). Sniff the checkpoint's actual MLP depth and correct the
+    # config before building, so strict checkpoint loading succeeds.
+    if checkpoint_path and model_type in _MASK_ESTIMATOR_MODEL_TYPES:
+        _align_mask_estimator_depth(config, checkpoint_path)
 
     if model_type == 'mdx23c':
         from models.mdx23c_tfc_tdf_v3 import TFC_TDF_net
