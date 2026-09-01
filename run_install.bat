@@ -19,7 +19,7 @@ if %errorlevel% neq 0 (
 
 REM --- Create virtual environment ---
 if exist ".venv\" (
-    echo [INFO] Virtual environment (.venv) already exists.
+    echo [INFO] Virtual environment .venv already exists.
 ) else (
     echo [STEP] Creating virtual environment...
     python -m venv .venv
