@@ -14,8 +14,8 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QMessageBox, QProgressBar,
     QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QPoint, QEvent
-from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QPoint, QEvent, QRectF, QUrl
+from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath, QDesktopServices, QPixmap
 from ui.theme import theme_manager, UIConstants
 from backend import update_checker as uc
 from ui.widgets.common import (
@@ -1590,6 +1590,82 @@ class _FolderManagerWidget(QWidget):
             self.model_installed.emit()
 
 
+class _GitHubIconButton(QPushButton):
+    """Square button with the GitHub mark, tinted to the active theme.
+    Opens the project's GitHub repository."""
+
+    _MARK = (
+        "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 "
+        "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13 "
+        "-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66 "
+        ".07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15 "
+        "-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 "
+        "2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 "
+        "2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 "
+        "2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+    )
+    _pix_cache = {}  # (color, size) -> QPixmap
+
+    def __init__(self, url, tooltip, parent=None):
+        super().__init__(parent)
+        self._url = url
+        self._hovered = False
+        self.setFixedSize(30, 30)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(tooltip)
+        self.setStyleSheet(
+            f"QPushButton{{background:{theme_manager.theme.surface};"
+            f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;}}"
+        )
+
+    def _mark_pixmap(self, color):
+        key = (color.name(), 64)
+        pix = _GitHubIconButton._pix_cache.get(key)
+        if pix is None:
+            svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+                f'<path fill="{color.name()}" d="{self._MARK}"/></svg>'
+            )
+            from PySide6.QtSvg import QSvgRenderer
+            from PySide6.QtCore import QByteArray
+            r = QSvgRenderer(QByteArray(svg.encode()))
+            pix = QPixmap(64, 64)
+            pix.fill(Qt.transparent)
+            painter = QPainter(pix)
+            painter.setRenderHint(QPainter.Antialiasing)
+            r.render(painter)
+            painter.end()
+            _GitHubIconButton._pix_cache[key] = pix
+        return pix
+
+    def enterEvent(self, e):
+        self._hovered = True
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        # Draw the QPushButton chrome (bg + border) first…
+        from PySide6.QtWidgets import QStyleOptionButton, QStyle
+        opt = QStyleOptionButton()
+        self.initStyleOption(opt)
+        opt.text = ""
+        self.style().drawControl(QStyle.CE_PushButton, opt, p, self)
+        # …then the mark, accent-colored on hover.
+        color = QColor(theme_manager.accent if self._hovered
+                       else theme_manager.theme.text_dim)
+        pix = self._mark_pixmap(color)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        p.drawPixmap((self.width() - 15) // 2, (self.height() - 15) // 2,
+                     15, 15, pix)
+        p.end()
+
+
 class SettingsPage(QWidget):
     model_registered = Signal(dict)
     model_removed = Signal(str)
@@ -1640,6 +1716,12 @@ class SettingsPage(QWidget):
         # section below further down. Centered like the LOG button in CONSOLE.
         uw.setContentsMargins(0, 0, 0, 0)
         uw.setSpacing(12)
+        # GitHub mark button: opens the project repository.
+        self._gh_btn = _GitHubIconButton(
+            f"https://github.com/{uc.GITHUB_REPO_OWNER}/{uc.GITHUB_REPO_NAME}",
+            "Open the GitHub repository")
+        self._gh_btn.clicked.connect(self._open_github_repo)
+        uw.addWidget(self._gh_btn)
         uw.addWidget(self._update_btn)
         uw.addWidget(self._update_status)
 
@@ -1948,6 +2030,11 @@ class SettingsPage(QWidget):
         # Model Manager is the default source; apply its visibility state now
         # that every section widget exists.
         self._set_mode("manager")
+
+    def _open_github_repo(self):
+        from PySide6.QtCore import QUrl as _QUrl
+        btn = self._gh_btn
+        QDesktopServices.openUrl(_QUrl(btn._url))
 
     def _check_updates(self):
         from ui.widgets.update_dialog import check_now

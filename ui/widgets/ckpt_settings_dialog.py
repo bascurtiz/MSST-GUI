@@ -35,20 +35,27 @@ def _value_lbl_ss():
     )
 
 def _dim_label_color():
-    """Color for the dialog's small-caps labels and hint line.
+    """Color for the dialog's hint line ("Configuration overrides …").
 
     Both themes use the `text_dim` token: the shared `text_label` is 26%
     alpha in dark (near-invisible on the near-black dialog) and 40% in light
     (washed-out gray on white); `text_dim` (50% in dark, 62% in light) keeps
-    the labels subdued but clearly readable in both.
+    the hint subdued but clearly readable in both.
     """
     return theme_manager.theme.text_dim
+
+
+def _row_label_color():
+    """Color for the small-caps slider row labels (CHUNK SIZE / OVERLAP /
+    BATCH SIZE): bright like the CHECKPOINT SETTINGS title in dark mode,
+    near-black in light mode."""
+    return "#FFFFFF" if theme_manager.mode == "dark" else "#101318"
 
 
 def _title_lbl_ss():
     return (
         "font-family:'Montserrat',sans-serif;font-size:9px;font-weight:bold;"
-        f"color:{_dim_label_color()};background:transparent;letter-spacing:1px;"
+        f"color:{_row_label_color()};background:transparent;letter-spacing:1px;"
     )
 
 
@@ -285,12 +292,18 @@ class CkptSettingsDialog(QDialog):
         cv.setContentsMargins(28, 16, 28, 20)
         cv.setSpacing(12)
 
-        # Subtitle
-        sub = QLabel("Configuration overrides for " + self._ckpt_name)
-        sub.setStyleSheet(
+        # Subtitle — regular (non-italic) dim text with the checkpoint name
+        # picked out in the app's accent blue, in both themes.
+        sub = QLabel(
+            "Configuration overrides for "
+            f"<span style=\"color:{theme_manager.accent};font-weight:bold;\">"
+            + self._ckpt_name + "</span>")
+        self._sub = sub
+        self._sub.setTextFormat(Qt.RichText)
+        self._sub.setStyleSheet(
             "font-size:9px;color:" + _dim_label_color() + ";"
-            "background:transparent;font-family:'Montserrat';font-style:italic;")
-        cv.addWidget(sub)
+            "background:transparent;font-family:'Montserrat';")
+        cv.addWidget(self._sub)
 
         # Sliders container
         self._sliders_frame = QFrame()
@@ -418,6 +431,13 @@ class CkptSettingsDialog(QDialog):
     def reapply_theme(self):
         self._title_bar.reapply_theme()
         self._content.setStyleSheet("background:" + theme_manager.theme.bg + ";")
+        self._sub.setStyleSheet(
+            "font-size:9px;color:" + _dim_label_color() + ";"
+            "background:transparent;font-family:'Montserrat';")
+        self._sub.setText(
+            "Configuration overrides for "
+            f"<span style=\"color:{theme_manager.accent};font-weight:bold;\">"
+            + self._ckpt_name + "</span>")
         self._sliders_frame.setStyleSheet(
             "QFrame{background:" + theme_manager.theme.card + ";border:1px solid " + theme_manager.theme.border + ";"
             "border-radius:6px;}"

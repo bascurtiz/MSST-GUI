@@ -15,11 +15,14 @@ ROOT = os.path.dirname(HERE)
 OUT_DIR = os.path.join(ROOT, "dist")
 OUT = os.path.join(OUT_DIR, "msst-gui-repo.zip")
 
-# Directories never published (caches, tool state, build output, user data).
+# Directories never published (caches, tool state, build output, user data,
+# and doc-site/ which holds live Google OAuth credentials and is unrelated
+# to the app).
 SKIP_DIRS = {
     "__pycache__", ".git", ".zcode", ".freebuff", ".pytest_cache",
     ".venv", "build", "dist", "runtime", "runtime_test", "iterative_output",
     "test_iterative", "_dl_tmp", "temp",
+    "doc-site", ".idea", ".vscode",
 }
 
 # models/ ships as source code only — never checkpoints or user downloads.

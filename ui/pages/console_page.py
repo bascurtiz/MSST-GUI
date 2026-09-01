@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QMessageBox, QApplication, QStackedWidget,
     QScrollArea, QProgressBar, QTextEdit, QStyle, QMenu,
 )
-from PySide6.QtCore import Qt, QTimer, Property, QUrl, QPropertyAnimation, QEasingCurve, Signal, QByteArray, QRectF, QRect, QPoint
+from PySide6.QtCore import Qt, QTimer, Property, QUrl, QPropertyAnimation, QEasingCurve, Signal, QByteArray, QRectF, QRect, QPoint, QThread
 from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QPainterPath, QDesktopServices, QFont, QPixmap, QCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from ui.theme import theme_manager, FONT_FAMILY, FONT_STACK
@@ -17,6 +17,19 @@ from mutagen import File as _MutagenFile
 
 
 # ── helpers ──────────────────────────────────────────────────────
+
+class _FriendlyNamesThread(QThread):
+    """Fetches the mvsepless zoo index once so console entries can show the
+    same friendly model names as the MODEL LIBRARY (falls back to the ckpt
+    filename minus its extension when the index is unavailable)."""
+    done = Signal(list)
+
+    def run(self):
+        try:
+            from backend.model_manager import fetch_model_index
+            self.done.emit(fetch_model_index())
+        except Exception:
+            self.done.emit([])
 
 def _accent_rgba(alpha):
     c = QColor(theme_manager.accent)
@@ -414,7 +427,13 @@ class _SmoothBar(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         r = self.rect()
-        bg = QColor(theme_manager.theme.border)
+        # Solid, mode-aware groove color: the theme `border` token is a CSS
+        # rgba() string that QColor() cannot parse (it paints invalid/black),
+        # which made the groove near-black in light mode. Bright gray in
+        # light mode for contrast against the blue sweep; unchanged dark in
+        # dark mode.
+        bg = (QColor("#262B33") if theme_manager.mode == "dark"
+              else QColor("#DFE5EC"))
         p.setBrush(bg)
         p.setPen(Qt.NoPen)
         p.drawRoundedRect(r, 3, 3)
@@ -1168,6 +1187,7 @@ class _TaskCard(QFrame):
         self._output_lbl.setVisible(False)
         self._raw_output = ""
         self._model_name = ""
+        self._model_display = ""  # friendly (library) name, if known
         self._output_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self._output_lbl.setMinimumWidth(0)
         col.addWidget(self._output_lbl)
@@ -1347,15 +1367,19 @@ class _TaskCard(QFrame):
             return True
         return False
 
-    def set_model_name(self, name, model_type="", target_stem=""):
+    def set_model_name(self, name, model_type="", target_stem="", display=""):
         self._model_name = name or ""
         self._model_type = (model_type or "").strip().lower()
         self._target_stem = (target_stem or "").strip().lower()
+        # `display` is the friendly name shown in the model library; when it
+        # is unknown we fall back to the ckpt filename minus its extension.
+        base = (name or "")
+        self._model_display = (display or "").strip() or os.path.splitext(base)[0]
         self._refresh_output_label()
 
     def _refresh_output_label(self):
         if self._model_name:
-            self._raw_output = self._model_name
+            self._raw_output = self._model_display or self._model_name
         else:
             display = ", ".join(self._output_files)
             if len(display) > 60:
@@ -2038,7 +2062,9 @@ class _DetailView(QFrame):
         self._full_name = card._song_name
         self._name_lbl.setText(self._full_name)
         files = card._output_files
-        self._full_path = card._model_name or (files[0] if files else "")
+        self._full_path = (card._model_display
+                           or card._model_name
+                           or (files[0] if files else ""))
         self._path_lbl.setText(self._full_path)
         QTimer.singleShot(0, self._elide)
 
@@ -2242,6 +2268,10 @@ class ConsolePage(QWidget):
         self._current_model = ""
         self._model_type_map = None  # ckpt basename -> registered model type
         self._model_target_map = None  # ckpt basename -> target stem from its config yaml
+        self._friendly_names = {}  # ckpt basename lower -> zoo full name
+        self._names_thread = _FriendlyNamesThread()
+        self._names_thread.done.connect(self._on_friendly_names)
+        self._names_thread.start()
         self._input_order = []
         self._build_ui()
         self._debug_path = os.path.join(
@@ -2260,6 +2290,34 @@ class ConsolePage(QWidget):
         self._job_active = bool(active)
         self._btn_stop.setEnabled(self._job_active)
 
+    def _on_friendly_names(self, models):
+        """Zoo index arrived: cache ckpt -> friendly name and refresh the
+        active card + detail view so the entry shows the library name."""
+        for m in models:
+            ck = os.path.basename(getattr(m, "checkpoint_url", "").split("?")[0]).lower()
+            full = getattr(m, "full_name", "")
+            if ck and full:
+                self._friendly_names.setdefault(ck, full)
+        card = self._song_cards.get(self._current_song)
+        if card and self._current_model:
+            card.set_model_name(self._current_model,
+                                self._model_type_for(self._current_model),
+                                self._model_target_for(self._current_model),
+                                display=self._model_display_for(self._current_model))
+            dv = getattr(self, "_detail_view", None)
+            if dv is not None and dv._card is card:
+                dv.show_card(card)
+
+    def _model_display_for(self, name):
+        """Friendly (model library) name for a checkpoint; falls back to the
+        filename without its .ckpt extension."""
+        name = (name or "").strip()
+        if not name:
+            return ""
+        return self._friendly_names.get(
+            os.path.basename(name).lower(),
+            os.path.splitext(os.path.basename(name))[0])
+
     def set_current_model(self, name):
         self._current_model = name or ""
         # Refresh the type registry on every selection change so freshly
@@ -2270,7 +2328,8 @@ class ConsolePage(QWidget):
         if card:
             card.set_model_name(self._current_model,
                                 self._model_type_for(self._current_model),
-                                self._model_target_for(self._current_model))
+                                self._model_target_for(self._current_model),
+                                display=self._model_display_for(self._current_model))
 
     def _registered_model_types(self):
         """{ckpt basename lower: model type} and {ckpt basename lower:
@@ -2587,7 +2646,8 @@ class ConsolePage(QWidget):
                     card.mark_queued()
                     card.set_model_name(self._current_model,
                                         self._model_type_for(self._current_model),
-                                        self._model_target_for(self._current_model))
+                                        self._model_target_for(self._current_model),
+                                        display=self._model_display_for(self._current_model))
                     if self._output_dir:
                         card.set_output_dir(self._output_dir)
                     self._reconcile_unmatched()
@@ -2618,7 +2678,8 @@ class ConsolePage(QWidget):
                     card._activity_seq = self._next_card_seq()
                     card.set_model_name(self._current_model,
                                         self._model_type_for(self._current_model),
-                                        self._model_target_for(self._current_model))
+                                        self._model_target_for(self._current_model),
+                                        display=self._model_display_for(self._current_model))
                     if self._output_dir:
                         card.set_output_dir(self._output_dir)
                     self._current_song = card._key
