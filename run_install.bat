@@ -1,6 +1,11 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
+
+REM --- Isolate pip from machine-wide pip.ini. NVIDIA PyIndex tooling adds
+REM     pypi.ngc.nvidia.com as a global extra index; when that host is
+REM     unreachable every package lookup stalls with 5 DNS retries.
+set "PIP_CONFIG_FILE=nul"
 echo.
 echo ============================================
 echo  MSST GUI - Install
