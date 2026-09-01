@@ -34,10 +34,21 @@ def _value_lbl_ss():
         "color:" + theme_manager.accent + ";background:transparent;"
     )
 
+def _dim_label_color():
+    """Color for the dialog's small-caps labels and hint line.
+
+    Both themes use the `text_dim` token: the shared `text_label` is 26%
+    alpha in dark (near-invisible on the near-black dialog) and 40% in light
+    (washed-out gray on white); `text_dim` (50% in dark, 62% in light) keeps
+    the labels subdued but clearly readable in both.
+    """
+    return theme_manager.theme.text_dim
+
+
 def _title_lbl_ss():
     return (
         "font-family:'Montserrat',sans-serif;font-size:9px;font-weight:bold;"
-        f"color:{theme_manager.theme.text_label};background:transparent;letter-spacing:1px;"
+        f"color:{_dim_label_color()};background:transparent;letter-spacing:1px;"
     )
 
 
@@ -277,7 +288,7 @@ class CkptSettingsDialog(QDialog):
         # Subtitle
         sub = QLabel("Configuration overrides for " + self._ckpt_name)
         sub.setStyleSheet(
-            "font-size:9px;color:" + theme_manager.theme.text_label + ";"
+            "font-size:9px;color:" + _dim_label_color() + ";"
             "background:transparent;font-family:'Montserrat';font-style:italic;")
         cv.addWidget(sub)
 

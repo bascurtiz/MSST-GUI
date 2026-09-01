@@ -42,6 +42,25 @@ _STEM_COLORS = {
     "other": "#10B981",
     "guitar": "#C1090B",
     "piano": "#485FAB",
+    "strings": "#76C043",
+    "wind": "#00B8D3",
+    # Sub-instrument stems from multi-stem models (mega 53-stem etc.) take
+    # the color of the family badge they belong to.
+    "acoustic guitar": MODEL_TYPE_COLORS["guitar"],
+    "electric guitar": MODEL_TYPE_COLORS["guitar"],
+    "back vocal": MODEL_TYPE_COLORS["vocals"],
+    "lead vocal": MODEL_TYPE_COLORS["vocals"],
+    "vox": MODEL_TYPE_COLORS["vocals"],
+    "congas": MODEL_TYPE_COLORS["drums"],
+    "kick": MODEL_TYPE_COLORS["drums"],
+    "snare": MODEL_TYPE_COLORS["drums"],
+    "toms": MODEL_TYPE_COLORS["drums"],
+    "timpani": MODEL_TYPE_COLORS["drums"],
+    "percussion": MODEL_TYPE_COLORS["drums"],
+    "digital piano": MODEL_TYPE_COLORS["keys"],
+    "keys": MODEL_TYPE_COLORS["keys"],
+    "synth": "#00DF95",
+    "center": MODEL_TYPE_COLORS["phantom centre"],
     "effects": "#FFFFFF",
     # "Rest" is the leftover-of-the-leftover stem; fixed slate so it never
     # lands on a fallback hue that could collide with "Other"'s green.
@@ -162,6 +181,8 @@ def _stem_override_for_model(card, label):
 _MODEL_TYPE_OVERRIDES = {
     "karaoke": MODEL_TYPE_COLORS["karaoke"],
     "guitar": MODEL_TYPE_COLORS["guitar"],
+    "keys": MODEL_TYPE_COLORS["keys"],
+    "phantom centre": MODEL_TYPE_COLORS["phantom centre"],
     "dereverb / deecho": MODEL_TYPE_COLORS["dereverb / deecho"],
     "denoise": MODEL_TYPE_COLORS["denoise"],
 }

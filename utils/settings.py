@@ -467,6 +467,11 @@ def get_model_from_config(model_type: str, config_path: str,
         _model_cfg = dict(config.model)
         if getattr(config, 'conformer', None) is True:
             model = BSConformer(**_fit_model_kwargs(BSConformer, _model_cfg))
+        elif getattr(config, 'siamese', None) is True:
+            # pcunwa 'Siamese' two-stream trunk (top-level `siamese: true` in
+            # the config, mirroring the conformer/sw markers)
+            fit = _fit_model_kwargs(BSRoformer, _model_cfg)
+            model = BSRoformer(siamese=True, **fit)
         elif getattr(config, 'sw', None) is True:
             fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
             model = BSRoformerSW(position_mode='learned', **fit)

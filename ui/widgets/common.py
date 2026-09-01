@@ -246,7 +246,7 @@ MODEL_TYPE_COLORS = {
     "instrumental": "#60A5FA",
     "dereverb / deecho": "#DDDDDD",
     "denoise": "#888888",
-    "phantom centre": "#9176FF",
+    "phantom centre": "#E4FF76",
     "karaoke": "#F07CA8",
     "dual target (instrumental & vocals)": "#10B981",
     "multi stems": "#FFCA28",
@@ -258,7 +258,7 @@ MODEL_TYPE_COLORS = {
     "wind": "#00B8D3",
     "strings": "#76C043",
     "percussion": "#F36E21",
-    "keys": "#21B3A3",
+    "keys": "#485FAB",
     "effects": "#FFFFFF",
     "crowd": "#94A3B8",
 }
