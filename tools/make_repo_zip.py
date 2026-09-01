@@ -33,6 +33,7 @@ ROOT_FILES = [
     "main.py", "inference.py", "ensemble.py",
     "requirements_gui.txt", "requirements-runtime.txt",
     "run_gui.bat", "run_install.bat",
+    "msst-gui-ani-v1.gif",  # animated demo shown in README
 ]
 
 
