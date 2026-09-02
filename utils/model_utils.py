@@ -104,6 +104,11 @@ def demix(
 
     mix = torch.tensor(mix, dtype=torch.float32)
 
+    if model_type == 'mdxnet':
+        # MDX-Net models are onnxruntime objects (not torch Modules); they
+        # carry their own UVR-style demix() loop, so dispatch straight to it.
+        return model.demix(mix, device, pbar)
+
     if model_type == 'htdemucs':
         mode = 'demucs'
     else:

@@ -17,7 +17,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
 from utils.audio_utils import normalize_audio, denormalize_audio, draw_spectrogram
-from utils.settings import get_model_from_config, parse_args_inference
+from utils.settings import get_model_from_config, load_config, parse_args_inference
 from utils.model_utils import bigshifts_wrapper
 from utils.model_utils import prefer_target_instrument, apply_tta, load_start_checkpoint
 
@@ -208,17 +208,28 @@ def proc_folder(dict_args):
     model_load_start_time = time.time()
     torch.backends.cudnn.benchmark = True
 
-    model, config = get_model_from_config(args.model_type, args.config_path)
-    if 'model_type' in config.training:
+    if args.model_type == 'mdxnet':
+        # MDX-Net zoo models ship as ONNX checkpoints with a kuielab-layout
+        # config; they can't go through get_model_from_config's torch branches.
+        # MDXNetModel raises a clear error if onnxruntime is missing.
+        from models.mdx_net import MDXNetModel
+        config = load_config(args.model_type, args.config_path)
+        model = MDXNetModel(config, args.start_check_point)
+    else:
+        model, config = get_model_from_config(args.model_type, args.config_path)
+    if 'model_type' in config.training and args.model_type != 'mdxnet':
         args.model_type = config.training.model_type
-    if args.start_check_point:
+    # MDX-Net checkpoints are ONNX, so torch.load/load_start_checkpoint don't
+    # apply — the ONNX session is built inside MDXNetModel from the checkpoint.
+    if args.start_check_point and args.model_type != 'mdxnet':
         checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
         load_start_checkpoint(args, model, checkpoint, type_='inference')
 
     print("Instruments: {}".format(config.training.instruments))
 
     # in case multiple CUDA GPUs are used and --device_ids arg is passed
-    if isinstance(args.device_ids, list) and len(args.device_ids) > 1 and not args.force_cpu:
+    if (isinstance(args.device_ids, list) and len(args.device_ids) > 1
+            and not args.force_cpu and args.model_type != 'mdxnet'):
         model = nn.DataParallel(model, device_ids=args.device_ids)
 
     model = model.to(device)
