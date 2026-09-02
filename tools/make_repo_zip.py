@@ -29,11 +29,11 @@ SKIP_DIRS = {
 MODELS_EXTS = {".py", ".yaml", ".yml", ".json", ".txt", ".md"}
 
 ROOT_FILES = [
-    ".gitignore", "README.md", "MSST-GUI.iss", "MSST-GUI.spec",
-    "main.py", "inference.py", "ensemble.py",
+    "gitignore", "README.md", "MSST-GUI.iss", "MSST-GUI.spec",
+    "main.py", "inference.py", "ensemble.py", "train.py", "valid.py",
     "requirements_gui.txt", "requirements-runtime.txt",
     "run_gui.bat", "run_install.bat",
-    "msst-gui-ani-v1.gif",  # animated demo shown in README
+    "msst-gui-ani-v2.gif",  # animated demo shown in README
 ]
 
 

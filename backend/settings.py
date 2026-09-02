@@ -63,4 +63,16 @@ def save_iterative_settings(settings: dict) -> None:
     save(data)
 
 
+def load_pretrained_filters() -> dict:
+    """Last-used pre-trained dialog filter choices ({"target": ..., "arch": ...})."""
+    data = load()
+    return data.get("pretrained_filters", {})
+
+
+def save_pretrained_filters(filters: dict) -> None:
+    data = load()
+    data["pretrained_filters"] = filters
+    save(data)
+
+
 

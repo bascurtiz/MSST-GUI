@@ -2,7 +2,7 @@
 ui/pages/inference_page.py
 Premium cinematic dark UI — 2 column layout.
 """
-import os, sys
+import os, sys, time
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
@@ -20,6 +20,7 @@ from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
 from backend.runner import ProcessRunner
 from backend.model_manager import fetch_model_index
 from backend.paths import REPO_ROOT, get_python_exe
+from backend.audio_names import INFERENCE_FILENAME_TEMPLATE
 from backend.gpu_utils import list_gpus, device_ids_from_selection
 from backend import settings as settings_store
 from backend.yaml_analyzer import classify_model_type, get_stems_for_type
@@ -27,7 +28,7 @@ from ui.theme import theme_manager, UIConstants, FONT_STACK
 from ui.widgets.common import (
     ConsoleLog, SpectrogramPanel, WaveformPanel, ProcessingStatusPanel, PageHeader,
     outline_button_ss, solid_button_ss, paint_chevron, EllipsisButton,
-    GlyphButton, dark_menu_qss,
+    GlyphButton, dark_menu_qss, run_blurred_dialog,
     _outline_icon_color, _solid_icon_color, _stop_icon_color, _add_icon_color,
     _type_badge_ss, _custom_badge_ss, _type_badge_color, _type_title,
 )
@@ -489,7 +490,15 @@ class _InfoDot(QWidget):
     explanation tooltip shows only when hovering this dot, not the row.
     Hand-drawn (circle outline + i) so it renders identically everywhere —
     the U+24D8 character depends on font fallback and looks off. Turns
-    accent blue on hover so it reads as interactive."""
+    accent blue on hover so it reads as interactive.
+
+    W (14) and SLOT_W (the x where the dot lands inside _lbl_with_info's
+    80px label column) are shared constants: the TRAINING page reuses them
+    so its ⓘ dots align on the same column logic.
+    """
+
+    W = 14
+    SLOT_W = 19
 
     def __init__(self, tooltip):
         super().__init__()
@@ -497,8 +506,6 @@ class _InfoDot(QWidget):
         self.setToolTip(tooltip)
         self.setCursor(Qt.PointingHandCursor)
         self.setFixedSize(14, 14)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
-        self.setAttribute(Qt.WA_NoSystemBackground)
 
     def _color(self):
         from ui.widgets.common import css_color
@@ -1182,7 +1189,7 @@ class _OutputStemsRow(QFrame):
             primary_target=self._primary_target,
             parent=self
         )
-        if dlg.exec() == QDialog.Accepted:
+        if run_blurred_dialog(dlg) == QDialog.Accepted:
             self._selected_stems = dlg.get_selected_stems()
             self._save_rest = dlg.get_save_rest()
             self._update_summary()
@@ -2108,9 +2115,9 @@ class InferencePage(QWidget):
 
         self._fmt_row = _ComboRow(
             None, "Quality",
-            ["FLAC", "WAV (PCM 32-bit)", "WAV (PCM 16-bit)", "MP3 320kbps", "MP3 128kbps"],
-            tooltip="Output format for the stems.\n"
-                    "FLAC/WAV are lossless, MP3 is lossy but smaller.")
+            ["FLAC (16-bit)", "FLAC (24-bit)", "WAV (32-bit float)"],
+            tooltip="Output format for the stems (all lossless).\n"
+                    "16/24-bit stems that clip are written as WAV instead of FLAC.")
         self._fmt_combo = self._fmt_row.combo
         cfg.addWidget(self._fmt_row)
 
@@ -2822,47 +2829,49 @@ class InferencePage(QWidget):
             except Exception:
                 pass
 
+        # Nest single-inference outputs under a per-checkpoint subfolder
+        # ("<output>/<ckpt>/<song> (<stem>)"), matching the per-ckpt layout the
+        # CONSOLE cards expect — they open that subfolder on "Open folder".
+        # The shared flat template is kept so the ensemble runners (which pass
+        # a per-model store_dir) don't nest the ckpt name a second time.
+        out_root = self._output_row.value()
+        store_dir = out_root if isinstance(out_root, str) else ""
+        if store_dir and ckpt:
+            store_dir = os.path.join(
+                store_dir, os.path.splitext(os.path.basename(ckpt))[0])
+
         cmd = [
             get_python_exe(), os.path.join(REPO_ROOT, "inference.py"),
             "--model_type",        model_type,
             "--config_path",       yaml_path,
             "--start_check_point", ckpt,
             "--input_folder",      self._tmp_input,
-            "--store_dir",
-            self._output_row.value()
-            if isinstance(self._output_row.value(), str) else "",
+            "--store_dir",         store_dir,
         ]
         if force_cpu: cmd.append("--force_cpu")
         else: cmd += ["--device_ids"] + [str(d) for d in device_ids]
 
-        # Map the Quality selection to the output format the CLI should write.
+        # Map the Quality selection to upstream's --pcm_type: PCM_16/24 are
+        # written as FLAC (WAV if the stem clips), FLOAT as 32-bit WAV.
         fmt = self._fmt_combo.currentText()
-        if fmt == "WAV (PCM 16-bit)":
-            cmd += ["--output_format", "wav", "--pcm_type", "PCM_16"]
-        elif fmt == "FLAC":
-            cmd += ["--output_format", "flac", "--pcm_type", "PCM_16"]
-        elif fmt == "MP3 320kbps":
-            cmd += ["--output_format", "mp3", "--mp3_bitrate", "320"]
-        elif fmt == "MP3 128kbps":
-            cmd += ["--output_format", "mp3", "--mp3_bitrate", "128"]
-        else:  # "WAV (PCM 32-bit)"
-            cmd += ["--output_format", "wav", "--pcm_type", "FLOAT"]
+        if "24" in fmt:
+            cmd += ["--pcm_type", "PCM_24"]
+        elif "FLAC" in fmt:
+            cmd += ["--pcm_type", "PCM_16"]
+        else:
+            cmd += ["--pcm_type", "FLOAT"]
+        # Flat "<song> (<stem>)" files instead of upstream's per-song folders.
+        cmd += ["--filename_template", INFERENCE_FILENAME_TEMPLATE]
 
         if use_tta: cmd.append("--use_tta")
-        if self._selected_model.get("custom_backend_enabled"):
-            bm = self._selected_model.get("backend_module", "")
-            if bm:
-                cmd += ["--custom_backend",
-                        os.path.join(REPO_ROOT, "models", "custom", bm)]
-
-        if custom_selection:
-            cmd += ["--save_stems", ",".join(s.lower() for s in selected_stems)]
+        # The stem *selection* is applied through the temp config above
+        # (single stem -> target_instrument); "rest" maps onto upstream's
+        # --extract_instrumental (mix minus the vocals / first stem).
         if effective_save_rest:
-            cmd.append("--save_rest")
+            cmd.append("--extract_instrumental")
 
-        out = self._output_row.value()
-        if isinstance(out, str) and out.strip():
-            self.log_output.emit(f"Output directory: {out}")
+        if isinstance(store_dir, str) and store_dir.strip():
+            self.log_output.emit(f"Output directory: {store_dir}")
 
         self.input_files_submitted.emit(
             [f for f in files if isinstance(f, str)] if isinstance(files, list) else []
@@ -2875,6 +2884,7 @@ class InferencePage(QWidget):
             else:
                 self.log_output.emit(f"Queued: {os.path.basename(f)}")
 
+        self._run_started = time.time()
         self._runner = ProcessRunner(cmd, cwd=REPO_ROOT)
         self._runner.log_line.connect(self.log_output.emit)
         self._runner.finished.connect(self._on_finished)
@@ -2882,6 +2892,27 @@ class InferencePage(QWidget):
         self._runner.start()
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
+
+    def _report_written_files(self):
+        """Upstream inference.py writes the stems silently; list every audio
+        file that appeared under the output folder since the run started so
+        the CONSOLE cards pick them up ("Wrote file: ..." lines)."""
+        out = self._output_row.value()
+        if not isinstance(out, str) or not os.path.isdir(out):
+            return
+        since = getattr(self, "_run_started", 0) - 2
+        found = []
+        for root, _dirs, names in os.walk(out):
+            for n in names:
+                if os.path.splitext(n)[1].lower() in (".wav", ".flac", ".mp3", ".ogg"):
+                    p = os.path.join(root, n)
+                    try:
+                        if os.path.getmtime(p) >= since:
+                            found.append(p)
+                    except OSError:
+                        pass
+        for p in sorted(found, key=os.path.getmtime):
+            self.log_output.emit(f"Wrote file: {p}")
 
     def _stop(self):
         # Only announce a stop when an inference job is actually ours to stop
@@ -2895,6 +2926,8 @@ class InferencePage(QWidget):
     def _on_finished(self, code):
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        if code == 0:
+            self._report_written_files()
         self.process_running.emit(False)
         if code == 0:
             self.log_output.emit("Completed: processing")

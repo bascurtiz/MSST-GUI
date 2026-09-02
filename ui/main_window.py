@@ -18,6 +18,7 @@ from PySide6.QtGui import QColor, QPalette, QPainter, QBrush, QFont, QFontMetric
 
 import backend.settings as settings_store
 from ui.pages.inference_page import InferencePage
+from ui.pages.training_page import TrainingPage
 from ui.pages.ensemble_page import EnsembleLandingPage
 from ui.pages.auto_ensemble_page import AutoEnsemblePage
 from ui.pages.manual_ensemble_page import ManualEnsemblePage
@@ -642,6 +643,13 @@ class _HeaderBar(QFrame):
 
 
 class MainWindow(QMainWindow):
+    # Nav tab / page-stack indexes (the two always line up).
+    TAB_INFERENCE = 0
+    TAB_TRAINING = 1
+    TAB_ENSEMBLE = 2
+    TAB_CONSOLE = 3
+    TAB_SETTINGS = 4
+
     def __init__(self, progress_cb=None):
         super().__init__()
         # Startup-only progress hook consumed by the splash screen; cleared
@@ -677,9 +685,10 @@ class MainWindow(QMainWindow):
         self._create_pages()
 
         self._stack.addWidget(self.inference_page)       # 0
-        self._stack.addWidget(self.ensemble_stack)       # 1
-        self._stack.addWidget(self.console_page)         # 2
-        self._stack.addWidget(self.settings_page)        # 3
+        self._stack.addWidget(self.training_page)        # 1
+        self._stack.addWidget(self.ensemble_stack)       # 2
+        self._stack.addWidget(self.console_page)         # 3
+        self._stack.addWidget(self.settings_page)        # 4
         cv.addWidget(self._stack, 1)
         self.setCentralWidget(self._central)
         self._apply_theme_bgs()
@@ -724,6 +733,8 @@ class MainWindow(QMainWindow):
     def _create_pages(self):
         self._report_progress("Building inference page...", 28)
         self.inference_page = InferencePage()
+        self._report_progress("Building training page...", 38)
+        self.training_page = TrainingPage()
         self._report_progress("Building ensemble pages...", 44)
         self.ensemble_landing = EnsembleLandingPage()
         self.auto_ensemble = AutoEnsemblePage()
@@ -791,7 +802,12 @@ class MainWindow(QMainWindow):
             self._show_ckpt_settings
         )
         self.inference_page.add_model_requested.connect(
-            lambda: self._switch(3)
+            lambda: self._switch(self.TAB_SETTINGS)
+        )
+        # Training has its own monitor: keep the user on the TRAINING tab and
+        # only light the tab up (plus block theme rebuilds mid-run).
+        self.training_page.process_running.connect(
+            self._on_training_state
         )
         self.ensemble_landing.auto_selected.connect(
             lambda: self.ensemble_stack.setCurrentWidget(self.auto_ensemble)
@@ -889,9 +905,10 @@ class MainWindow(QMainWindow):
             overlay.set_progress(0.03)
         QApplication.processEvents()  # paint the overlay before tearing down
 
-        pages = (self.inference_page, self.ensemble_landing, self.auto_ensemble,
-                 self.manual_ensemble, self.iterative_ensemble, self.console_page,
-                 self.settings_page)
+        self._persist_training_settings()
+        pages = (self.inference_page, self.training_page, self.ensemble_landing,
+                 self.auto_ensemble, self.manual_ensemble, self.iterative_ensemble,
+                 self.console_page, self.settings_page)
         for w in pages:
             self._stack.removeWidget(w)
             self.ensemble_stack.removeWidget(w)
@@ -940,6 +957,7 @@ class MainWindow(QMainWindow):
         self._switching = True
         self._rebuild_steps = [
             lambda: setattr(self, "inference_page", InferencePage()),
+            lambda: setattr(self, "training_page", TrainingPage()),
             lambda: self._add_ensemble_page("ensemble_landing", EnsembleLandingPage()),
             lambda: self._add_ensemble_page("auto_ensemble", AutoEnsemblePage()),
             lambda: self._add_ensemble_page("manual_ensemble", ManualEnsemblePage()),
@@ -962,9 +980,10 @@ class MainWindow(QMainWindow):
 
     def _attach_pages(self):
         self._stack.addWidget(self.inference_page)       # 0
-        self._stack.addWidget(self.ensemble_stack)       # 1
-        self._stack.addWidget(self.console_page)         # 2
-        self._stack.addWidget(self.settings_page)        # 3
+        self._stack.addWidget(self.training_page)        # 1
+        self._stack.addWidget(self.ensemble_stack)       # 2
+        self._stack.addWidget(self.console_page)         # 3
+        self._stack.addWidget(self.settings_page)        # 4
 
     def _rebuild_step(self):
         if not self._switching:
@@ -1036,17 +1055,27 @@ class MainWindow(QMainWindow):
             self._apply_blur_radius(self._blur_current)
             self._blur_timer.start(16)
 
+    # —— Background-blurred modal dialogs ——————————————————————————————
+    def show_blurred_dialog(self, dialog, radius=8, duration=300):
+        """Run a modal behind the frosted-backdrop blur, then blur back out.
+
+        Sync and blocking: the blur ramps in while the dialog is up (its
+        modal loop keeps the animation timer running), and the dialog's exec()
+        result is returned so callers can check Accepted/Rejected as usual.
+        """
+        self._animate_blur(radius, duration=duration)
+        try:
+            result = dialog.exec()
+        finally:
+            self._animate_blur(0, duration=duration)
+        return result
+
     # —— Ckpt Settings Dialog ——————————————————————————————————————————
     def _show_ckpt_settings(self, name, ckpt, yaml_path, arch):
         existing = settings_store.load_ckpt_settings().get(name, {})
         dialog = CkptSettingsDialog(name, yaml_path, arch, existing, self)
         dialog.settings_saved.connect(self._on_ckpt_settings_saved)
-
-        def _open_dialog():
-            dialog.exec()
-            self._animate_blur(0, duration=300)
-
-        self._animate_blur(8, duration=300, callback=_open_dialog)
+        self.show_blurred_dialog(dialog)
 
     def _on_ckpt_settings_saved(self, ckpt_name, settings):
         settings_store.save_ckpt_settings(ckpt_name, settings)
@@ -1068,7 +1097,7 @@ class MainWindow(QMainWindow):
         hl.addStretch(1)
 
         self._nav_tabs = []
-        tab_names = ["INFERENCE", "ENSEMBLE", "CONSOLE", "SETTINGS"]
+        tab_names = ["INFERENCE", "TRAINING", "ENSEMBLE", "CONSOLE", "SETTINGS"]
         for i, name in enumerate(tab_names):
             tab = _NavTab(name, i)
             tab.clicked.connect(self._switch)
@@ -1303,7 +1332,7 @@ class MainWindow(QMainWindow):
         ie_settings = settings_store.load().get("iterative_ensemble", {})
         if not ie_settings.get("warning_dismissed", False):
             dialog = IterativeWarningDialog(self)
-            result = dialog.exec()
+            result = self.show_blurred_dialog(dialog)
             if result == QDialog.Rejected:
                 return
             if dialog.dont_show_again:
@@ -1320,7 +1349,7 @@ class MainWindow(QMainWindow):
         if missing:
             installer_dialog = _ModelInstallerDialog(missing, registered, self)
             installer_dialog.installation_complete.connect(self._on_models_installed)
-            installer_dialog.exec()
+            self.show_blurred_dialog(installer_dialog)
         else:
             self.ensemble_stack.setCurrentWidget(self.iterative_ensemble)
 
@@ -1338,6 +1367,7 @@ class MainWindow(QMainWindow):
     def _load_all(self):
         data = settings_store.load()
         self.inference_page.load_settings(data.get("inference", {}))
+        self.training_page.load_settings(data.get("training", {}))
         models = data.get("registered_models", [])
         self.auto_ensemble.load_models(models)
         self.iterative_ensemble.load_models(models)
@@ -1345,22 +1375,49 @@ class MainWindow(QMainWindow):
 
     def _on_process_state(self, running):
         self._processing = running
-        tab = self._nav_tabs[2]
+        tab = self._nav_tabs[self.TAB_CONSOLE]
         if running:
             tab.set_attention_state(_NavTab.RUNNING)
             # Jump to CONSOLE so the running job is immediately visible
-            if self._stack.currentIndex() != 2:
-                self._switch(2)
+            if self._stack.currentIndex() != self.TAB_CONSOLE:
+                self._switch(self.TAB_CONSOLE)
         else:
             tab.set_attention_state(_NavTab.IDLE)
             if self._theme_rebuild_pending:
                 self._theme_rebuild_pending = False
                 self._rebuild_pages()
 
+    def _on_training_state(self, running):
+        """Training runs live on the TRAINING tab (its own monitor), so only
+        the tab's running glow changes — no jump to CONSOLE."""
+        self._processing = running
+        tab = self._nav_tabs[self.TAB_TRAINING]
+        if running:
+            tab.set_attention_state(_NavTab.RUNNING)
+        else:
+            tab.set_attention_state(_NavTab.IDLE)
+            if self._theme_rebuild_pending:
+                self._theme_rebuild_pending = False
+                self._rebuild_pages()
+
+    def _persist_training_settings(self):
+        """Training page state lives only in its widgets; write it out before
+        the page is torn down (theme rebuild) so the rebuilt page reloads it."""
+        page = getattr(self, "training_page", None)
+        if page is None:
+            return
+        try:
+            data = settings_store.load()
+            data["training"] = page.save_settings()
+            settings_store.save(data)
+        except Exception:
+            pass
+
     def _save_all(self):
         data = settings_store.load()
         data.update({
             "inference":         self.inference_page.save_settings(),
+            "training":          self.training_page.save_settings(),
             "registered_models": self.settings_page.save_settings(),
         })
         settings_store.save(data)

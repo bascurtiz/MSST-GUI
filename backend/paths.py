@@ -7,6 +7,7 @@ Layout on disk:
   <root>/msst_gui/backend/paths.py    ← this file
   <root>/msst_gui/                     ← the Python package
   <root>/inference.py                  ← inference entry point
+  <root>/train.py                      ← training entry point
   <root>/msst_settings.json            ← user settings
 
 Frozen (PyInstaller) layout — two roots:
@@ -78,4 +79,5 @@ APP_DIR = get_app_dir()
 # Derived paths
 INFERENCE_SCRIPT = os.path.join(REPO_ROOT, "inference.py")
 ENSEMBLE_SCRIPT = os.path.join(REPO_ROOT, "ensemble.py")
+TRAIN_SCRIPT = os.path.join(REPO_ROOT, "train.py")
 SETTINGS_PATH = os.path.join(APP_DIR, "msst_settings.json")

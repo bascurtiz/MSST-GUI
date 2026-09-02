@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBu
 
 from backend import update_checker as uc
 from ui.theme import theme_manager
+from ui.widgets.common import run_blurred_dialog
 
 
 class _CheckThread(QThread):
@@ -86,7 +87,7 @@ class _UpdateDialog(QDialog):
 
 def _show_dialog(new_tag, parent):
     dlg = _UpdateDialog(new_tag, parent)
-    dlg.exec()
+    run_blurred_dialog(dlg)
 
 
 def run_startup_check(window):

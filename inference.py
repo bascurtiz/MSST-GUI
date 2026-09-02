@@ -1,58 +1,11 @@
 # coding: utf-8
 __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 
-# ---------------------------------------------------------------------------
-# Neutralize stray bundled zstd/backports stubs (must run BEFORE any import
-# that can pull in fsspec / pytorch_lightning / torch).
-#
-# PyInstaller bundles a broken `backports.zstd`/`zstd` stub (a lone
-# `_zstd.pyd` with no API surface) into `_internal/`. This subprocess runs
-# with `_internal` on sys.path, and fsspec (pulled in by pytorch-lightning)
-# tries `from backports import zstd` BEFORE `import zstandard`. The stub
-# imports fine but has no `ZstdFile`, so fsspec crashes with AttributeError
-# instead of falling back to the runtime's canonical `zstandard` — even
-# though `zstandard` is installed and working. Fix: (1) delete the stray dirs
-# when possible, and (2) seed sys.modules so `from backports import zstd`
-# deterministically raises ImportError, forcing the `zstandard` fallback.
-# Step (2) works even while Windows Defender / the search indexer still hold
-# the freshly-extracted .pyd open and deletion is blocked.
-import sys as _zsys
-import os as _zos
-import time as _ztime
-import shutil as _zshutil
-
-
-def _zstd_stray_guard():
-    root = _zos.path.dirname(_zos.path.abspath(__file__))
-    for name in ("backports", "zstd", "backports.py", "zstd.py"):
-        p = _zos.path.join(root, name)
-        if not (_zos.path.isdir(p) or _zos.path.isfile(p)):
-            continue
-        for _ in range(20):  # best-effort; correctness comes from the guard below
-            try:
-                if _zos.path.isdir(p):
-                    _zshutil.rmtree(p)
-                else:
-                    _zos.remove(p)
-                break
-            except OSError:
-                _ztime.sleep(0.5)
-    # None entries make `from backports import zstd` / `import zstd` raise
-    # ImportError, so fsspec falls back to the canonical `zstandard`.
-    _zsys.modules.setdefault("backports.zstd", None)
-    _zsys.modules.setdefault("zstd", None)
-
-
-_zstd_stray_guard()
-# ---------------------------------------------------------------------------
-
 import time
 import librosa
 import sys
 import os
 import glob
-import shutil
-import subprocess
 import torch
 import soundfile as sf
 import numpy as np
@@ -63,45 +16,14 @@ import torch.nn as nn
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
-from utils.audio_utils import normalize_audio, denormalize_audio, draw_spectrogram, get_audio_metadata, sanitize_filename
+from utils.audio_utils import normalize_audio, denormalize_audio, draw_spectrogram
 from utils.settings import get_model_from_config, parse_args_inference
 from utils.model_utils import bigshifts_wrapper
-from utils.model_utils import apply_tta, load_start_checkpoint
+from utils.model_utils import prefer_target_instrument, apply_tta, load_start_checkpoint
 
 import warnings
 
 warnings.filterwarnings("ignore")
-
-
-def _bitsandbytes_stub():
-    """Install no-op stubs so `torch.load` can unpickle checkpoints whose
-    training state references `bitsandbytes` optimizers (e.g. Lightning LR
-    schedulers holding an `AdamW8bit` handle). bitsandbytes is training-only;
-    inference discards the optimizer/scheduler state entirely, so a plain
-    object that accepts the pickled state is enough."""
-    import types
-    if "bitsandbytes" in sys.modules:
-        return
-    bnb = types.ModuleType("bitsandbytes")
-    optim = types.ModuleType("bitsandbytes.optim")
-    adamw = types.ModuleType("bitsandbytes.optim.adamw")
-
-    class AdamW8bit:
-        def __init__(self, *a, **k):
-            pass
-
-        def __setstate__(self, state):
-            self.__dict__.update(state or {})
-
-        def __getstate__(self):
-            return self.__dict__
-
-    adamw.AdamW8bit = AdamW8bit
-    optim.adamw = adamw
-    bnb.optim = optim
-    sys.modules["bitsandbytes"] = bnb
-    sys.modules["bitsandbytes.optim"] = optim
-    sys.modules["bitsandbytes.optim.adamw"] = adamw
 
 
 def run_folder(
@@ -139,18 +61,9 @@ def run_folder(
 
     sample_rate: int = getattr(config.audio, "sample_rate", 44100)
 
-    # Subfolder per checkpoint: separating the same track with different
-    # models (e.g. mdx-net de-echo vs bandit_plus) must never overwrite
-    # each other's output, so each model writes into
-    # <store_dir>/<ckpt-name>/...
-    ckpt_name = ""
-    if args.start_check_point:
-        ckpt_name = sanitize_filename(
-            os.path.splitext(os.path.basename(args.start_check_point))[0])
-
     print(f"Total files found: {len(mixture_paths)}. Using sample rate: {sample_rate}")
 
-    instruments: list[str] = list(getattr(config.training, "instruments", []) or [])[:]
+    instruments: list[str] = prefer_target_instrument(config)[:]
     os.makedirs(args.store_dir, exist_ok=True)
 
     # Wrap paths with progress bar if not in verbose mode
@@ -169,12 +82,6 @@ def run_folder(
         # Extract directory and file name
         dir_name: str = os.path.dirname(relative_path)
         file_name: str = os.path.splitext(os.path.basename(path))[0]
-        # Try to use metadata for display name
-        artist, title = get_audio_metadata(path)
-        if artist and title:
-            display_name = f"{sanitize_filename(artist)} - {sanitize_filename(title)}"
-        else:
-            display_name = file_name
 
         try:
             mix, sr = librosa.load(path, sr=sample_rate, mono=False)
@@ -224,53 +131,10 @@ def run_folder(
 
         # Extract instrumental track if requested
         if args.extract_instrumental:
-            target = getattr(config.training, "target_instrument", None) or "vocals"
-            if target in waveforms_orig:
-                waveforms_orig["instrumental"] = mix_orig - waveforms_orig[target]
-                if "instrumental" not in instruments:
-                    instruments.append("instrumental")
-
-        # Only consider stems the model actually produced
-        instruments = [i for i in instruments if i in waveforms_orig]
-
-        # Filter to only save specified stems
-        if args.save_stems:
-            save_list = [s.strip().lower() for s in args.save_stems.split(',')]
-            instruments = [i for i in instruments if i.lower() in save_list]
-
-        # Compute rest (complement = mix − sum of selected stems)
-        if args.save_rest:
-            stems_to_sum = [s for s in instruments
-                            if s.lower() != 'rest' and s.lower() != 'instrumental']
-            if stems_to_sum:
-                sum_selected = None
-                for s in stems_to_sum:
-                    if sum_selected is None:
-                        sum_selected = waveforms_orig[s].copy()
-                    else:
-                        sum_selected += waveforms_orig[s]
-                if sum_selected is not None:
-                    rest = mix_orig - sum_selected
-                    # Skip a redundant Rest. When the selected stems already
-                    # reconstruct the mix (e.g. a 2-stem vocal model where
-                    # "instrumental" is already mix − vocals), "rest" would
-                    # just duplicate an existing stem or be silence.
-                    redundant = False
-                    for s in waveforms_orig:
-                        if s == "rest":
-                            continue
-                        try:
-                            if float(np.max(np.abs(
-                                    rest - waveforms_orig[s]))) <= 1e-4:
-                                redundant = True
-                                break
-                        except Exception:
-                            continue
-                    if not redundant and float(
-                            np.max(np.abs(rest))) > 1e-4:
-                        waveforms_orig["rest"] = rest
-                        if "rest" not in instruments:
-                            instruments.append("rest")
+            instr = "vocals" if "vocals" in instruments else instruments[0]
+            waveforms_orig["instrumental"] = mix_orig - waveforms_orig[instr]
+            if "instrumental" not in instruments:
+                instruments.append("instrumental")
 
         for instr in instruments:
             estimates = waveforms_orig[instr]
@@ -280,18 +144,20 @@ def run_folder(
                 if config.inference["normalize"] is True:
                     estimates = denormalize_audio(estimates, norm_params)
 
-            codec = args.output_format
-            subtype = args.pcm_type
-            if codec == "flac" and subtype == "FLOAT":
-                # FLAC cannot store float samples; fall back to 16-bit PCM.
-                subtype = "PCM_16"
+            peak: float = float(np.abs(estimates).max())
+            if peak <= 1.0 and args.pcm_type != 'FLOAT':
+                codec = "flac"
+            else:
+                codec = "wav"
 
-            # Generate output filename using template
+            subtype = args.pcm_type
+
+            # Generate output directory structure using relative paths
             dirnames, fname = format_filename(
                 args.filename_template,
                 instr=instr,
                 start_time=int(start_time),
-                file_name=display_name,
+                file_name=file_name,
                 dir_name=dir_name,
                 model_type=args.model_type,
                 model=os.path.splitext(
@@ -299,44 +165,18 @@ def run_folder(
                 )[0],
             )
 
-            # Create output directory (per-checkpoint subfolder first)
+            # Create output directory
             output_dir: str = os.path.join(args.store_dir, *dirnames)
-            if ckpt_name:
-                output_dir = os.path.join(output_dir, ckpt_name)
             os.makedirs(output_dir, exist_ok=True)
 
             output_path: str = os.path.join(output_dir, f"{fname}.{codec}")
-            if codec == "mp3":
-                tmp_wav = os.path.join(output_dir, f"{fname}.wav")
-                sf.write(tmp_wav, estimates.T, sr, subtype="PCM_16")
-                ffmpeg = shutil.which("ffmpeg")
-                if ffmpeg is None:
-                    print(f"WARNING: ffmpeg not found, wrote {fname}.wav (PCM 16) instead of mp3")
-                    print("Wrote file:", tmp_wav)
-                else:
-                    res = subprocess.run(
-                        [ffmpeg, "-y", "-i", tmp_wav, "-codec:a", "libmp3lame",
-                         "-b:a", f"{args.mp3_bitrate}k", output_path],
-                        capture_output=True, text=True,
-                        creationflags=0x08000000 if os.name == "nt" else 0
-                    )
-                    if res.returncode == 0 and os.path.isfile(output_path):
-                        os.remove(tmp_wav)
-                        print("Wrote file:", output_path)
-                    else:
-                        print("WARNING: mp3 conversion failed, kept wav output instead")
-                        print("Wrote file:", tmp_wav)
-            else:
-                sf.write(output_path, estimates.T, sr, subtype=subtype)
-                print("Wrote file:", output_path)
+            sf.write(output_path, estimates.T, sr, subtype=subtype)
 
             # Draw and save spectrogram if enabled
             if args.draw_spectro > 0:
                 output_img_path = os.path.join(output_dir, f"{fname}.jpg")
                 draw_spectrogram(estimates.T, sr, args.draw_spectro, output_img_path)
                 print("Wrote file:", output_img_path)
-
-        print(f"Completed: {display_name}")
 
     print(f"Elapsed time: {time.time() - start_time:.2f} seconds.")
 
@@ -352,13 +192,6 @@ def format_filename(template, **kwargs):
     *dirnames, fname = result.split("/")
     return dirnames, fname
 
-def _progress(pct, msg):
-    """Emit a machine-readable progress line the GUI parses to move the card
-    bar incrementally, even during phases that produce no tqdm output (e.g.
-    model architecture load, checkpoint load, .to(device) warm-up)."""
-    print(f"Processing: {int(pct)}% {msg}", flush=True)
-
-
 def proc_folder(dict_args):
     args = parse_args_inference(dict_args)
     device = "cpu"
@@ -369,73 +202,29 @@ def proc_folder(dict_args):
         device = f'cuda:{args.device_ids[0]}' if isinstance(args.device_ids, list) else f'cuda:{args.device_ids}'
     elif torch.backends.mps.is_available():
         device = "mps"
-    else:
-        # Not forced to CPU, yet no CUDA — the runtime's PyTorch build is
-        # CPU-only or the NVIDIA driver predates the CUDA build it ships.
-        # Say so plainly instead of silently falling back.
-        print(f"WARNING: CUDA is not available in this runtime "
-              f"(torch {torch.__version__}) — running on CPU. If you selected "
-              f"a GPU: update the NVIDIA driver (>= 531.14 for CUDA 12.1) or "
-              f"reinstall GPU support from Settings.")
 
     print("Using device: ", device)
 
     model_load_start_time = time.time()
     torch.backends.cudnn.benchmark = True
 
-    _progress(5, "loading model architecture")
-
-    _progress(10, "building model")
-    model, config = get_model_from_config(args.model_type, args.config_path,
-                                           custom_backend=args.custom_backend,
-                                           checkpoint_path=args.start_check_point)
+    model, config = get_model_from_config(args.model_type, args.config_path)
     if 'model_type' in config.training:
         args.model_type = config.training.model_type
-    if args.start_check_point and args.model_type != 'mdxnet':
-        _progress(20, "loading checkpoints")
-        # MDX-Net models are ONNX checkpoints loaded by onnxruntime inside
-        # get_model_from_config; the torch.load path below is torch-only.
-        _bitsandbytes_stub()
+    if args.start_check_point:
         checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
-        # SCNet has "masked" and "tran" variants that the GUI routes to the
-        # same `scnet` model_type: the masked one adds `pos_embed_f`/`mask_layer`,
-        # and tran swaps the LSTM dual-path for transformer (`time_layer`/
-        # `freq_layer` + `first_conv`). Detect the variant from the checkpoint.
-        if args.model_type == 'scnet':
-            _sd = checkpoint
-            for _k in ('state', 'state_dict', 'model_state_dict'):
-                if isinstance(_sd, dict) and _k in _sd:
-                    _sd = _sd[_k]
-            if isinstance(_sd, dict):
-                _keys = _sd.keys()
-                if ('pos_embed_f' in _keys or
-                        any(k.startswith('mask_layer') for k in _keys)):
-                    from utils.settings import _fit_model_kwargs
-                    from models.scnet.scnet_masked import SCNet as SCNetMasked
-                    model = SCNetMasked(**
-                        _fit_model_kwargs(SCNetMasked, dict(config.model)))
-                elif any(k == 'first_conv.weight' or
-                         (k.startswith('separation_net.dp_modules.') and
-                          ('.time_layer.' in k or '.freq_layer.' in k))
-                         for k in _keys):
-                    from utils.settings import _fit_model_kwargs
-                    from models.scnet.scnet_tran import SCNet_Tran
-                    model = SCNet_Tran(**
-                        _fit_model_kwargs(SCNet_Tran, dict(config.model)))
         load_start_checkpoint(args, model, checkpoint, type_='inference')
 
     print("Instruments: {}".format(config.training.instruments))
 
     # in case multiple CUDA GPUs are used and --device_ids arg is passed
-    if (isinstance(args.device_ids, list) and len(args.device_ids) > 1
-            and not args.force_cpu and args.model_type != 'mdxnet'):
+    if isinstance(args.device_ids, list) and len(args.device_ids) > 1 and not args.force_cpu:
         model = nn.DataParallel(model, device_ids=args.device_ids)
 
     model = model.to(device)
 
     print("Model load time: {:.2f} sec".format(time.time() - model_load_start_time))
 
-    _progress(25, "model ready - processing audio")
     run_folder(model, args, config, device, verbose=True)
 
 

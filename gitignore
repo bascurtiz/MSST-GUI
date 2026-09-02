@@ -1,0 +1,33 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# --- Tool state ---
+.freebuff/
+.zcode/
+
+# --- User data (never publish) ---
+msst_settings.json
+temp/
+
+# --- Downloaded model checkpoints ---
+*.ckpt
+*.bin
+*.th
+*.chpt
+models/**/*.ckpt
+
+# --- Separation output ---
+iterative_output/
+msst-output/
+_dl_tmp/
+
+# --- Build artifacts ---
+dist/
+build/
+runtime/
+runtime_test/
+msst-gui.log

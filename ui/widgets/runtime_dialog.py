@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from backend import runtime_setup
 from ui.theme import theme_manager
+from ui.widgets.common import run_blurred_dialog
 
 
 def runtime_usable() -> bool:
@@ -119,7 +120,7 @@ class RuntimeSetupDialog(QDialog):
             info = QLabel(
                 f"Detected GPU: <b style='color:{theme_manager.accent};'>{gpu_txt}</b><br>"
                 f"PyTorch to install: <b>{line_txt}</b><br><br>"
-                f"Installation will take 3-5 minutes, depending on your hardware and "
+                f"Installation will take ~5 minutes, depending on your hardware and "
                 f"internet connection (2.5-3 GB).")
             info.setWordWrap(True)
             info.setTextFormat(Qt.RichText)
@@ -331,10 +332,10 @@ def ensure_runtime(parent=None) -> bool:
         # An app update shipped new runtime requirements — quick top-up
         # (installs only the missing libraries; PyTorch stays untouched).
         dlg = RuntimeSetupDialog(parent, top_up=True)
-        dlg.exec()
+        run_blurred_dialog(dlg)
         return _post_install_gate(dlg)
     dlg = RuntimeSetupDialog(parent)
-    dlg.exec()
+    run_blurred_dialog(dlg)
     return _post_install_gate(dlg)
 
 

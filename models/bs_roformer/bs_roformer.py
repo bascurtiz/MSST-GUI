@@ -92,8 +92,7 @@ class Attention(Module):
             dropout=0.,
             rotary_embed=None,
             flash=True,
-            pope_embed=None,
-            learned_value_residual_mix=False
+            pope_embed=None
     ):
         super().__init__()
         self.heads = heads
@@ -110,14 +109,6 @@ class Attention(Module):
         self.norm = RMSNorm(dim)
         self.to_qkv = nn.Linear(dim, dim_inner * 3, bias=False)
 
-        # Learned value residual mixing (lucidrains BS-RoFormer, Dec 2024
-        # "add value residual learning"): per-head gate that lerps this
-        # attention's values towards the residual values carried from the
-        # first attention of the transformer. Only created when the config
-        # enables `residual_value`, so checkpoints without these layers are
-        # unaffected.
-        self.to_value_residual_mix = nn.Linear(dim, heads) if learned_value_residual_mix else None
-
         self.to_gates = nn.Linear(dim, heads)
 
         self.to_out = nn.Sequential(
@@ -125,20 +116,10 @@ class Attention(Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, x, value_residual=None):
+    def forward(self, x):
         x = self.norm(x)
 
         q, k, v = rearrange(self.to_qkv(x), 'b n (qkv h d) -> qkv b h n d', qkv=3, h=self.heads)
-
-        # carry the pre-mix values: the transformer's first attention
-        # defines the value residual handed to every later attention
-        orig_v = v
-
-        if exists(self.to_value_residual_mix):
-            mix = self.to_value_residual_mix(x)
-            mix = rearrange(mix, 'b n h -> b h n 1').sigmoid()
-            assert exists(value_residual)
-            v = v.lerp(value_residual, mix)
 
         if exists(self.pope_embed):
             assert _HAS_POPE, "PoPE requested but PoPE_pytorch is not installed"
@@ -158,7 +139,7 @@ class Attention(Module):
         out = out * rearrange(gates, 'b n h -> b h n 1').sigmoid()
 
         out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out), orig_v
+        return self.to_out(out)
 
 
 class LinearAttention(Module):
@@ -231,7 +212,6 @@ class Transformer(Module):
             pope_embed=None,
             flash_attn=True,
             linear_attn=False,
-            add_value_residual=False
     ):
         super().__init__()
         self.layers = ModuleList([])
@@ -253,8 +233,7 @@ class Transformer(Module):
                     dropout=attn_dropout,
                     rotary_embed=rotary_embed,
                     pope_embed=pope_embed,
-                    flash=flash_attn,
-                    learned_value_residual_mix=add_value_residual
+                    flash=flash_attn
                 )
 
             self.layers.append(ModuleList([
@@ -264,97 +243,16 @@ class Transformer(Module):
 
         self.norm = RMSNorm(dim) if norm_output else nn.Identity()
 
-    def forward(self, x, value_residual=None):
-
-        # the first attention's pre-mix values are the transformer's value
-        # residual, handed back to the caller (BSRoformer carries them into
-        # every later block of the same stream)
-        first_values = None
+    def forward(self, x):
 
         for attn, ff in self.layers:
-            attn_out, next_values = attn(x, value_residual=value_residual)
-            first_values = default(first_values, next_values)
-            x = attn_out + x
+            x = attn(x) + x
             x = ff(x) + x
 
-        return self.norm(x), first_values
+        return self.norm(x)
 
 
 # bandsplit module
-
-class SiameseTransformer(Module):
-    """Two-stream (X/Y) axial transformer of the pcunwa 'Siamese' trunk.
-
-    The published `siamese` BS-RoFormer checkpoints (e.g. bs_siamese_vocals)
-    replace each axial Transformer with this block: an auxiliary Y stream is
-    carried alongside the main X stream and the two are coupled at every
-    attention and MLP step with a layer-index-scaled coupling factor. The
-    parameter layout (ln_x_attn / ln_y_attn / ln_x_mlp / ln_y_mlp RMSNorms +
-    y_attn scale) matches the released checkpoints key-for-key.
-    """
-
-    def __init__(
-            self,
-            *,
-            dim,
-            depth,
-            dim_head=64,
-            heads=8,
-            attn_dropout=0.,
-            ff_dropout=0.,
-            ff_mult=4,
-            norm_output=True,
-            rotary_embed=None,
-            pope_embed=None,
-            flash_attn=True,
-    ):
-        super().__init__()
-        self.layers = ModuleList([])
-        self.ln_y_attn = ModuleList([])
-        self.ln_x_attn = ModuleList([])
-        self.ln_y_mlp = ModuleList([])
-        self.ln_x_mlp = ModuleList([])
-        self.y_attn = nn.ParameterList([])
-
-        for _ in range(depth):
-            self.layers.append(ModuleList([
-                Attention(
-                    dim=dim,
-                    dim_head=dim_head,
-                    heads=heads,
-                    dropout=attn_dropout,
-                    rotary_embed=rotary_embed,
-                    pope_embed=pope_embed,
-                    flash=flash_attn,
-                ),
-                FeedForward(dim=dim, mult=ff_mult, dropout=ff_dropout),
-            ]))
-            self.ln_y_attn.append(RMSNorm(dim))
-            self.ln_x_attn.append(RMSNorm(dim))
-            self.ln_y_mlp.append(RMSNorm(dim))
-            self.ln_x_mlp.append(RMSNorm(dim))
-            self.y_attn.append(nn.Parameter(torch.ones(dim)))
-
-        self.norm = RMSNorm(dim) if norm_output else nn.Identity()
-
-    def forward(self, X, Y, layer_idx_start=1):
-        for i, (attn, ff) in enumerate(self.layers):
-            layer_index = layer_idx_start + i
-            coupling = 1.0 / (layer_index ** 0.5) + 1.0
-
-            mixed_a = X * self.y_attn[i] + self.ln_y_attn[i](Y)
-            # Attention also returns the value-residual tensor for standard
-            # trunks; the siamese trunk only consumes its projected output.
-            attn_out, _ = attn(mixed_a)
-            Y = Y + attn_out
-            X = self.ln_x_attn[i](X + attn_out * coupling)
-
-            ff_out = ff(X + self.ln_y_mlp[i](Y))
-            Y = Y + ff_out
-            X = self.ln_x_mlp[i](X + ff_out * coupling)
-
-        return X, Y
-
 
 class BandSplit(Module):
     @beartype
@@ -499,8 +397,6 @@ class BSRoformer(Module):
             use_torch_checkpoint=False,
             skip_connection=False,
             use_pope: bool = False,
-            residual_value: bool = False,
-            siamese: bool = False,
     ):
         super().__init__()
 
@@ -509,12 +405,6 @@ class BSRoformer(Module):
         self.num_stems = num_stems
         self.use_torch_checkpoint = use_torch_checkpoint
         self.skip_connection = skip_connection
-        self.residual_value = residual_value
-        self.siamese = siamese
-
-        if siamese:
-            assert linear_transformer_depth == 0, \
-                "the siamese trunk has no linear-transformer stage"
 
         self.layers = ModuleList([])
 
@@ -539,33 +429,23 @@ class BSRoformer(Module):
             freq_rotary_embed = RotaryEmbedding(dim = dim_head)
             time_pope_embed = freq_pope_embed = None
 
-        for layer_index in range(depth):
-            # value-residual mixers only exist from the second block on: the
-            # first block's attentions define the reference values that all
-            # later attentions lerp towards (upstream `add_value_residual =
-            # not is_first`)
-            add_vr = residual_value and layer_index > 0
-            tran_cls = SiameseTransformer if siamese else Transformer
-            # the siamese trunk carries no value-residual mixers
-            extra_kwargs = {} if siamese else {'add_value_residual': add_vr}
+        for _ in range(depth):
             tran_modules = []
             if linear_transformer_depth > 0:
                 tran_modules.append(Transformer(depth=linear_transformer_depth, linear_attn=True, **transformer_kwargs))
             tran_modules.append(
-                tran_cls(
+                Transformer(
                     depth=time_transformer_depth,
                     rotary_embed=time_rotary_embed,
                     pope_embed=time_pope_embed,
-                    **extra_kwargs,
                     **transformer_kwargs
                 )
             )
             tran_modules.append(
-                tran_cls(
+                Transformer(
                     depth=freq_transformer_depth,
                     rotary_embed=freq_rotary_embed,
                     pope_embed=freq_pope_embed,
-                    **extra_kwargs,
                     **transformer_kwargs
                 )
             )
@@ -688,115 +568,51 @@ class BSRoformer(Module):
         else:
             x = self.band_split(x)
 
-        if self.siamese:
-            # Two-stream siamese trunk: X is the main stream (fed to the mask
-            # head together with final_norm(Y)), Y an auxiliary stream coupled
-            # into every attention/MLP step. Mirrors the published inference
-            # implementation key-for-key.
-            X = x
-            Y = x.clone()
-            current_layer_idx = 1
-            store = [None] * len(self.layers)
-            for i, transformer_block in enumerate(self.layers):
-                if len(transformer_block) != 2:
-                    raise RuntimeError(
-                        "siamese trunk expects [time, freq] transformer pairs")
+        # axial / hierarchical attention
+
+        store = [None] * len(self.layers)
+        for i, transformer_block in enumerate(self.layers):
+
+            if len(transformer_block) == 3:
+                linear_transformer, time_transformer, freq_transformer = transformer_block
+
+                x, ft_ps = pack([x], 'b * d')
+                if self.use_torch_checkpoint:
+                    x = checkpoint(linear_transformer, x, use_reentrant=False)
+                else:
+                    x = linear_transformer(x)
+                x, = unpack(x, ft_ps, 'b * d')
+            else:
                 time_transformer, freq_transformer = transformer_block
 
-                if self.skip_connection:
-                    # Sum all previous
-                    for j in range(i):
-                        X = X + store[j]
+            if self.skip_connection:
+                # Sum all previous
+                for j in range(i):
+                    x = x + store[j]
 
-                X = rearrange(X, 'b t f d -> b f t d')
-                Y = rearrange(Y, 'b t f d -> b f t d')
-                X, ps = pack([X], '* t d')
-                Y, _ = pack([Y], '* t d')
+            x = rearrange(x, 'b t f d -> b f t d')
+            x, ps = pack([x], '* t d')
 
-                if self.use_torch_checkpoint:
-                    X, Y = checkpoint(time_transformer, X, Y, current_layer_idx,
-                                      use_reentrant=False)
-                else:
-                    X, Y = time_transformer(X, Y, current_layer_idx)
-                current_layer_idx += len(time_transformer.layers)
+            if self.use_torch_checkpoint:
+                x = checkpoint(time_transformer, x, use_reentrant=False)
+            else:
+                x = time_transformer(x)
 
-                X, = unpack(X, ps, '* t d')
-                Y, = unpack(Y, ps, '* t d')
-                X = rearrange(X, 'b f t d -> b t f d')
-                Y = rearrange(Y, 'b f t d -> b t f d')
-                X, ps = pack([X], '* f d')
-                Y, _ = pack([Y], '* f d')
+            x, = unpack(x, ps, '* t d')
+            x = rearrange(x, 'b f t d -> b t f d')
+            x, ps = pack([x], '* f d')
 
-                if self.use_torch_checkpoint:
-                    X, Y = checkpoint(freq_transformer, X, Y, current_layer_idx,
-                                      use_reentrant=False)
-                else:
-                    X, Y = freq_transformer(X, Y, current_layer_idx)
-                current_layer_idx += len(freq_transformer.layers)
+            if self.use_torch_checkpoint:
+                x = checkpoint(freq_transformer, x, use_reentrant=False)
+            else:
+                x = freq_transformer(x)
 
-                X, = unpack(X, ps, '* f d')
-                Y, = unpack(Y, ps, '* f d')
+            x, = unpack(x, ps, '* f d')
 
-                if self.skip_connection:
-                    store[i] = X
+            if self.skip_connection:
+                store[i] = x
 
-            x = X + self.final_norm(Y)
-        else:
-            # value residuals: each transformer's first attention defines the
-            # values carried into all later attentions of the same stream (time
-            # and frequency streams are tracked separately, upstream behavior)
-            time_v_residual = None
-            freq_v_residual = None
-
-            store = [None] * len(self.layers)
-            for i, transformer_block in enumerate(self.layers):
-
-                if len(transformer_block) == 3:
-                    linear_transformer, time_transformer, freq_transformer = transformer_block
-
-                    x, ft_ps = pack([x], 'b * d')
-                    if self.use_torch_checkpoint:
-                        x, _ = checkpoint(linear_transformer, x, use_reentrant=False)
-                    else:
-                        x, _ = linear_transformer(x)
-                    x, = unpack(x, ft_ps, 'b * d')
-                else:
-                    time_transformer, freq_transformer = transformer_block
-
-                if self.skip_connection:
-                    # Sum all previous
-                    for j in range(i):
-                        x = x + store[j]
-
-                x = rearrange(x, 'b t f d -> b f t d')
-                x, ps = pack([x], '* t d')
-
-                if self.use_torch_checkpoint:
-                    x, next_time_v_residual = checkpoint(
-                        time_transformer, x, value_residual=time_v_residual,
-                        use_reentrant=False)
-                else:
-                    x, next_time_v_residual = time_transformer(x, value_residual=time_v_residual)
-                time_v_residual = default(time_v_residual, next_time_v_residual)
-
-                x, = unpack(x, ps, '* t d')
-                x = rearrange(x, 'b f t d -> b t f d')
-                x, ps = pack([x], '* f d')
-
-                if self.use_torch_checkpoint:
-                    x, next_freq_v_residual = checkpoint(
-                        freq_transformer, x, value_residual=freq_v_residual,
-                        use_reentrant=False)
-                else:
-                    x, next_freq_v_residual = freq_transformer(x, value_residual=freq_v_residual)
-                freq_v_residual = default(freq_v_residual, next_freq_v_residual)
-
-                x, = unpack(x, ps, '* f d')
-
-                if self.skip_connection:
-                    store[i] = x
-
-            x = self.final_norm(x)
+        x = self.final_norm(x)
 
         if active_stem_ids is None:
             heads = self.mask_estimators
@@ -830,7 +646,7 @@ class BSRoformer(Module):
 
         if self.zero_dc:
             # whether to dc filter
-            stft_repr = stft_repr.index_fill(1, tensor(0, device = device), 0.)
+            stft_repr[:, 0] = 0.
 
         try:
             recon_audio = torch.istft(stft_repr, **self.stft_kwargs, window=stft_window, return_complex=False, length=raw_audio.shape[-1])

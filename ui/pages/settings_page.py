@@ -22,7 +22,7 @@ from ui.widgets.common import (
     PageHeader, outline_button_ss, solid_button_ss, ChevronCombo,
     EllipsisButton, add_button_hover,
     GlyphButton, _outline_icon_color, _solid_icon_color, _custom_badge_ss,
-    css_color as _css_color, DOWNLOAD_GLYPH,
+    css_color as _css_color, DOWNLOAD_GLYPH, run_blurred_dialog,
 )
 
 from backend.downloader import HuggingFaceDownloader
@@ -544,7 +544,7 @@ class _ModelCard(QFrame):
 
     def _edit_type(self):
         dlg = _EditTypeDialog(self._name, self._type, MODEL_TYPES, self)
-        if dlg.exec() == QDialog.Accepted:
+        if run_blurred_dialog(dlg) == QDialog.Accepted:
             type_val = dlg.selected()
             if type_val:
                 self._type = type_val
@@ -1586,7 +1586,7 @@ class _FolderManagerWidget(QWidget):
         if file_size:
             info.file_size = file_size
         dialog = ModelInstallDialog(info, self)
-        if dialog.exec() == ModelInstallDialog.Accepted:
+        if run_blurred_dialog(dialog) == ModelInstallDialog.Accepted:
             self._render()
             self.model_installed.emit()
 

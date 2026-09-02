@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent
 from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QFont, QFontMetrics, QImage
 from ui.theme import theme_manager, FONT_FAMILY as FONT_FAMILY_DEFAULT
+from backend.version import APP_VERSION
 
 
 def paint_chevron(painter, cx, cy, angle=0.0, hovered=False):
@@ -82,6 +83,24 @@ def css_color(value, fallback="#808080"):
 
 
 DOWNLOAD_GLYPH = "download"  # marker: draw a download icon instead of text
+
+
+def run_blurred_dialog(dialog):
+    """Run a modal dialog behind the app's frosted-backdrop blur.
+
+    Walks up from the dialog to the owning window: if it exposes
+    show_blurred_dialog() (MainWindow does), the backdrop blurs while the
+    dialog is up and the result is returned as usual. Falls back to a plain
+    exec() in standalone/offscreen contexts (no window, or no blur support),
+    so dialogs never break just because there's no MainWindow.
+    """
+    w = dialog.parentWidget()
+    while w is not None:
+        opener = getattr(w, "show_blurred_dialog", None)
+        if callable(opener):
+            return opener(dialog)
+        w = w.parentWidget()
+    return dialog.exec()
 
 
 def _painted_ink_center(w):
@@ -670,7 +689,7 @@ class ConsoleLog(QWidget):
         self._apply_style()
         vl.addWidget(self._edit)
         self.setStyleSheet(f"background:{theme_manager.theme.console_bg};border:none;")
-        for line in ("> MSS TOOL v1.0.0", "> Ready.", "[INFO] Waiting for input…"):
+        for line in (f"> MSS TOOL v{APP_VERSION}", "> Ready.", "[INFO] Waiting for input…"):
             self._insert(line)
 
     def _apply_style(self):

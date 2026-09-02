@@ -4,11 +4,12 @@ A modern desktop GUI for [Music-Source-Separation-Training](https://github.com/Z
 
 Separate audio into stems (vocals, instrumental, drums, bass, guitar, piano, …) with state-of-the-art Roformer, MDX, Demucs, SCNet, Apollo and Bandit models — no command line required.
 
-![MSST GUI in action](msst-gui-ani-v2.gif)
+![MSST GUI in action](msst-gui-ani-v3.gif)
 
 ## Features
 
 - **Inference** — drop or browse audio files, pick a model from the library (grouped by architecture), choose quality (WAV / FLAC / MP3), stems, TTA and device (GPU/CPU auto-detected).
+- **Training** — train or fine-tune any MSST architecture from the GUI: pick a config, dataset, validation set and checkpoint, tune batch size / learning rate / losses / metrics, and watch progress, validation metrics and the log live (runs `train.py` from ZFTurbo's repo).
 - **Auto Ensemble** — select a target stem type and every compatible registered model is combined automatically.
 - **Manual Ensemble** — combine custom model outputs with per-file weights and selectable ensemble algorithms.
 - **Iterative Ensemble** — multi-pass refinement through local models and the MVSep API for maximum-spec results.
@@ -27,7 +28,7 @@ Separate audio into stems (vocals, instrumental, drums, bass, guitar, piano, …
 
 ### Quick (Windows)
 
-1. Run `run_install.bat` — creates a virtual environment, installs all dependencies and PyTorch with CUDA 12.1 support.
+1. Run `run_install.bat` — creates a virtual environment, installs PyTorch with CUDA 12.8 support and all dependencies.
 2. Run `run_gui.bat` to start the GUI.
 
 ### Manual
@@ -35,11 +36,24 @@ Separate audio into stems (vocals, instrumental, drums, bass, guitar, piano, …
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
+# GPU build of PyTorch first (otherwise the requirements pull the CPU-only wheel):
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements_gui.txt
-# GPU (CUDA 12.1) build of PyTorch:
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
 python main.py
 ```
+
+## Training
+
+The **Training** tab wraps `train.py` / `valid.py` from Music-Source-Separation-Training:
+
+1. Pick a model config (`configs/…yaml`), a results folder, the training data folder(s) and the validation folder (MUSDB layout with `mixture.wav`, see the ⓘ on *Dataset type*).
+2. Adjust the training settings (batch size, learning rate, epochs, optimizer, loss functions, validation metrics) — the values are read from the YAML and written back into `results/train_config_<model>.yaml` for the run.
+3. Optionally resume from a checkpoint (**Latest** picks the newest one in the results folder) and set GPUs / workers / seed and the run flags.
+4. **Start Training** — the monitor shows step progress, validation metrics per epoch and the log (`results/train_log.txt`). Checkpoints land in the results folder and can be registered in Settings for inference.
+
+The job runs under the same private runtime as inference (no torch in the GUI process).
+
+The `utils/`, `models/`, `configs/`, `docs/` and `scripts/` trees plus `train.py`, `valid.py`, `inference.py` and `ensemble.py` are the upstream Music-Source-Separation-Training code, copied verbatim (its README is at `docs/README_MSST.md`).
 
 ## Getting models
 
@@ -76,6 +90,8 @@ One PyTorch build cannot cover both Pascal and Blackwell, so the download (~2.5�
 ├── main.py               # GUI entry point
 ├── inference.py          # separation runner (spawned per job)
 ├── ensemble.py           # ensemble runner
+├── train.py              # training runner (MSST train.py, spawned by the TRAINING tab)
+├── valid.py              # validation used by train.py
 ├── ui/                   # PySide6 interface (pages, widgets, theme)
 ├── backend/              # runners, model manager, settings store, MVSep client
 ├── models/               # per-architecture model code + your checkpoints

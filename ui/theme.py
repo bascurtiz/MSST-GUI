@@ -8,6 +8,7 @@ screenshots of the site):    * Font: Montserrat (bundled in resources/, SIL OFL 
     navy #203048 headings, light-blue-gray disabled buttons
   * Dark mode: blue-tinted grays with the same brand blue accent
 """
+import html
 import os
 
 from PySide6.QtCore import (
@@ -451,6 +452,24 @@ def install_message_box_style():
 # in both themes, matching mvsep.com's always-dark tooltip.
 
 class _StyledToolTip(QLabel):
+    """The one tooltip pill for the whole app.
+
+    Spacing recipe: generous CSS padding, rounded corners, and — via a
+    rich-text paragraph — real line-height, which QSS has no property for
+    on labels. Text is escaped before embedding, so tooltips stay plain
+    text (paths, special chars, …) and are never parsed as HTML.
+    """
+
+    # Roomier than the old 4px 8px / radius 4: a bit of air around the
+    # text, generous 16px sides (as on the reference mockup), and a clear
+    # line distance inside multi-line explanations. Vertical and horizontal
+    # padding stay symmetric: the text no longer rides high because the
+    # line-height leading is only applied to the lines *above* the last one
+    # (see _set_text), so there is no extra seam under the final line.
+    PAD = "13px 16px"
+    RADIUS = 8
+    LINE_HEIGHT = 1.45
+
     _instance = None
 
     @classmethod
@@ -470,12 +489,34 @@ class _StyledToolTip(QLabel):
         t = theme_manager.theme
         self.setStyleSheet(
             f"background:{t.tooltip_bg};color:{t.tooltip_text};"
-            f"border:1px solid {t.tooltip_border};padding:4px 8px;"
-            "border-radius:4px;font-size:11px;"
+            f"border:1px solid {t.tooltip_border};"
+            f"padding:{self.PAD};border-radius:{self.RADIUS}px;"
+            f"font-family:'{FONT_FAMILY}';font-size:11px;"
         )
 
+    def _set_text(self, text):
+        # Every line gets the line-height, *except* the last one, which is
+        # left as a plain <p>. line-height adds leading below the line box,
+        # so applying it to a single / trailing paragraph shoves the text
+        # up and leaves a big empty seam under the last line. Putting the
+        # line-height only on the lines above keeps the distance you want
+        # between lines while letting the pill's own padding stay evenly
+        # balanced top vs bottom (as in the reference mockup). Text is
+        # escaped first: a tooltip must render verbatim, never as markup.
+        lines = (text or "").split("\n")
+        esc = [html.escape(x) for x in lines]
+        if len(lines) > 1:
+            head = "<br>".join(esc[:-1])
+            body = (
+                f'<p style="margin:0;line-height:{self.LINE_HEIGHT};">{head}</p>'
+                f'<p style="margin:0;">{esc[-1]}</p>'
+            )
+        else:
+            body = f'<p style="margin:0;">{esc[0]}</p>'
+        self.setText('<html><body>' + body + '</body></html>')
+
     def show_tip(self, pos, text):
-        self.setText(text)
+        self._set_text(text)
         self._apply_style()
         self.adjustSize()
         self.move(pos.x() + 2, pos.y() + 18)

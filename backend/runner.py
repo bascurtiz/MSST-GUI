@@ -25,10 +25,14 @@ class ProcessRunner(QThread):
     progress = Signal(int)
     finished = Signal(int)
 
-    def __init__(self, cmd: list[str], cwd: str | None = None):
+    def __init__(self, cmd: list[str], cwd: str | None = None,
+                 env: dict | None = None):
         super().__init__()
         self._cmd = cmd
         self._cwd = cwd or os.getcwd()
+        # Extra environment for the child (merged over os.environ), e.g.
+        # CUDA_VISIBLE_DEVICES="" for a CPU-only training run.
+        self._extra_env = dict(env) if env else {}
         self._process: subprocess.Popen | None = None
 
     # ------------------------------------------------------------------
@@ -52,6 +56,7 @@ class ProcessRunner(QThread):
         # GUI sees progress in bursts, or only after the process exits. Read
         # that batch as it's produced.
         env['PYTHONUNBUFFERED'] = '1'
+        env.update(self._extra_env)
         try:
             self._process = subprocess.Popen(
                 self._cmd,

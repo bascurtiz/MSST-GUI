@@ -2,7 +2,7 @@
 # PyInstaller spec for the MSST GUI.
 #
 # Produces dist/MSST-GUI/ — a onedir bundle whose exe covers the GUI, while
-# separation jobs run under the bundled Python runtime (runtime_pristine is
+# separation and training jobs run under the bundled Python runtime (runtime_pristine is
 # copied to the writable app dir on first use and the GPU-appropriate
 # PyTorch build is installed into it — see backend/runtime_setup.py).
 #
@@ -32,7 +32,8 @@ def walk_datas(src_root, dest_root, exts=None):
 
 
 datas = []
-for f in ("inference.py", "ensemble.py", "requirements-runtime.txt"):
+for f in ("inference.py", "ensemble.py", "train.py", "valid.py",
+          "requirements-runtime.txt"):
     datas.append((os.path.join(ROOT, f), "."))
 
 datas += walk_datas(os.path.join(ROOT, "resources"), "resources")            # all: fonts, icons, qss
@@ -55,6 +56,13 @@ a = Analysis(
         "torch", "torchvision", "torchaudio",   # never in the GUI process
         "tkinter", "pytest", "IPython", "jupyter",
         "PyQt5", "PyQt6", "PySide2",            # the app uses PySide6 only
+        # urllib3 does `from backports import zstd`; PyInstaller can pull a
+        # broken `backports.zstd`/`zstd` stub (a lone `_zstd.pyd`) into the
+        # code root. Excluding them forces the ImportError -> HAS_ZSTD=False
+        # path (matching a dev venv, which has no backports), so the GUI never
+        # crashes on urllib3's `zstd.ZstdError`. The inference subprocess
+        # cleans these strays itself (backend/runtime_setup.py).
+        "backports", "zstd",
     ],
     noarchive=False,
 )

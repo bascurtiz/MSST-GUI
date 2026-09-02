@@ -2,8 +2,10 @@
 import numpy as np
 import os
 import soundfile as sf
-import mutagen
+import matplotlib.pyplot as plt
 from typing import Dict, Tuple, Optional
+
+import torch.distributed as dist
 
 
 def read_audio_transposed(path: str, instr: Optional[str] = None, skip_err: bool = False) -> Tuple[Optional[np.ndarray], Optional[int]]:
@@ -28,11 +30,7 @@ def read_audio_transposed(path: str, instr: Optional[str] = None, skip_err: bool
             - Sampling rate as an integer, or None if skipped.
     """
 
-    try:
-        import torch.distributed as dist
-        should_print = not dist.is_initialized() or dist.get_rank() == 0
-    except ImportError:
-        should_print = True
+    should_print = not dist.is_initialized() or dist.get_rank() == 0
 
     try:
         mix, sr = sf.read(path)
@@ -109,10 +107,7 @@ def draw_spectrogram(waveform: np.ndarray, sample_rate: int, length: float, outp
         None
     """
 
-    try:
-        import librosa.display
-    except ImportError:
-        return
+    import librosa.display
 
     # Cut only required part of spectorgram
     x = waveform[:int(length * sample_rate), :]
@@ -159,10 +154,7 @@ def draw_2_mel_spectrogram(
     Returns:
         None
     """
-    try:
-        import librosa.display
-    except ImportError:
-        return
+    import librosa.display
 
     # Prepare both waveforms
     waveforms = [estimates_waveform, track_waveform]
@@ -321,10 +313,7 @@ def draw_mel_spectrogram(waveform: np.ndarray, sample_rate: int, length: float, 
         None
     """
 
-    try:
-        import librosa.display
-    except ImportError:
-        return
+    import librosa.display
 
     # Cut only required part of spectrogram
     x = waveform
@@ -398,35 +387,3 @@ def plot_waveform_basic(waveform, samplerate, output_path=None,  theme='dark'):
 
     finally:
         plt.close()
-
-
-def get_audio_metadata(filepath):
-    try:
-        audio = mutagen.File(filepath, easy=True)
-        if audio is not None:
-            artist = audio.get('artist', [None])[0]
-            title = audio.get('title', [None])[0]
-            return artist, title
-    except Exception:
-        pass
-    return None, None
-
-
-def sanitize_filename(name):
-    if not name:
-        return name
-    invalid = '<>:"/\\|?*'
-    for ch in invalid:
-        name = name.replace(ch, '')
-    name = name.strip('. ')
-    return name or 'Unknown'
-
-
-def format_output_filename(input_path, target_name, ext='.wav'):
-    base = os.path.splitext(os.path.basename(input_path))[0]
-    artist, title = get_audio_metadata(input_path)
-    if artist and title:
-        artist = sanitize_filename(artist)
-        title = sanitize_filename(title)
-        base = f"{artist} - {title}"
-    return f"{base} ({target_name}){ext}"

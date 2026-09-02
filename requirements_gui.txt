@@ -1,9 +1,16 @@
-# MSST GUI — Python dependencies
-# Install with:  pip install -r msst_gui/requirements_gui.txt
-# Python 3.10+ recommended
+# MSST GUI — Python dependencies (dev install: the GUI *and* the jobs it
+# spawns run from this environment). Python 3.10+.
 #
-# For PyTorch with CUDA 12.1, use:
-#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Clean install (what run_install.bat does):
+#   python -m venv .venv && .venv\Scripts\activate
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+#   pip install -r requirements_gui.txt
+#
+# PyTorch comes first on purpose: it is listed below only as a floor, and if it
+# is not installed yet pip resolves "torch" from PyPI as the CPU-only wheel —
+# training and inference then silently run on the CPU.
+# torchvision must be installed with them: segmentation-models-pytorch / timm
+# depend on it, and a torchvision from PyPI drags torch back to the CPU build.
 
 # === GUI ===
 PySide6>=6.6.0
@@ -19,12 +26,27 @@ torch>=2.0.0
 torchaudio>=2.0.0
 numpy>=1.24.0
 scipy>=1.10.0
+# utils/audio_utils.py imports matplotlib at module level (spectrogram drawing)
+matplotlib>=3.7
+# models/bandit (bsrnn utils) and the dataset preprocessing helpers
+pandas>=2.0
 
 # === Model Architectures ===
 einops>=0.8.0
 rotary-embedding-torch>=0.8.0
+# PoPE positional encoding — bs/mel roformers with use_pope: true
+pope-pytorch>=0.1.0
+# experimental bs/mel roformers (models/bs_roformer/*_experimental.py)
+hyper_connections>=0.1.11
 conformer>=0.3.0
 spafe>=0.3.0
+# segm_models / torchseg architectures (VitLarge23, TorchSeg encoders)
+segmentation-models-pytorch>=0.3.3
+torchseg>=0.0.1a4  # only pre-release builds are published
+# moises_light architecture
+moises-light
+# NOT installable on Windows, needed only for bs_mamba2 (Linux + CUDA build):
+#   mamba_ssm, torchnssd
 
 # === Model Zoo (Demucs / Open-Unmix) ===
 demucs>=4.0.0
@@ -41,7 +63,17 @@ tqdm>=4.65.0
 loralib>=0.1.0
 wandb>=0.15.0
 auraloss>=0.4.0
-torch-log-wmse>=0.3.0
+# torch-log-wmse 1.0 removed the audio_length argument that utils/metrics.py and
+# utils/losses.py still pass to LogWMSE(); stay below 1.0.
+torch-log-wmse>=0.3.0,<1.0
+# l1_snr* losses and the l1_snr metric
+torch_l1_snr>=0.1.2
+# optimizers selectable in the TRAINING tab: muon / adago (utils/muon.py) and prodigy
+pytorch-optimizer>=3.0
+prodigyopt>=1.0
+# adamw8bit optimizer needs bitsandbytes (official wheels are Linux-only):
+#   bitsandbytes
+# LoRA training (--train_lora_peft) needs:  peft
 pytorch-lightning>=2.0.0
 # torchmetrics must stay <=0.11.4: asteroid (used by the Bandit architecture)
 # hard-pins torchmetrics<=0.11.4 in its metadata, so requiring >=1.0 is
@@ -52,12 +84,17 @@ torchmetrics>=0.11.0,<=0.11.4
 # asteroid.losses at module import time, so even inference needs it).
 asteroid>=0.7.0
 
-# === Transformers (for UperNet segmentation models) ===
+# === Transformers (UperNet segmentation models, LR schedulers) ===
 transformers>=4.30.0
 
 # === Audio Augmentation ===
-audiomentations>=0.33.0
+# audiomentations 0.42+ changed Mp3Compression (backend="lameenc" now needs
+# preserve_delay=True or the fast-mp3-augment backend); upstream utils/dataset.py
+# calls it the old way, so stay below 0.42.
+audiomentations>=0.33.0,<0.42
 pedalboard>=0.9.0
+# imported at model load time by the Bandit architecture
+torch_audiomentations>=0.6.0
 
 # === Networking ===
 requests>=2.31.0

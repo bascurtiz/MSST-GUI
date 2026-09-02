@@ -7,6 +7,67 @@ import torch
 from ml_collections import ConfigDict
 from torch import nn
 from torch_log_wmse import LogWMSE
+import librosa
+from torchaudio.transforms import AmplitudeToDB
+
+
+class BleedFullPenaltyLoss(nn.Module):
+    """
+    Differentiable penalty for missing content (Fullness) or added artifacts (Bleedless).
+    mode: 'fullness' penalizes regions where Reference > Estimate.
+    mode: 'bleedless' penalizes regions where Estimate > Reference.
+    """
+
+    def __init__(self, mode: str = 'fullness', sr: int = 44100, n_fft: int = 4096, hop_length: int = 1024,
+                 n_mels: int = 512):
+        super().__init__()
+        if mode not in ['fullness', 'bleedless']:
+            raise ValueError("mode must be either 'fullness' or 'bleedless'")
+
+        self.mode = mode
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+
+        self.window = torch.hann_window(n_fft)
+
+        mel_basis = librosa.filters.mel(sr=sr, n_fft=n_fft, n_mels=n_mels)
+        self.mel_filter_bank = torch.from_numpy(mel_basis).float()
+
+        self.amplitude_to_db = AmplitudeToDB(stype="magnitude", top_db=80)
+
+    def forward(self, estimate: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
+        device = estimate.device
+        window = self.window.to(device)
+        mel_filter_bank = self.mel_filter_bank.to(device)
+        self.amplitude_to_db = self.amplitude_to_db.to(device)
+
+        lenc = estimate.shape[-1]
+        est_reshaped = estimate.view(-1, lenc)
+        ref_reshaped = reference.view(-1, lenc)
+
+        D_est = torch.abs(torch.stft(est_reshaped, n_fft=self.n_fft, hop_length=self.hop_length,
+                                     window=window, return_complex=True, pad_mode="constant"))
+        D_ref = torch.abs(torch.stft(ref_reshaped, n_fft=self.n_fft, hop_length=self.hop_length,
+                                     window=window, return_complex=True, pad_mode="constant"))
+
+        S_est_mel = torch.matmul(mel_filter_bank, D_est)
+        S_ref_mel = torch.matmul(mel_filter_bank, D_ref)
+
+        S_est_db = self.amplitude_to_db(S_est_mel)
+        S_ref_db = self.amplitude_to_db(S_ref_mel)
+
+        # Choose what to penalize depending on the mode
+        if self.mode == 'fullness':
+            penalty = torch.relu(S_ref_db - S_est_db)
+        else:  # 'bleedless'
+            penalty = torch.relu(S_est_db - S_ref_db)
+
+        # Calculate the mean only where there is an actual loss (as in metrics.py)
+        # Use clamp(min=1) to prevent division by zero without triggering CPU-GPU synchronization
+        active_elements_count = torch.count_nonzero(penalty)
+        loss = torch.sum(penalty) / active_elements_count.clamp(min=1)
+
+        return loss
 
 
 def multistft_loss(
@@ -385,6 +446,38 @@ def choice_loss(
                                                             q=config['training']['q'],
                                                             coarse=config['training']['coarse_loss_clip'])
                                            * args.spec_masked_loss_coef
+        )
+
+    if 'fullness_penalty_loss' in args.loss:
+        sr = int(getattr(config.audio, 'sample_rate', 44100))
+        n_fft = getattr(config.model, 'nfft', 4096)
+        hop_length = getattr(config.model, 'hop_size', 1024)
+
+        fullness_loss_module = BleedFullPenaltyLoss(
+            mode='fullness',
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length
+        )
+
+        loss_fns.append(
+            lambda y_pred, y_true, x=None: fullness_loss_module(y_pred, y_true) * args.fullness_penalty_loss_coef
+        )
+
+    if 'bleedless_penalty_loss' in args.loss:
+        sr = int(getattr(config.audio, 'sample_rate', 44100))
+        n_fft = getattr(config.model, 'nfft', 4096)
+        hop_length = getattr(config.model, 'hop_size', 1024)
+
+        bleedless_loss_module = BleedFullPenaltyLoss(
+            mode='bleedless',
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length
+        )
+
+        loss_fns.append(
+            lambda y_pred, y_true, x=None: bleedless_loss_module(y_pred, y_true) * args.bleedless_penalty_loss_coef
         )
 
     def multi_loss(y_pred: Any, y_true: Any, x: Optional[Any] = None) -> torch.Tensor:
