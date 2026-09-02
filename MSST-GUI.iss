@@ -41,6 +41,14 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; \
 Source: "dist\MSST-GUI\*"; DestDir: "{app}"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+; v1.0.1: clear the whole install folder before writing the new files, so
+; stale artifacts from a previous install (e.g. a broken bundled
+; zstd/backports stub in _internal) can never survive an upgrade. This
+; intentionally wipes user data too (msst_settings.json, runtime\,
+; models\ downloads) — it is recreated / re-downloaded on the next run.
+Type: filesandordirs; Name: "{app}\*"
+
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
