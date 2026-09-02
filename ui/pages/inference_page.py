@@ -2,7 +2,7 @@
 ui/pages/inference_page.py
 Premium cinematic dark UI — 2 column layout.
 """
-import os, sys
+import os, sys, time
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
@@ -20,6 +20,7 @@ from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
 from backend.runner import ProcessRunner
 from backend.model_manager import fetch_model_index
 from backend.paths import REPO_ROOT, get_python_exe
+from backend.audio_names import INFERENCE_FILENAME_TEMPLATE
 from backend.gpu_utils import list_gpus, device_ids_from_selection
 from backend import settings as settings_store
 from backend.yaml_analyzer import classify_model_type, get_stems_for_type
@@ -2108,9 +2109,9 @@ class InferencePage(QWidget):
 
         self._fmt_row = _ComboRow(
             None, "Quality",
-            ["FLAC", "WAV (PCM 32-bit)", "WAV (PCM 16-bit)", "MP3 320kbps", "MP3 128kbps"],
-            tooltip="Output format for the stems.\n"
-                    "FLAC/WAV are lossless, MP3 is lossy but smaller.")
+            ["FLAC (16-bit)", "FLAC (24-bit)", "WAV (32-bit float)"],
+            tooltip="Output format for the stems (all lossless).\n"
+                    "16/24-bit stems that clip are written as WAV instead of FLAC.")
         self._fmt_combo = self._fmt_row.combo
         cfg.addWidget(self._fmt_row)
 
@@ -2835,30 +2836,24 @@ class InferencePage(QWidget):
         if force_cpu: cmd.append("--force_cpu")
         else: cmd += ["--device_ids"] + [str(d) for d in device_ids]
 
-        # Map the Quality selection to the output format the CLI should write.
+        # Map the Quality selection to upstream's --pcm_type: PCM_16/24 are
+        # written as FLAC (WAV if the stem clips), FLOAT as 32-bit WAV.
         fmt = self._fmt_combo.currentText()
-        if fmt == "WAV (PCM 16-bit)":
-            cmd += ["--output_format", "wav", "--pcm_type", "PCM_16"]
-        elif fmt == "FLAC":
-            cmd += ["--output_format", "flac", "--pcm_type", "PCM_16"]
-        elif fmt == "MP3 320kbps":
-            cmd += ["--output_format", "mp3", "--mp3_bitrate", "320"]
-        elif fmt == "MP3 128kbps":
-            cmd += ["--output_format", "mp3", "--mp3_bitrate", "128"]
-        else:  # "WAV (PCM 32-bit)"
-            cmd += ["--output_format", "wav", "--pcm_type", "FLOAT"]
+        if "24" in fmt:
+            cmd += ["--pcm_type", "PCM_24"]
+        elif "FLAC" in fmt:
+            cmd += ["--pcm_type", "PCM_16"]
+        else:
+            cmd += ["--pcm_type", "FLOAT"]
+        # Flat "<song> (<stem>)" files instead of upstream's per-song folders.
+        cmd += ["--filename_template", INFERENCE_FILENAME_TEMPLATE]
 
         if use_tta: cmd.append("--use_tta")
-        if self._selected_model.get("custom_backend_enabled"):
-            bm = self._selected_model.get("backend_module", "")
-            if bm:
-                cmd += ["--custom_backend",
-                        os.path.join(REPO_ROOT, "models", "custom", bm)]
-
-        if custom_selection:
-            cmd += ["--save_stems", ",".join(s.lower() for s in selected_stems)]
+        # The stem *selection* is applied through the temp config above
+        # (single stem -> target_instrument); "rest" maps onto upstream's
+        # --extract_instrumental (mix minus the vocals / first stem).
         if effective_save_rest:
-            cmd.append("--save_rest")
+            cmd.append("--extract_instrumental")
 
         out = self._output_row.value()
         if isinstance(out, str) and out.strip():
@@ -2875,6 +2870,7 @@ class InferencePage(QWidget):
             else:
                 self.log_output.emit(f"Queued: {os.path.basename(f)}")
 
+        self._run_started = time.time()
         self._runner = ProcessRunner(cmd, cwd=REPO_ROOT)
         self._runner.log_line.connect(self.log_output.emit)
         self._runner.finished.connect(self._on_finished)
@@ -2882,6 +2878,27 @@ class InferencePage(QWidget):
         self._runner.start()
         self.btn_run.setEnabled(False)
         self.btn_stop.setEnabled(True)
+
+    def _report_written_files(self):
+        """Upstream inference.py writes the stems silently; list every audio
+        file that appeared under the output folder since the run started so
+        the CONSOLE cards pick them up ("Wrote file: ..." lines)."""
+        out = self._output_row.value()
+        if not isinstance(out, str) or not os.path.isdir(out):
+            return
+        since = getattr(self, "_run_started", 0) - 2
+        found = []
+        for root, _dirs, names in os.walk(out):
+            for n in names:
+                if os.path.splitext(n)[1].lower() in (".wav", ".flac", ".mp3", ".ogg"):
+                    p = os.path.join(root, n)
+                    try:
+                        if os.path.getmtime(p) >= since:
+                            found.append(p)
+                    except OSError:
+                        pass
+        for p in sorted(found, key=os.path.getmtime):
+            self.log_output.emit(f"Wrote file: {p}")
 
     def _stop(self):
         # Only announce a stop when an inference job is actually ours to stop
@@ -2895,6 +2912,8 @@ class InferencePage(QWidget):
     def _on_finished(self, code):
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        if code == 0:
+            self._report_written_files()
         self.process_running.emit(False)
         if code == 0:
             self.log_output.emit("Completed: processing")

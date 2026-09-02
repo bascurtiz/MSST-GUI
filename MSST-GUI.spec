@@ -2,7 +2,7 @@
 # PyInstaller spec for the MSST GUI.
 #
 # Produces dist/MSST-GUI/ — a onedir bundle whose exe covers the GUI, while
-# separation jobs run under the bundled Python runtime (runtime_pristine is
+# separation and training jobs run under the bundled Python runtime (runtime_pristine is
 # copied to the writable app dir on first use and the GPU-appropriate
 # PyTorch build is installed into it — see backend/runtime_setup.py).
 #
@@ -32,7 +32,8 @@ def walk_datas(src_root, dest_root, exts=None):
 
 
 datas = []
-for f in ("inference.py", "ensemble.py", "requirements-runtime.txt"):
+for f in ("inference.py", "ensemble.py", "train.py", "valid.py",
+          "requirements-runtime.txt"):
     datas.append((os.path.join(ROOT, f), "."))
 
 datas += walk_datas(os.path.join(ROOT, "resources"), "resources")            # all: fonts, icons, qss

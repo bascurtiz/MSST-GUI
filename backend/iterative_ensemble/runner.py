@@ -18,7 +18,7 @@ from PySide6.QtCore import QThread, Signal
 from backend.paths import REPO_ROOT, get_python_exe
 from backend.mvsep.api_client import MVSepApiClient, MVSepAPIError
 from backend.mvsep.models import MVSepModel
-from utils.audio_utils import format_output_filename
+from backend.audio_names import format_output_filename, INFERENCE_FILENAME_TEMPLATE
 
 
 TQDM_PATTERN = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
@@ -379,11 +379,9 @@ class IterativeEnsembleRunner(QThread):
             "--input_folder", input_dir,
             "--store_dir", output_dir,
         ]
-        if model.get("custom_backend_enabled"):
-            bm = model.get("backend_module", "")
-            if bm:
-                cmd += ["--custom_backend",
-                        os.path.join(REPO_ROOT, "models", "custom", bm)]
+        # upstream inference.py nests "{file_name}/{instr}" by default; keep the
+        # flat layout the stem discovery below walks for.
+        cmd += ["--filename_template", INFERENCE_FILENAME_TEMPLATE]
 
         try:
             process = subprocess.Popen(

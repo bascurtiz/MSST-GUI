@@ -281,6 +281,10 @@ class MSSDataset(torch.utils.data.Dataset):
                 if self.verbose and should_print:
                     print('Found tracks for {} in dataset: {}'.format(instr, len(metadata[instr])))
         self.metadata = metadata
+        if isinstance(self.metadata, list):
+            self.track_lengths_dict = {path: length for path, length in self.metadata}
+        else:
+            self.track_lengths_dict = {}
         self.chunk_size = config.audio.chunk_size
         self.min_mean_abs = config.audio.min_mean_abs
         self.do_chunks = config.training.get('precompute_chunks', False) and float(self.min_mean_abs) > 0
@@ -463,11 +467,7 @@ class MSSDataset(torch.utils.data.Dataset):
         track_path = random.choice(self.class_to_tracks[instr])
 
         # Find track length
-        track_length = None
-        for path, length in self.metadata:
-            if path == track_path:
-                track_length = length
-                break
+        track_length = self.track_lengths_dict.get(track_path)
 
         if track_length is None:
             raise RuntimeError(f"Track length not found: {track_path}")
@@ -889,9 +889,11 @@ class MSSDataset(torch.utils.data.Dataset):
         while True:
             if self.dataset_type in [1, 4, 5, 6, 7]:
                 track_path, track_length = random.choice(metadata)
+                found_any = False
                 for extension in self.file_types:
                     path_to_audio_file = track_path + '/{}.{}'.format(instr, extension)
                     if os.path.isfile(path_to_audio_file):
+                        found_any = True
                         try:
                             source = load_chunk(path_to_audio_file, track_length, self.chunk_size)
                         except Exception as e:
@@ -900,6 +902,11 @@ class MSSDataset(torch.utils.data.Dataset):
                                 print('Error: {} Path: {}'.format(e, path_to_audio_file))
                             source = np.zeros((2, self.chunk_size), dtype=np.float32)
                         break
+                if not found_any:
+                    raise FileNotFoundError(
+                        f"Required stem '{instr}' not found in track folder '{track_path}' "
+                        f"with extensions {self.file_types}. "
+                    )
             else:
                 track_path, track_length = random.choice(metadata[instr])
                 try:
@@ -955,11 +962,7 @@ class MSSDataset(torch.utils.data.Dataset):
                 if os.path.isfile(path_to_audio_file):
                     try:
                         # Get track length from metadata
-                        track_length = None
-                        for path, length in self.metadata:
-                            if path == track_path:
-                                track_length = length
-                                break
+                        track_length = self.track_lengths_dict.get(track_path)
 
                         if track_length is None:
                             source = np.zeros((2, self.chunk_size), dtype=np.float32)

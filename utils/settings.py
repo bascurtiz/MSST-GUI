@@ -1,40 +1,11 @@
 import os
 import random
-import re
 import time
 import yaml
-try:
-    import wandb
-    _WANDB_AVAILABLE = True
-except Exception:  # wandb is only needed for training, not inference.
-    # Broad on purpose: broken optional deps (e.g. a broken zstd binding that
-    # makes urllib3 raise AttributeError inside wandb's import chain) must
-    # never take inference down with them.
-    wandb = None
-    _WANDB_AVAILABLE = False
-
-# Pillow compat: the frozen app ships stray PIL *.pyd binaries in _internal
-# that import as a namespace package (no __version__). torchmetrics then
-# crashes on `PIL.PILLOW_VERSION = PIL.__version__` the moment any
-# pytorch_lightning-based architecture (bandit) is imported. Fill in a
-# version from package metadata so the import chain survives until a real
-# Pillow is installed into the runtime (requirements-runtime.txt).
-try:
-    import PIL as _PIL
-    if not hasattr(_PIL, "__version__"):
-        try:
-            from importlib.metadata import version as _md_version
-            _PIL.__version__ = _md_version("pillow")
-        except Exception:
-            _PIL.__version__ = "0.0.0"
-except ImportError:
-    pass
-
 import numpy as np
 import torch
 import argparse
 import socket
-import inspect
 from typing import Dict, List, Tuple, Union
 from omegaconf import OmegaConf
 from ml_collections import ConfigDict
@@ -88,11 +59,11 @@ def parse_args_train(dict_args: Union[argparse.Namespace, Dict, None]) -> argpar
     parser.add_argument("--pin_memory", action='store_true', help="dataloader pin_memory")
     parser.add_argument("--seed", type=int, default=0, help="random seed")
     parser.add_argument("--device_ids", nargs='+', type=int, default=[0], help='list of gpu ids')
-    parser.add_argument("--loss", type=str, nargs='+', choices=['masked_loss', 'mse_loss', 'l1_loss',
-                                                                'multistft_loss', 'spec_masked_loss', 'spec_rmse_loss',
-                                                                'log_wmse_loss', 'l1_snr_loss', 'l1_snr_db_loss',
-                                                                'stft_l1_snr_db_loss', 'multi_l1_snr_db_loss'],
-                        default=['masked_loss'], help="List of loss functions to use")
+    parser.add_argument("--loss", type=str, nargs='+', choices=[
+        'masked_loss', 'mse_loss', 'l1_loss', 'multistft_loss', 'spec_masked_loss', 'spec_rmse_loss',
+        'log_wmse_loss', 'l1_snr_loss', 'l1_snr_db_loss', 'stft_l1_snr_db_loss', 'multi_l1_snr_db_loss',
+        'fullness_penalty_loss', 'bleedless_penalty_loss'
+    ], default=['masked_loss'], help="List of loss functions to use")
     parser.add_argument("--masked_loss_coef", type=float, default=1., help="Coef for loss")
     parser.add_argument("--mse_loss_coef", type=float, default=1., help="Coef for loss")
     parser.add_argument("--l1_loss_coef", type=float, default=1., help="Coef for loss")
@@ -104,15 +75,21 @@ def parse_args_train(dict_args: Union[argparse.Namespace, Dict, None]) -> argpar
     parser.add_argument("--l1_snr_db_loss_coef", type=float, default=1., help="Coef for L1-SNR-DB loss")
     parser.add_argument("--stft_l1_snr_db_loss_coef", type=float, default=1., help="Coef for STFT-L1-SNR-DB loss")
     parser.add_argument("--multi_l1_snr_db_loss_coef", type=float, default=1., help="Coef for Multi-L1-SNR-DB loss")
+    parser.add_argument("--fullness_penalty_loss_coef", type=float, default=0.00002,
+                        help="Coef for the fullness penalty loss. This loss should be used in combination with a primary loss function.")
+    parser.add_argument("--bleedless_penalty_loss_coef", type=float, default=0.00002,
+                        help="Coef for the bleedless penalty loss. This loss should be used in combination with a primary loss function.")
     parser.add_argument("--wandb_key", type=str, default='', help='wandb API Key')
     parser.add_argument("--wandb_offline", action='store_true', help='local wandb')
     parser.add_argument("--pre_valid", action='store_true', help='Run validation before training')
     parser.add_argument("--metrics", nargs='+', type=str, default=["sdr"],
                         choices=['k_sdr', 'sdr', 'l1_freq', 'si_sdr', 'log_wmse', 'aura_stft', 'aura_mrstft', 'bleedless',
-                                 'fullness', 'l1_snr'], help='List of metrics to use.')
+                                 'fullness', 'l1_snr', 'bleedless_mr', 'fullness_mr'],
+                        help='List of metrics to use.')
     parser.add_argument("--metric_for_scheduler", default="sdr",
                         choices=['k_sdr','sdr', 'l1_freq', 'si_sdr', 'log_wmse', 'aura_stft', 'aura_mrstft', 'bleedless',
-                                 'fullness', 'l1_snr'], help='Metric which will be used for scheduler.')
+                                 'fullness', 'l1_snr', 'bleedless_mr', 'fullness_mr'],
+                        help='Metric which will be used for scheduler.')
     parser.add_argument("--train_lora_peft", action='store_true', help="Training with LoRA from peft")
     parser.add_argument("--train_lora_loralib", action='store_true', help="Training with LoRA from loralib")
     parser.add_argument("--lora_checkpoint_peft", type=str, default='', help="Initial checkpoint to LoRA weights")
@@ -191,7 +168,8 @@ def parse_args_valid(dict_args: Union[Dict, None]) -> argparse.Namespace:
                              "While this triples the runtime, it reduces noise and slightly improves prediction quality.")
     parser.add_argument("--metrics", nargs='+', type=str, default=["sdr"],
                         choices=['k_sdr', 'sdr', 'l1_freq', 'si_sdr', 'neg_log_wmse', 'aura_stft', 'aura_mrstft', 'bleedless',
-                                 'fullness', 'l1_snr'], help='List of metrics to use.')
+                                 'fullness', 'l1_snr', 'bleedless_mr', 'fullness_mr'],
+                        help='List of metrics to use.')
     parser.add_argument("--lora_checkpoint_peft", type=str, default='', help="Initial checkpoint to LoRA weights")
     parser.add_argument("--lora_checkpoint_loralib", type=str, default='', help="Initial checkpoint to LoRA weights")
 
@@ -241,30 +219,17 @@ def parse_args_inference(dict_args: Union[Dict, None]) -> argparse.Namespace:
     parser.add_argument("--disable_detailed_pbar", action='store_true', help="disable detailed progress bar")
     parser.add_argument("--force_cpu", action='store_true', help="Force the use of CPU even if CUDA is available")
     parser.add_argument("--flac_file", action='store_true', help="Output flac file instead of wav")
-    parser.add_argument("--output_format", type=str, choices=['wav', 'flac', 'mp3'], default='wav',
-                        help="Output container format")
-    parser.add_argument("--mp3_bitrate", type=int, default=320,
-                        help="MP3 bitrate in kbps when --output_format=mp3")
     parser.add_argument("--pcm_type", type=str, choices=['PCM_16', 'PCM_24', 'FLOAT'], default='FLOAT',
-                        help="PCM bit depth for wav/flac output (PCM_16, PCM_24 or FLOAT)")
+                        help="PCM type for FLAC files (PCM_16 or PCM_24)")
     parser.add_argument("--use_tta", action='store_true',
                         help="Flag adds test time augmentation during inference (polarity and channel inverse)."
                         "While this triples the runtime, it reduces noise and slightly improves prediction quality.")
     parser.add_argument("--bigshifts", type=int, default=1,
                         help="Number of circular time shifts to average during demix. Values <= 0 are treated as 1.")
     parser.add_argument("--lora_checkpoint_peft", type=str, default='', help="Initial checkpoint to LoRA weights")
-    parser.add_argument("--filename_template", type=str, default='{file_name} ({instr})',
-                        help="Output filename template, without extension. Default: '{file_name} ({instr})'")
+    parser.add_argument("--filename_template", type=str, default='{file_name}/{instr}',
+                        help="Output filename template, without extension, using '/' for subdirectories. Default: '{file_name}/{instr}'")
     parser.add_argument("--lora_checkpoint_loralib", type=str, default='', help="Initial checkpoint to LoRA weights")
-    parser.add_argument("--custom_backend", type=str, default=None,
-                        help="Path to custom backend module folder. When set, the model class is "
-                             "loaded dynamically from this folder instead of the official package.")
-    parser.add_argument("--save_stems", type=str, default=None,
-                        help="Comma-separated list of stems to save (e.g. 'vocals,drums,bass'). "
-                             "Only these stems are written to disk.")
-    parser.add_argument("--save_rest", action='store_true',
-                        help="Compute and save the complement (mix − sum of saved stems). "
-                             "Saves a '(rest)' file alongside selected stems.")
     if dict_args is not None:
         args = parser.parse_args([])
         args_dict = vars(args)
@@ -307,160 +272,19 @@ def load_config(model_type: str, config_path: str) -> Union[ConfigDict, OmegaCon
         ValueError: If the configuration cannot be parsed or is otherwise invalid.
     """
     try:
-        if model_type == 'htdemucs':
-            config = OmegaConf.load(config_path)
-        else:
-            # Read the raw bytes so PyYAML auto-detects the encoding. Configs
-            # may be UTF-8 (e.g. comments in Cyrillic), which text-mode reading
-            # mangles under the Windows default cp1252 codec.
-            with open(config_path, 'rb') as f:
-                raw = f.read()
-            config = ConfigDict(yaml.load(raw, Loader=yaml.FullLoader))
-        return config
+        with open(config_path, 'r') as f:
+            if model_type == 'htdemucs':
+                config = OmegaConf.load(config_path)
+            else:
+                config = ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
+            return config
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
     except Exception as e:
         raise ValueError(f"Error loading configuration: {e}")
 
 
-def _load_custom_backend(model_type, config, custom_backend):
-    import importlib.util, sys
-    backend_file = os.path.join(custom_backend, "bs_roformer.py")
-    if not os.path.isfile(backend_file):
-        raise ImportError(f"Custom backend module not found at {backend_file}")
-    sys.path.insert(0, custom_backend)
-    try:
-        spec = importlib.util.spec_from_file_location("custom_backend", backend_file)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    finally:
-        sys.path.pop(0)
-    CLASS_NAME_MAP = {
-        "bs_roformer": "BSRoformer", "bs_conformer": "BSConformer",
-        "mel_band_roformer": "MelBandRoformer", "mel_band_conformer": "MelBandConformer",
-        "bs_roformer_experimental": "BSRoformer",
-        "mel_band_roformer_experimental": "MelBandRoformer",
-        "bs_mamba2": "BSMamba2Model",
-        "scnet": "SCNet", "scnet_unofficial": "SCNet",
-        "apollo": "BaseModel", "bandit": "MultiMaskMultiSourceBandSplitRNNSimple",
-        "htdemucs": "get_model", "mdx23c": "TFC_TDF_net",
-        # DTTNet (upstream Music-Source-Separation-Training spells it
-        # both 'dttnet' and 'dtt_net'); the top-level model class is DPTDFNet.
-        "dtt_net": "DPTDFNet", "dttnet": "DPTDFNet",
-    }
-    class_name = CLASS_NAME_MAP.get(model_type, "BSRoformer")
-    model_class = getattr(module, class_name, None)
-    if model_class is None:
-        available = [n for n in dir(module) if not n.startswith('_')]
-        raise ImportError(
-            f"Class '{class_name}' not found in custom backend.\n"
-            f"Available exports: {', '.join(available[:20])}")
-    if model_type in ('htdemucs',):
-        model = model_class(config)
-    elif model_type in ('mdx23c', 'dtt_net', 'dttnet', 'segm_models',
-                        'torchseg', 'swin_upernet',
-                        'experimental_mdx23c_stht'):
-        model = model_class(config)
-    elif model_type == 'apollo':
-        model = model_class.apollo(**_fit_model_kwargs(model_class.apollo, dict(config.model)))
-    elif model_type == 'bandit':
-        model = model_class(**_fit_model_kwargs(model_class, dict(config.model)))
-    elif model_type == 'conformer':
-        from models.conformer_model import NeuralModel
-        model = model_class(
-            core=NeuralModel(**_fit_model_kwargs(NeuralModel, dict(config.model))),
-            n_fft=config.stft.n_fft,
-            hop_length=config.stft.hop_length,
-            win_length=getattr(config.stft, 'win_length', config.stft.n_fft),
-            center=config.stft.center)
-    else:
-        model = model_class(**_fit_model_kwargs(model_class, dict(config.model)))
-    return model, config
-
-
-# Model families whose MaskEstimator MLP depth is a config knob that
-# occasionally disagrees with the shipped checkpoint (see
-# _align_mask_estimator_depth).
-_MASK_ESTIMATOR_MODEL_TYPES = {
-    'mel_band_roformer',
-    'mel_band_conformer',
-    'mel_band_roformer_experimental',
-    'bs_roformer',
-    'bs_conformer',
-    'bs_roformer_experimental',
-}
-
-
-def _align_mask_estimator_depth(config, checkpoint_path: str) -> None:
-    """Correct config.model.mask_estimator_depth to match the checkpoint.
-
-    Some zoo models ship configs copied from a sibling template whose
-    mask_estimator_depth disagrees with the actual checkpoint (e.g.
-    mbr_expl_jazzpear ships depth 2 while the checkpoint was trained with
-    depth 1). Building the model with the wrong depth makes the strict
-    checkpoint load fail with shape-mismatched/missing to_freqs keys.
-    Sniffing the checkpoint's MaskEstimator MLP structure (lazy mmap load,
-    tensor data is never materialized) and correcting the config before the
-    model is built fixes the load without touching the shipped config file.
-    """
-    try:
-        sd = torch.load(checkpoint_path, map_location='cpu', mmap=True, weights_only=True)
-    except Exception:
-        try:
-            sd = torch.load(checkpoint_path, map_location='cpu', mmap=True, weights_only=False)
-        except Exception:
-            return
-    if not isinstance(sd, dict):
-        return
-    for wrapper in ('state_dict', 'state'):
-        if isinstance(sd.get(wrapper), dict):
-            sd = sd[wrapper]
-            break
-
-    # The to_freqs MLP is nn.Sequential(Linear, act, Linear, act, ..., GLU):
-    # its Linear layers sit at even Sequential indices 0..2*depth.
-    linear_indices = set()
-    for key in sd:
-        m = re.match(r'mask_estimators\.0\.to_freqs\.0\.0\.(\d+)\.weight', key)
-        if m:
-            linear_indices.add(int(m.group(1)))
-    if not linear_indices or min(linear_indices) != 0 or any(i % 2 for i in linear_indices):
-        return
-    sniffed_depth = max(linear_indices) // 2
-
-    cfg_depth = config.model.get('mask_estimator_depth', None)
-    if cfg_depth is None or sniffed_depth == int(cfg_depth):
-        return
-    config.model.mask_estimator_depth = sniffed_depth
-    print(
-        f"Checkpoint MaskEstimator depth is {sniffed_depth} but the config says "
-        f"{cfg_depth}; building the model with {sniffed_depth} so the checkpoint loads"
-    )
-
-
-def _fit_model_kwargs(cls, kwargs: dict) -> dict:
-    """Drop config keys a model constructor doesn't accept.
-
-    The model library ships newer YAML configs than the bundled model code
-    sometimes supports (e.g. `sage_attention`, added in a later upstream
-    revision). Passing those straight through crashes with an "unexpected
-    keyword argument" TypeError. Filtering to the constructor's signature
-    makes the frozen app resilient to such config/model version drift — the
-    extras are optional features that simply default off. If the signature
-    can't be read or the class accepts **kwargs, the config is passed as-is.
-    """
-    try:
-        params = inspect.signature(cls.__init__).parameters
-    except (TypeError, ValueError):
-        return kwargs
-    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return kwargs
-    return {k: v for k, v in kwargs.items() if k in params}
-
-
-def get_model_from_config(model_type: str, config_path: str,
-                          custom_backend: str = None,
-                          checkpoint_path: str = None) -> Tuple[nn.Module, Union[ConfigDict, OmegaConf]]:
+def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module, Union[ConfigDict, OmegaConf]]:
     """
     Load and instantiate a model using a configuration file.
 
@@ -472,9 +296,6 @@ def get_model_from_config(model_type: str, config_path: str,
             'scnet', 'mel_band_conformer', etc.).
         config_path (str): Filesystem path to the configuration file used to
             initialize the model.
-        custom_backend (str, optional): Path to a custom backend module folder.
-            When provided, the model class is loaded dynamically from the
-            custom backend file instead of the official package.
 
     Returns:
         Tuple[nn.Module, Union[ConfigDict, OmegaConf]]: A tuple containing the
@@ -484,25 +305,11 @@ def get_model_from_config(model_type: str, config_path: str,
         ValueError: If `model_type` is unknown or model initialization fails.
         FileNotFoundError: If `config_path` does not exist (may be raised by the
             underlying config loader).
-        ImportError: If `custom_backend` is provided but the module cannot be
-            loaded or the expected class is not found.
     """
 
     config = load_config(model_type, config_path)
     if 'model_type' in config.training:
         model_type = config.training.model_type
-
-    if custom_backend:
-        return _load_custom_backend(model_type, config, custom_backend)
-
-    # Real-world checkpoints occasionally ship with a config whose
-    # mask_estimator_depth doesn't match the trained MaskEstimator MLP
-    # (e.g. mbr_expl_jazzpear: config says 2, checkpoint was trained with
-    # depth 1). Sniff the checkpoint's actual MLP depth and correct the
-    # config before building, so strict checkpoint loading succeeds.
-    if checkpoint_path and model_type in _MASK_ESTIMATOR_MODEL_TYPES:
-        _align_mask_estimator_depth(config, checkpoint_path)
-
     if model_type == 'mdx23c':
         from models.mdx23c_tfc_tdf_v3 import TFC_TDF_net
         model = TFC_TDF_net(config)
@@ -517,94 +324,59 @@ def get_model_from_config(model_type: str, config_path: str,
         model = Torchseg_Net(config)
     elif model_type == 'mel_band_roformer':
         from models.bs_roformer import MelBandRoformer
-        model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, dict(config.model)))
+        model = MelBandRoformer(**dict(config.model))
     elif model_type == 'mel_band_conformer':
         from models.bs_roformer import MelBandConformer
-        model = MelBandConformer(**_fit_model_kwargs(MelBandConformer, dict(config.model)))
+        model = MelBandConformer(**dict(config.model))
     elif model_type == 'mel_band_roformer_experimental':
         from models.bs_roformer.mel_band_roformer_experimental import MelBandRoformer
-        model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, dict(config.model)))
+        model = MelBandRoformer(**dict(config.model))
     elif model_type == 'bs_roformer':
-        from models.bs_roformer import BSRoformer, BSConformer
-        from models.bs_roformer.bs_roformer_sw import BSRoformerSW
-        # BS-Conformer configs set a top-level `conformer: true`; BS-roformer
-        # "SW" (super-wideband) configs set a top-level `sw: true`; the sibling
-        # "Logic" 6-stem model has no flag but shares the shifted-bias,
-        # per-attention-rope architecture. All three register under the same
-        # "BS Roformer Architecture" group, so detect by their distinguishing
-        # markers and load the right class.
-        _model_cfg = dict(config.model)
-        if getattr(config, 'conformer', None) is True:
-            model = BSConformer(**_fit_model_kwargs(BSConformer, _model_cfg))
-        elif getattr(config, 'siamese', None) is True:
-            # pcunwa 'Siamese' two-stream trunk (top-level `siamese: true` in
-            # the config, mirroring the conformer/sw markers)
-            fit = _fit_model_kwargs(BSRoformer, _model_cfg)
-            model = BSRoformer(siamese=True, **fit)
-        elif getattr(config, 'sw', None) is True:
-            fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
-            model = BSRoformerSW(position_mode='learned', **fit)
-        elif _model_cfg.get('num_stems', 1) == 6:
-            # shared-bias 6-stem (Logic) configs have no top-level flag
-            fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
-            model = BSRoformerSW(position_mode='rope', **fit)
-        else:
-            model = BSRoformer(**_fit_model_kwargs(BSRoformer, _model_cfg))
+        from models.bs_roformer import BSRoformer
+        model = BSRoformer(**dict(config.model))
     elif model_type == 'bs_conformer':
         from models.bs_roformer import BSConformer
-        model = BSConformer(**_fit_model_kwargs(BSConformer, dict(config.model)))
+        model = BSConformer(**dict(config.model))
     elif model_type == 'bs_roformer_experimental':
         from models.bs_roformer.bs_roformer_experimental import BSRoformer
-        model = BSRoformer(**_fit_model_kwargs(BSRoformer, dict(config.model)))
+        model = BSRoformer(**dict(config.model))
     elif model_type == 'bs_mamba2':
         from models.bs_mamba2_code.bs_mamba2 import BSMamba2Model
-        model = BSMamba2Model(**_fit_model_kwargs(BSMamba2Model, dict(config.model)))
+        model = BSMamba2Model(**dict(config.model))
     elif model_type == 'swin_upernet':
         from models.upernet_swin_transformers import Swin_UperNet_Model
         model = Swin_UperNet_Model(config)
     elif model_type == 'bandit':
-        # Bandit v2 configs are laid out differently from v1: they have a
-        # top-level `cls: Bandit` and a `kwargs:` section (no `model:`). The
-        # GUI resolves both v1 and v2 to arch "Bandit Architecture" -> model_type
-        # "bandit", so detect the v2 layout here and load the correct class
-        # (reads config.kwargs) instead of crashing on the missing config.model.
-        if getattr(config, 'kwargs', None):
-            from models.bandit_v2.bandit import Bandit
-            model = Bandit(**_fit_model_kwargs(Bandit, dict(config.kwargs)))
-        else:
-            from models.bandit.core.model import MultiMaskMultiSourceBandSplitRNNSimple
-            model = MultiMaskMultiSourceBandSplitRNNSimple(
-                **_fit_model_kwargs(MultiMaskMultiSourceBandSplitRNNSimple, dict(config.model)))
+        from models.bandit.core.model import MultiMaskMultiSourceBandSplitRNNSimple
+        model = MultiMaskMultiSourceBandSplitRNNSimple(**config.model)
     elif model_type == 'bandit_v2':
         from models.bandit_v2.bandit import Bandit
-        model = Bandit(**_fit_model_kwargs(Bandit, dict(config.kwargs)))
-    elif model_type in ('medley_vox', 'conv_tasnet_stft'):
-        # Medley-Vox: conv-tasnet + STFT built on asteroid primitives. The
-        # GUI maps arch "Medley Vox Architecture" -> model_type "medley_vox".
-        from models.medley_vox.medley_vox import build_medley_vox
-        model = build_medley_vox(config)
+        model = Bandit(**config.kwargs)
     elif model_type == 'scnet_unofficial':
         from models.scnet_unofficial import SCNet
-        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
+        model = SCNet(**config.model)
     elif model_type == 'scnet':
         from models.scnet import SCNet
-        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
+        model = SCNet(**config.model)
     elif model_type == 'scnet_tran':
         from models.scnet.scnet_tran import SCNet_Tran
-        model = SCNet_Tran(**_fit_model_kwargs(SCNet_Tran, dict(config.model)))
+        model = SCNet_Tran(**config.model)
     elif model_type == 'apollo':
         from models.look2hear.models import BaseModel
-        model = BaseModel.apollo(**_fit_model_kwargs(BaseModel.apollo, dict(config.model)))
+        model = BaseModel.apollo(**config.model)
     elif model_type == 'experimental_mdx23c_stht':
         from models.mdx23c_tfc_tdf_v3_with_STHT import TFC_TDF_net
         model = TFC_TDF_net(config)
+    elif model_type == 'dttnet':
+        from models.DTTNet import DPTDFNet
+        model = DPTDFNet(config)
     elif model_type == 'scnet_masked':
         from models.scnet.scnet_masked import SCNet
-        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
+        model = SCNet(**config.model)
     elif model_type == 'conformer':
         from models.conformer_model import ConformerMSS, NeuralModel
         model = ConformerMSS(
-            core=NeuralModel(**_fit_model_kwargs(NeuralModel, dict(config.model))),
+            core=NeuralModel(**config.model),
             n_fft=config.stft.n_fft,
             hop_length=config.stft.hop_length,
             win_length=getattr(config.stft, 'win_length', config.stft.n_fft),
@@ -612,26 +384,10 @@ def get_model_from_config(model_type: str, config_path: str,
         )
     elif model_type == 'mel_band_conformer':
         from models.mel_band_conformer import MelBandConformer
-        model = MelBandConformer(**_fit_model_kwargs(MelBandConformer, dict(config.model)))
+        model = MelBandConformer(**config.model)
     elif model_type == 'moises_light':
         from moises_light import MoisesLight
-        model = MoisesLight(**_fit_model_kwargs(MoisesLight, dict(config.model)))
-    elif model_type == 'vr':
-        from models.vr_arch import VRNet
-        model = VRNet(config)
-        # VR configs don't ship chunk_size/num_overlap (the band-split
-        # pipeline windows internally); inject sensible defaults so the
-        # generic chunked demixing loop works.
-        inf = config.inference
-        if not hasattr(inf, 'chunk_size'):
-            inf.chunk_size = 44100 * 50
-        if not hasattr(inf, 'num_overlap'):
-            inf.num_overlap = 2
-    elif model_type == 'mdxnet':
-        # MDX-Net zoo models are ONNX checkpoints (kuielab layout), not
-        # torch modules — loaded via onnxruntime, see models/mdx_net.py.
-        from models.mdx_net import MDXNetModel
-        model = MDXNetModel(config, checkpoint_path or "")
+        model = MoisesLight(**dict(config.model))
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -643,18 +399,41 @@ def get_scheduler(config, optimizer):
     if scheduler_name == 'linear_scheduler':
         from transformers import get_linear_schedule_with_warmup
         num_training_steps = config.training.num_epochs * config.training.num_steps
-        num_warmup_steps = config.training.num_warmup_steps
+        num_warmup_steps = config.training.get('num_warmup_steps', 0)
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=num_warmup_steps,
             num_training_steps=num_training_steps
         )
+    elif scheduler_name == 'cosine_scheduler':
+        num_training_steps = config.training.num_epochs * config.training.num_steps
+        num_warmup_steps = config.training.get('num_warmup_steps', 0)
+        # restart_cycle_epochs > 0 enables cosine warm restarts with that period
+        # (in epochs); the initial warmup applies only to the first cycle.
+        cycle_epochs = config.training.get('restart_cycle_epochs', 0)
+        if cycle_epochs and cycle_epochs > 0:
+            from transformers import get_cosine_with_hard_restarts_schedule_with_warmup
+            cycle_steps = cycle_epochs * config.training.num_steps
+            num_cycles = max(1, round((num_training_steps - num_warmup_steps) / cycle_steps))
+            scheduler = get_cosine_with_hard_restarts_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=num_warmup_steps,
+                num_training_steps=num_training_steps,
+                num_cycles=num_cycles
+            )
+        else:
+            from transformers import get_cosine_schedule_with_warmup
+            scheduler = get_cosine_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=num_warmup_steps,
+                num_training_steps=num_training_steps
+            )
     elif scheduler_name == 'ReduceLROnPlateau':
         from torch.optim.lr_scheduler import ReduceLROnPlateau
-        scheduler = ReduceLROnPlateau(optimizer, 'max', patience=config.training.patience,
-                                      factor=config.training.reduce_factor)
+        scheduler = ReduceLROnPlateau(optimizer, 'max', patience=config.training.get('patience', 10),
+                                      factor=config.training.get('reduce_factor', 0.5))
     else:
-        available_schedulers = ['linear_scheduler', 'ReduceLROnPlateau']
+        available_schedulers = ['linear_scheduler', 'cosine_scheduler', 'ReduceLROnPlateau']
         raise ValueError(
             f"Unknown scheduler '{scheduler_name}'. "
             f"Available options: {available_schedulers}. "
@@ -831,12 +610,7 @@ def wandb_init(args: argparse.Namespace, config: Union[ConfigDict, OmegaConf], b
     Returns:
         None
     """
-
-    if not _WANDB_AVAILABLE:
-        raise ImportError(
-            "wandb is required for training but is not installed. "
-            "Install it with: pip install wandb"
-        )
+    import wandb
 
     if args.wandb_offline:
         wandb.init(mode='offline',

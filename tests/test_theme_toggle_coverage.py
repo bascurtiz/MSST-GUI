@@ -28,6 +28,7 @@ def page_bg_tokens(mw):
     """Per-page stylesheet strings after the current theme state."""
     pages = {
         "inference": mw.inference_page,
+        "training": mw.training_page,
         "ensemble_landing": mw.ensemble_landing,
         "auto_ensemble": mw.auto_ensemble,
         "manual_ensemble": mw.manual_ensemble,

@@ -31,11 +31,14 @@ if getattr(sys, "frozen", False):
 
 _TORCH_CUDA_INDEX = "https://download.pytorch.org/whl/{line}"
 
-# torch specs per accelerator line (installed from the PyTorch wheel index)
+# torch specs per accelerator line (installed from the PyTorch wheel index).
+# torchvision is part of the set on purpose: segmentation-models-pytorch / timm
+# (requirements-runtime.txt) depend on it, and letting pip fetch torchvision
+# from PyPI later replaces the CUDA torch with the CPU build.
 _TORCH_SPECS = {
-    "cu128": ["torch>=2.7.0,<3", "torchaudio"],
-    "cu121": ["torch==2.4.1", "torchaudio==2.4.1"],
-    "cpu": ["torch", "torchaudio"],
+    "cu128": ["torch>=2.7.0,<3", "torchvision", "torchaudio"],
+    "cu121": ["torch==2.4.1", "torchvision==0.19.1", "torchaudio==2.4.1"],
+    "cpu": ["torch", "torchvision", "torchaudio"],
 }
 
 
