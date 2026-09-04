@@ -1374,10 +1374,18 @@ class _FolderManagerWidget(QWidget):
     # ──── Render ────
 
     def _clear(self):
-        for i in reversed(range(self._list_layout.count())):
-            item = self._list_layout.itemAt(i)
+        # takeAt + deleteLater: pull every row out of the layout immediately
+        # so a rebuild never coexists with a list of pending-delete widgets.
+        # (deleteLater alone leaves them in the layout — the fresh render's
+        # rows get inserted alongside the doomed ones, and any tick/draw that
+        # walks the list in that window can touch a half-deleted child.)
+        # Mirrors the registered-list rebuild in _refresh_registered.
+        while self._list_layout.count():
+            item = self._list_layout.takeAt(0)
             if item and item.widget():
                 item.widget().deleteLater()
+        # Restore the trailing stretch so _insert_row keeps top-aligning.
+        self._list_layout.addStretch()
 
     def _insert_row(self, widget):
         # Rows are inserted before the layout's single trailing stretch (the
@@ -1736,13 +1744,24 @@ class _FolderManagerWidget(QWidget):
             info.file_size = file_size
         dialog = ModelInstallDialog(info, self)
         if run_blurred_dialog(dialog) == ModelInstallDialog.Accepted:
-            # Modal is gone now (exec returned), but we are still inside the
-            # Install button's clicked emission — _request_render() renders
-            # immediately and its deleteLater()s only take effect after the
-            # handler unwinds, which is safe. Render first, then tell the
-            # page the registered list changed.
-            self._request_render()
-            self.model_installed.emit()
+            # Defer the rebuild out of the Install button's clicked emission.
+            # Rebuilding the folder tree (deleteLater on every row + a fresh
+            # render) while a signal emission from one of its own widgets is
+            # still on the stack has repeatedly corrupted Qt's heap on
+            # Windows — three native access violations across versions, all
+            # at the very first widget allocation of the post-install
+            # re-render (a plain QLabel in _ElidedLabel.__init__). A 0-ms
+            # defer posts the rebuild into the main loop, where the clicked
+            # emission has fully unwound and any previously scheduled
+            # deletions have already been processed.
+            QTimer.singleShot(0, self._after_install_render)
+
+    def _after_install_render(self):
+        """Rebuild the zoo list and tell the page the registered list
+        changed. Runs from the main loop via a 0-ms defer — never inside the
+        Install button's clicked emission (see _install)."""
+        self._request_render()
+        self.model_installed.emit()
 
 
 class _GitHubIconButton(QPushButton):

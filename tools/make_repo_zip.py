@@ -21,7 +21,7 @@ OUT = os.path.join(OUT_DIR, "msst-gui-repo.zip")
 SKIP_DIRS = {
     "__pycache__", ".git", ".zcode", ".freebuff", ".pytest_cache",
     ".venv", "build", "dist", "runtime", "runtime_test", "iterative_output",
-    "test_iterative", "_dl_tmp", "temp",
+    "test_iterative", "tests_cache", "_dl_tmp", "temp",
     "doc-site", ".idea", ".vscode",
 }
 
@@ -29,12 +29,11 @@ SKIP_DIRS = {
 MODELS_EXTS = {".py", ".yaml", ".yml", ".json", ".txt", ".md"}
 
 ROOT_FILES = [
-    "gitignore", "README.md", "MSST-GUI.iss", "MSST-GUI.spec",
+    "README.md", "MSST-GUI.iss", "MSST-GUI.spec",
     "main.py", "inference.py", "ensemble.py", "train.py", "valid.py",
-    "train_accelerate.py", "valid_ddp.py",
+    "train_accelerate.py", "train_ddp.py", "valid_ddp.py",
     "requirements_gui.txt", "requirements-runtime.txt",
     "run_gui.bat", "run_install.bat",
-    "msst-gui-ani-v2.gif",  # animated demo shown in README
 ]
 
 
@@ -54,6 +53,21 @@ def main():
             if os.path.isfile(p):
                 z.write(p, f)
                 count += 1
+
+        # Animated demo the README embeds — ship whatever version is current
+        # so the link never dangles when the gif gets replaced.
+        import glob as _glob
+        for p in sorted(_glob.glob(os.path.join(ROOT, "msst-gui-ani-v*.gif"))):
+            z.write(p, os.path.basename(p))
+            count += 1
+
+        # The ignore rules live in a dot-less file in the working tree (so
+        # file managers show it); GitHub only honors the dot-name, so the zip
+        # carries it as .gitignore.
+        gi_src = os.path.join(ROOT, "gitignore")
+        if os.path.isfile(gi_src):
+            z.write(gi_src, ".gitignore")
+            count += 1
 
         for root, dirs, files in os.walk(ROOT):
             dirs[:] = [d for d in dirs if not skip_dir(d)]

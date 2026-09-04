@@ -35,6 +35,7 @@ from utils.stem_planning import (
     KEEP, complement_stem_name, is_single_output, plan_output_stems,
     resolve_target, rest_needed,
 )
+from ui.strings import T_MULTI_SELECT_MODE
 from ui.theme import theme_manager, UIConstants, FONT_STACK
 from ui.widgets.common import (
     ConsoleLog, SpectrogramPanel, WaveformPanel, ProcessingStatusPanel, PageHeader,
@@ -608,15 +609,19 @@ ROW_H = 46
 
 
 def _test_all_ss():
-    """Outline style for the TEST ALL MODELS batch button — accent outline
-    that dims to neutral when disabled (during a batch or normal run)."""
+    """Outline style for the MULTI-SELECT MODELS button — accent outline that
+    fills accent when armed (checked = multi-select mode) and dims to
+    neutral when disabled (during a batch or normal run). The label font
+    matches the SEPARATE button's (Montserrat 12px, regular weight)."""
     t = theme_manager.theme
     return (
         "QPushButton{background:transparent;"
         f"color:{theme_manager.accent};"
         f"border:1px solid {theme_manager.accent};border-radius:6px;"
-        "font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;}"
+        "font-family:'Montserrat',sans-serif;font-size:12px;}"
         f"QPushButton:hover{{background:{theme_manager._accent_soft};}}"
+        f"QPushButton:checked{{background:{theme_manager.accent};"
+        f"color:{theme_manager._accent_text};border-color:{theme_manager.accent};}}"
         f"QPushButton:disabled{{color:{t.text_muted};border-color:{t.border};}}"
     )
 
@@ -1253,6 +1258,12 @@ class _OutputStemsRow(QFrame):
 # ── Circle Check Selector ─────────────────────────────────────────────────────
 
 class _CircleCheck(QFrame):
+    """Small select indicator: a radio-style circle by default, or a square
+    checkbox with a checkmark when `set_square(True)` (the multi-run mode's
+    per-model checkboxes). `set_state` paints a third, "partial" state used
+    by the Select all control. `set_checked(emit=False)` changes the visual
+    without emitting toggled, so programmatic syncing (Select all, mirroring
+    a check across the arch/target groupings) never echoes back."""
     toggled = Signal(bool)
     _unsel_border   = 38
     _unsel_border_h = 70
@@ -1265,6 +1276,8 @@ class _CircleCheck(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._checked = False
+        self._partial = False
+        self._square = False
         self._hovered = False
         self.setFixedSize(18, 18)
         self.setCursor(Qt.PointingHandCursor)
@@ -1272,12 +1285,35 @@ class _CircleCheck(QFrame):
     def is_checked(self):
         return self._checked
 
-    def set_checked(self, value):
-        if self._checked == value:
+    def is_partial(self):
+        return self._partial
+
+    def set_square(self, on):
+        on = bool(on)
+        if self._square == on:
+            return
+        self._square = on
+        self.update()
+
+    def set_checked(self, value, emit=True):
+        value = bool(value)
+        if self._checked == value and not self._partial:
             return
         self._checked = value
+        self._partial = False
         self.update()
-        self.toggled.emit(self._checked)
+        if emit:
+            self.toggled.emit(self._checked)
+
+    def set_state(self, checked, partial=False):
+        """Programmatic 3-state paint (used by Select all); never emits."""
+        checked = bool(checked)
+        partial = bool(partial)
+        if self._checked == checked and self._partial == partial:
+            return
+        self._checked = checked
+        self._partial = partial
+        self.update()
 
     def toggle(self):
         self.set_checked(not self._checked)
@@ -1287,22 +1323,56 @@ class _CircleCheck(QFrame):
         from PySide6.QtCore import QPointF
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        cx, cy = 9.0, 9.0
-        rr = 7.5
         _ac = QColor(theme_manager.accent)
 
-        if self._checked:
-            ba = self._sel_border_h if self._hovered else self._sel_border
-            _ac_ba = QColor(_ac)
-            _ac_ba.setAlpha(ba)
-            p.setPen(QPen(_ac_ba, 1.5))
-            _ac_fill = QColor(_ac)
-            _ac_fill.setAlpha(10)
-            p.setBrush(_ac_fill)
-            p.drawEllipse(QPointF(cx, cy), rr, rr)
-            p.setPen(Qt.NoPen)
+        if not self._square:
+            cx, cy = 9.0, 9.0
+            rr = 7.5
+            if self._checked:
+                ba = self._sel_border_h if self._hovered else self._sel_border
+                _ac_ba = QColor(_ac)
+                _ac_ba.setAlpha(ba)
+                p.setPen(QPen(_ac_ba, 1.5))
+                _ac_fill = QColor(_ac)
+                _ac_fill.setAlpha(10)
+                p.setBrush(_ac_fill)
+                p.drawEllipse(QPointF(cx, cy), rr, rr)
+                p.setPen(Qt.NoPen)
+                p.setBrush(_ac)
+                p.drawEllipse(QPointF(cx, cy), 3.5, 3.5)
+            else:
+                ba = self._unsel_border_h if self._hovered else self._unsel_border
+                _cb = QColor(theme_manager.theme.text)
+                _cb.setAlpha(ba)
+                p.setPen(QPen(_cb, 1.5))
+                fa = self._fill_hover if self._hovered else self._fill_rest
+                _cf = QColor(theme_manager.theme.text)
+                _cf.setAlpha(fa)
+                p.setBrush(_cf)
+                p.drawEllipse(QPointF(cx, cy), rr, rr)
+            p.end()
+            return
+
+        # Square checkbox look.
+        box = QRectF(1.5, 1.5, 15.0, 15.0)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(theme_manager.theme.surface_alt))
+        p.drawRoundedRect(box, 4, 4)
+        if self._checked or self._partial:
+            fill = QColor(_ac)
+            fill.setAlpha(self._sel_border_h if self._hovered else self._sel_border)
+            p.setPen(QPen(fill, 1.5))
             p.setBrush(_ac)
-            p.drawEllipse(QPointF(cx, cy), 3.5, 3.5)
+            p.drawRoundedRect(box, 4, 4)
+            pen = QPen(QColor("#FFFFFF"), 1.8)
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            p.setPen(pen)
+            if self._partial:
+                p.drawLine(QPointF(5.2, 9.2), QPointF(12.8, 9.2))
+            else:
+                p.drawPolyline([QPointF(5.0, 9.6), QPointF(8.1, 12.4),
+                                QPointF(13.2, 5.9)])
         else:
             ba = self._unsel_border_h if self._hovered else self._unsel_border
             _cb = QColor(theme_manager.theme.text)
@@ -1312,7 +1382,7 @@ class _CircleCheck(QFrame):
             _cf = QColor(theme_manager.theme.text)
             _cf.setAlpha(fa)
             p.setBrush(_cf)
-            p.drawEllipse(QPointF(cx, cy), rr, rr)
+            p.drawRoundedRect(box, 4, 4)
         p.end()
 
     def enterEvent(self, e):
@@ -1327,7 +1397,12 @@ class _CircleCheck(QFrame):
 
     def mousePressEvent(self, e):
         self.toggle()
-        super().mousePressEvent(e)
+        # Accept the press so it does NOT propagate up to the enclosing
+        # _ModelItem (whose own mousePressEvent toggles the indicator too).
+        # Without accept, clicking the checkbox directly double-toggled — on
+        # then immediately off — while clicking elsewhere on the row toggled
+        # once, so per-model checks in Multi-select Models mode flickered away.
+        e.accept()
 
 
 # ── Model Item ────────────────────────────────────────────────────────────────
@@ -1371,6 +1446,7 @@ class _NamesFetchThread(QObject):
 
 class _ModelItem(QFrame):
     selected = Signal(str, str, str, str, str, str, bool)
+    unchecked = Signal(str, str)
     settings_requested = Signal(str, str, str, str)
 
     def sizeHint(self):
@@ -1390,6 +1466,8 @@ class _ModelItem(QFrame):
         self._custom = custom_backend_enabled
         self._runnable = runnable
         self._is_selected = False
+        self._multi = False
+        self._search_hidden = False
         self.setFixedHeight(38)
         self.setStyleSheet("QFrame{background:transparent;border:none;}")
         self.setCursor(Qt.PointingHandCursor)
@@ -1508,15 +1586,33 @@ class _ModelItem(QFrame):
         if checked:
             self.selected.emit(self._name, self._ckpt, self._yaml, self._arch,
                                self._engine_type, self._backend_module, self._custom)
+        else:
+            self.unchecked.emit(self._name, self._arch)
 
     def _on_dots_clicked(self):
         self.settings_requested.emit(self._name, self._ckpt, self._yaml, self._arch)
 
+    def is_checked(self):
+        return self._is_selected
+
+    def set_multi(self, on):
+        """Multi-run mode: the leading indicator morphs from a radio circle
+        (single selection) into a square checkbox (multi-selection)."""
+        on = bool(on)
+        if self._multi == on:
+            return
+        self._multi = on
+        self._circle.set_square(on)
+
     def set_selected(self, value):
+        """Programmatic selection sync (Select all, mirroring across the
+        arch/target groupings): changes the visual without emitting, so a
+        loop over many items never re-enters the page's selection slots."""
+        value = bool(value)
         if self._is_selected == value:
             return
         self._is_selected = value
-        self._circle.set_checked(value)
+        self._circle.set_checked(value, emit=False)
         self._update_style()
 
     def _update_style(self):
@@ -1699,6 +1795,7 @@ class _LinkBadge(QWidget):
 
 class _ArchCard(QFrame):
     model_selected = Signal(str, str, str, str, str, str, bool)
+    model_unchecked = Signal(str, str)
     ckpt_settings_requested = Signal(str, str, str, str)
 
     def __init__(self, arch_name, parent=None, dot_color=None,
@@ -1976,6 +2073,7 @@ class _ArchCard(QFrame):
                           runnable=runnable, blocked_reason=blocked_reason)
         item.selected.connect(lambda n, ck, y, a, et, bm, cb:
                               self.model_selected.emit(n, ck, y, a, et, bm, cb))
+        item.unchecked.connect(lambda n, a: self.model_unchecked.emit(n, a))
         item.settings_requested.connect(self.ckpt_settings_requested)
         self._list_vl.addWidget(item)
         self._items.append(name)
@@ -2005,6 +2103,7 @@ class _ArchCard(QFrame):
                 w = self._list_vl.itemAt(i).widget()
                 if isinstance(w, _ModelItem):
                     w.setVisible(True)
+                    w._search_hidden = False
             if self._has_models:
                 self._count_lbl.setText(str(len(self._items)))
             if self._saved_expanded is not None:
@@ -2026,6 +2125,7 @@ class _ArchCard(QFrame):
                 match = (arch_match or text in w._name.lower()
                          or text in w._display.lower() or text in w._arch.lower())
                 w.setVisible(match)
+                w._search_hidden = not match
                 if match:
                     has_ckpt_match = True
 
@@ -2164,6 +2264,13 @@ class InferencePage(QWidget):
         self._tmp_input      = None
         self._tmp_yaml       = None
         self._selected_model = None
+        self._multi_mode     = False  # armed by "Multi-select Models"
+        self._batch_testing  = False
+        # Batch selection persisted in settings (multi_select), held until
+        # the model library rows exist after startup registration, then
+        # applied once by _apply_pending_batch (see _flush_library_visibility).
+        self._pending_batch  = None
+        self._batch_cancel   = False
         self._arch_cards     = {}
         self._target_cards   = {}  # model_type -> _ArchCard (sort-by-target mode)
         self._sort_by_target = False
@@ -2308,14 +2415,13 @@ class InferencePage(QWidget):
         )
         self.btn_stop.clicked.connect(self._stop)
 
-        self.btn_test_all = QPushButton("Test All Models")
+        self.btn_test_all = QPushButton("Multi-select Models")
         self.btn_test_all.setFixedSize(168, 44)
         self.btn_test_all.setCursor(Qt.PointingHandCursor)
-        self.btn_test_all.setToolTip(
-            "Runs every installed model once on the selected input, so you "
-            "can see at a glance which models work in this build.")
+        self.btn_test_all.setCheckable(True)
+        self.btn_test_all.setToolTip(T_MULTI_SELECT_MODE)
         self.btn_test_all.setStyleSheet(_test_all_ss())
-        self.btn_test_all.clicked.connect(self._test_all_models)
+        self.btn_test_all.clicked.connect(self._toggle_multi_mode)
 
         btn_row.addWidget(self.btn_run)
         btn_row.addWidget(self.btn_test_all)
@@ -2342,6 +2448,29 @@ class InferencePage(QWidget):
         self._sort_toggle.changed.connect(self._on_sort_changed)
         hdr_row.addWidget(self._sort_toggle)
         hdr_row.addSpacing(8)
+
+        # Select all — only appears in multi-run mode (armed by the
+        # "Multi-select Models" button): tick every model of the active
+        # grouping (arch or target) at once, with a partial dash when only
+        # some are checked.
+        self._sel_all_row = QWidget()
+        self._sel_all_row.setStyleSheet("background:transparent;")
+        sel_all_hl = QHBoxLayout(self._sel_all_row)
+        sel_all_hl.setContentsMargins(0, 0, 0, 0)
+        sel_all_hl.setSpacing(5)
+        self._sel_all = _CircleCheck()
+        self._sel_all.set_square(True)
+        self._sel_all.toggled.connect(self._on_select_all_toggled)
+        sel_all_hl.addWidget(self._sel_all)
+        self._sel_all_lbl = QLabel("Select all")
+        self._sel_all_lbl.setStyleSheet(
+            "font-family:'Montserrat';font-size:9px;font-weight:600;"
+            f"color:{theme_manager.theme.text_dim};background:transparent;"
+        )
+        sel_all_hl.addWidget(self._sel_all_lbl)
+        self._sel_all_row.setVisible(False)
+        hdr_row.addWidget(self._sel_all_row)
+        hdr_row.addSpacing(10)
 
         self._search_bar = _SearchBar("Search models\u2026")
         self._search_bar.textChanged.connect(self._filter_models)
@@ -2549,6 +2678,7 @@ class InferencePage(QWidget):
         archs the user registers that aren't part of the static ARCH_TYPES."""
         card = _ArchCard(arch)
         card.model_selected.connect(self._on_model_selected)
+        card.model_unchecked.connect(self._on_model_unchecked)
         card.ckpt_settings_requested.connect(self._on_ckpt_settings_requested)
         self._arch_cards[arch] = card
         if self._library_finalized:
@@ -2570,6 +2700,7 @@ class InferencePage(QWidget):
             info_url="",
         )
         card.model_selected.connect(self._on_model_selected)
+        card.model_unchecked.connect(self._on_model_unchecked)
         card.ckpt_settings_requested.connect(self._on_ckpt_settings_requested)
         self._target_cards[type_key] = card
         if self._library_finalized:
@@ -2628,6 +2759,9 @@ class InferencePage(QWidget):
             card.filter_models(text)
             if not show_target:
                 card.setVisible(False)
+        # Search narrowed the visible set — re-derive the Select all state
+        # against the filtered universe.
+        self._update_select_all_state()
 
     def _on_sort_changed(self, target_mode):
         self._sort_by_target = bool(target_mode)
@@ -2683,6 +2817,55 @@ class InferencePage(QWidget):
     def _flush_library_visibility(self):
         self._vis_pending = False
         self._apply_library_visibility()
+        # Startup only: the rows are all registered by now (model_registered
+        # is delivered synchronously), so a persisted multi-select batch can
+        # be re-applied exactly once.
+        self._apply_pending_batch()
+
+    def _apply_pending_batch(self):
+        """Restore a persisted multi-select batch once the library rows
+        exist. Re-arms Multi-select Models and checks the saved models (only
+        those still present — names can change across sessions), then sets
+        the saved primary so the stems row shows its context. No-op when
+        nothing was armed or no checked model survived."""
+        pb = self._pending_batch
+        self._pending_batch = None
+        if not pb or not pb.get("armed") or self._batch_testing:
+            return
+        batch = pb.get("batch") or []
+        if not batch:
+            return
+        by_name = {}
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem) and w._name not in by_name:
+                    by_name[w._name] = w
+        keep = [n for n in batch if n in by_name]
+        if not keep:
+            return
+        # Arm multi-select mode (set, not toggle).
+        self._multi_mode = True
+        self.btn_test_all.setChecked(True)
+        self._sel_all_row.setVisible(True)
+        for w in by_name.values():
+            w.set_multi(True)
+        for name in keep:
+            self._mirror_check(name, True)
+        # The saved primary drives the stems row; fall back to the first
+        # checked model when it no longer exists / is no longer checked.
+        primary = pb.get("primary") or ""
+        if primary not in keep:
+            primary = keep[0]
+        w = by_name[primary]
+        self._selected_model = {
+            "name": w._name, "ckpt": w._ckpt, "yaml": w._yaml,
+            "arch": w._arch, "model_type": w._engine_type,
+            "backend_module": w._backend_module,
+            "custom_backend_enabled": w._custom,
+        }
+        self._refresh_output_stems_row()
+        self._update_select_all_state()
 
     def _on_friendly_names(self, models):
         """Index arrived: cache ckpt -> full name and refresh existing rows."""
@@ -2728,24 +2911,33 @@ class InferencePage(QWidget):
 
     def _on_model_selected(self, name, ckpt, yaml_path, arch, engine_type="",
                            backend_module="", custom_backend_enabled=False):
-        if self._selected_model:
-            old_name = self._selected_model.get("name")
-            old_arch = self._selected_model.get("arch")
-            if old_name == name and old_arch == arch:
-                self._snapshot_model_stems(old_name)
-                self._deselect_item_everywhere(name)
-                self._selected_model = None
-                self._output_stems_row.set_stems([])
-                return
+        """A model row's indicator was checked by the user.
 
-            old_card = self._arch_cards.get(old_arch)
-            if old_card and old_arch != arch:
-                old_card.deselect_all_models()
-            self._deselect_item_everywhere(old_name)
-            # Remember the outgoing model's stem choice so it can be restored
-            # when the user switches back to it.
-            if old_name:
-                self._snapshot_model_stems(old_name)
+        Single mode (default): radio behavior — this model becomes the one
+        "Separate" runs; every other row is unchecked. Multi mode (armed by
+        "Multi-select Models"): the check joins the batch selection without
+        touching the others; the most recently checked model is the primary
+        used for the stems row (and by "Separate" if the user never exits
+        the mode)."""
+        cur = self._selected_model
+        if cur and cur.get("name") == name and cur.get("arch") == arch:
+            # Re-check of the current primary — nothing to do.
+            self._update_select_all_state()
+            return
+        if cur:
+            # Remember the outgoing primary's stem choice so it can be
+            # restored when the user switches back to it.
+            self._snapshot_model_stems(cur.get("name"))
+
+        if not self._multi_mode:
+            # Radio: this check replaces the whole selection.
+            self._deselect_all_models()
+        # Mirror into the other grouping in BOTH modes (unchecks already
+        # mirror): each model exists as an arch row AND a target row, and the
+        # two views must stay in agreement or a model checked in one grouping
+        # reads as unchecked after a sort switch (and the batch count /
+        # Select all state would disagree with what actually runs).
+        self._mirror_check(name, True)
 
         self._selected_model = {
             "name": name, "ckpt": ckpt, "yaml": yaml_path, "arch": arch,
@@ -2754,6 +2946,160 @@ class InferencePage(QWidget):
             "custom_backend_enabled": custom_backend_enabled,
         }
         self._refresh_output_stems_row()
+        self._update_select_all_state()
+
+    def _on_model_unchecked(self, name, arch):
+        """A model row's indicator was unchecked by the user. When it was the
+        primary (driving the stems row / Separate), the primary moves to
+        another checked model in multi mode, or the selection is cleared in
+        single mode."""
+        cur = self._selected_model
+        if cur and cur.get("name") == name and cur.get("arch") == arch:
+            self._snapshot_model_stems(name)
+            if self._multi_mode:
+                nxt = self._fallback_checked_model(name, arch)
+                if nxt is None:
+                    self._selected_model = None
+                    self._output_stems_row.set_stems([])
+                else:
+                    self._selected_model = nxt
+                    self._refresh_output_stems_row()
+            else:
+                self._selected_model = None
+                self._output_stems_row.set_stems([])
+        self._mirror_check(name, False)
+        self._update_select_all_state()
+
+    def _fallback_checked_model(self, exclude_name, exclude_arch):
+        """Next primary after unchecking the current one: the first other
+        checked model in the library (arch grouping first, then target)."""
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if (isinstance(w, _ModelItem) and w.is_checked()
+                        and (w._name, w._arch) != (exclude_name, exclude_arch)):
+                    return {
+                        "name": w._name, "ckpt": w._ckpt, "yaml": w._yaml,
+                        "arch": w._arch, "model_type": w._engine_type,
+                        "backend_module": w._backend_module,
+                        "custom_backend_enabled": w._custom,
+                    }
+        return None
+
+    def _mirror_check(self, name, checked):
+        """Sync one model's check state across every card (each model exists
+        in the arch grouping AND the target grouping; only the active grouping
+        is visible, but both must stay in agreement)."""
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem) and w._name == name:
+                    w.set_selected(checked)
+
+    def _deselect_all_models(self):
+        """Uncheck every model row in the whole library (programmatic — no
+        selection signals fire)."""
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            card.deselect_all_models()
+
+    # ── Multi-run mode ("Multi-select Models") ──────────────────────
+
+    def _toggle_multi_mode(self):
+        """Arm / disarm multi-run selection. While armed: the model rows'
+        round selectors become checkboxes, a Select all appears above the
+        library, and the Separate button processes the input with every
+        checked model instead of just one. Disarming collapses the selection
+        back to the single primary model."""
+        if self._batch_testing:
+            return
+        self._multi_mode = not self._multi_mode
+        self.btn_test_all.setChecked(self._multi_mode)
+        self._sel_all_row.setVisible(self._multi_mode)
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem):
+                    w.set_multi(self._multi_mode)
+        if not self._multi_mode:
+            self._collapse_selection()
+        self._update_select_all_state()
+
+    def _collapse_selection(self):
+        """Leave multi mode: keep only the primary model checked (the rest of
+        the batch selection is dropped), so the library reads as a plain
+        radio list again."""
+        self._deselect_all_models()
+        cur = self._selected_model
+        if cur:
+            self._mirror_check(cur.get("name"), True)
+
+    def _on_select_all_toggled(self, checked):
+        """Select all: tick / untick every model of the active grouping
+        (arch or target cards, minus search-filtered-out rows). Mirrors into
+        the other grouping so both views stay in agreement."""
+        cards = self._target_cards.values() if self._sort_by_target \
+            else self._arch_cards.values()
+        names = set()
+        for card in cards:
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem) and not w._search_hidden:
+                    names.add(w._name)
+        for name in names:
+            self._mirror_check(name, bool(checked))
+        self._update_select_all_state()
+
+    def _multi_visible_counts(self):
+        """(checked, total) over the active grouping's visible rows — the
+        same universe Select all applies to (search-filtered rows excluded).
+        Each model appears exactly once per grouping, so a plain row count
+        is already a distinct-model count."""
+        cards = self._target_cards.values() if self._sort_by_target \
+            else self._arch_cards.values()
+        total = checked = 0
+        for card in cards:
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem) and not w._search_hidden:
+                    total += 1
+                    if w.is_checked():
+                        checked += 1
+        return checked, total
+
+    def _update_select_all_state(self):
+        """Re-derive the Select all indicator: checked when every model of the
+        active grouping is checked, an unchecked square when none are, and a
+        partial dash when only some are. Also reflects the checked/total
+        count on the Separate button while multi-select mode is armed."""
+        checked, total = self._multi_visible_counts()
+        if total and checked == total:
+            self._sel_all.set_state(True, partial=False)
+        elif total and checked:
+            self._sel_all.set_state(True, partial=True)
+        else:
+            self._sel_all.set_state(False, partial=False)
+        if self._multi_mode:
+            self.btn_run.set_label(f"Separate ({checked}/{total})")
+        else:
+            self.btn_run.set_label("Separate")
+
+    def _checked_models(self):
+        """The batch selection: every checked model row, deduplicated (each
+        model exists in both the arch and target groupings), shaped exactly
+        like the entries `_run_inner` consumes."""
+        seen = {}
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem) and w.is_checked() \
+                        and w._name not in seen:
+                    seen[w._name] = {
+                        "name": w._name, "ckpt": w._ckpt, "yaml": w._yaml,
+                        "arch": w._arch, "model_type": w._engine_type,
+                        "backend_module": w._backend_module,
+                        "custom_backend_enabled": w._custom,
+                    }
+        return list(seen.values())
 
     def _refresh_output_stems_row(self):
         """(Re)apply the current _selected_model's stem context to the output
@@ -2834,7 +3180,24 @@ class InferencePage(QWidget):
             "stems":         self._output_stems_row.get_selected_stems(),
             "save_rest":     self._output_stems_row.get_save_rest(),
             "stems_by_model": dict(self._stems_by_model),
+            "multi_select": {
+                "armed": bool(self._multi_mode),
+                "batch": self._batch_checked_names(),
+                "primary": (self._selected_model or {}).get("name", "") or "",
+            },
         }
+
+    def _batch_checked_names(self):
+        """Distinct names of every checked model row (the arch/target
+        groupings mirror each other, so a name-deduped scan is exactly the
+        batch Multi-select Models would run)."""
+        names = set()
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem) and w.is_checked():
+                    names.add(w._name)
+        return sorted(names)
 
     def load_settings(self, d):
         files = d.get("input_files", [])
@@ -2869,6 +3232,17 @@ class InferencePage(QWidget):
         # NOTE: legacy global "stems" is intentionally ignored — a stem choice
         # must never be carried to a different model; models default to all
         # stems unless the user customized them for that specific model.
+        ms = d.get("multi_select")
+        if isinstance(ms, dict):
+            batch = [n for n in ms.get("batch", []) if isinstance(n, str)]
+            primary = ms.get("primary")
+            self._pending_batch = {
+                "armed": bool(ms.get("armed")),
+                "batch": batch,
+                "primary": primary if isinstance(primary, str) else "",
+            }
+        else:
+            self._pending_batch = None
 
     # ── Runner ────────────────────────────────────────────────────────
 
@@ -2886,7 +3260,12 @@ class InferencePage(QWidget):
         # (PySide prints to stderr, invisible in the GUI) and leave the user
         # with a run that "does nothing". Surface it to the console instead.
         try:
-            self._run_inner()
+            if self._multi_mode:
+                # Armed by "Multi-select Models": process the input with
+                # every checked model.
+                self._run_multi_selection()
+            else:
+                self._run_inner()
         except Exception as exc:
             import traceback as _tb
             self.log_output.emit(f"ERROR: {exc}")
@@ -3213,11 +3592,11 @@ class InferencePage(QWidget):
 
     # ── Batch smoke test: run every installed model on the same input ─────
 
-    def _test_all_models(self):
-        """Test every registered model once on the selected input and report
+    def _run_multi_selection(self):
+        """Process the selected input once per CHECKED model and report
         per-model PASS/FAIL, continuing past failures so a single broken
-        model never blocks the rest. Useful to find which installed models
-        fail (missing files, unsupported type, engine crash) in this build.
+        model never blocks the rest. Runs only what the user ticked (or
+        Select all) — never everything implicitly.
 
         The whole body is guarded so an unexpected error is logged to the
         console instead of dying silently inside the Qt slot (PySide only
@@ -3227,10 +3606,6 @@ class InferencePage(QWidget):
             from ui.widgets.runtime_dialog import ensure_runtime
             if not ensure_runtime(self):
                 return
-            # The batch iterates every installed model, so no library model
-            # needs to be pre-selected — only the shared input/output are
-            # required (and a missing selection must show a real dialog, not
-            # a swallowed NameError: QMessageBox is imported at module level).
             if not self._input_row.value():
                 QMessageBox.warning(self, "Missing input",
                                     "Please select at least one audio file.")
@@ -3240,11 +3615,12 @@ class InferencePage(QWidget):
                                     "Please select an output folder.")
                 return
 
-            models = [m for m in settings_store.load()
-                      .get("registered_models", [])
-                      if m.get("name")]
+            models = self._checked_models()
             if not models:
-                self.log_output.emit("No installed models to test.")
+                QMessageBox.information(
+                    self, "No models selected",
+                    "Tick the models to run in the Model Library (or use "
+                    "Select all above the list), then press Separate again.")
                 return
             models = sorted(models,
                             key=lambda m: (m.get("name") or "").lower())
@@ -3259,7 +3635,7 @@ class InferencePage(QWidget):
                 self.btn_stop.setEnabled(True)
                 self.process_running.emit(True)
                 self.log_output.emit(
-                    f"\u2500\u2500 TESTING ALL INSTALLED MODELS ({len(models)})"
+                    f"\u2500\u2500 RUNNING SELECTED MODELS ({len(models)})"
                     " \u2014 same input, one run per model \u2500\u2500")
                 for i, model in enumerate(models, 1):
                     if self._batch_cancel:
@@ -3343,7 +3719,7 @@ class InferencePage(QWidget):
                 self.process_running.emit(False)
         except Exception as exc:
             import traceback as _tb
-            self.log_output.emit(f"ERROR: Test All Models failed: {exc}")
+            self.log_output.emit(f"ERROR: running selected models failed: {exc}")
             for ln in _tb.format_exc().splitlines():
                 self.log_output.emit(ln)
             self._batch_testing = False

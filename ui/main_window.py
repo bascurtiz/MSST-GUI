@@ -906,6 +906,7 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()  # paint the overlay before tearing down
 
         self._persist_training_settings()
+        self._persist_inference_settings()
         pages = (self.inference_page, self.training_page, self.ensemble_landing,
                  self.auto_ensemble, self.manual_ensemble, self.iterative_ensemble,
                  self.console_page, self.settings_page)
@@ -1409,6 +1410,21 @@ class MainWindow(QMainWindow):
         try:
             data = settings_store.load()
             data["training"] = page.save_settings()
+            settings_store.save(data)
+        except Exception:
+            pass
+
+    def _persist_inference_settings(self):
+        """Mirror of _persist_training_settings for the inference page, so a
+        theme rebuild (which recreates every page from the saved settings)
+        keeps the live state — input files, per-model stem choices, and the
+        armed multi-select batch."""
+        page = getattr(self, "inference_page", None)
+        if page is None:
+            return
+        try:
+            data = settings_store.load()
+            data["inference"] = page.save_settings()
             settings_store.save(data)
         except Exception:
             pass

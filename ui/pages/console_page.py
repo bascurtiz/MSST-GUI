@@ -19,6 +19,39 @@ from mutagen import File as _MutagenFile
 
 # ── helpers ──────────────────────────────────────────────────────
 
+def _remove_files_with_retry(paths, attempts=8, delay=0.15):
+    """Delete output files, retrying on transient Windows locks.
+
+    The detail view's waveform keeps every displayed output file open
+    through QMediaPlayer (and briefly through libsndfile while envelopes
+    load), and Windows Media Foundation releases its handle asynchronously
+    after setSource(QUrl()) — so a delete issued right after unloading can
+    still hit PermissionError. Retrying for a short window covers that
+    release plus any antivirus scan; read-only files are cleared before
+    retry. Returns the paths that are still locked and could not be
+    deleted."""
+    import stat
+    failed = []
+    for p in paths:
+        if not p or not os.path.isfile(p):
+            continue
+        removed = False
+        for _i in range(attempts):
+            try:
+                os.remove(p)
+                removed = True
+                break
+            except OSError:
+                try:
+                    os.chmod(p, stat.S_IWRITE)
+                except OSError:
+                    pass
+                time.sleep(delay)
+        if not removed:
+            failed.append(p)
+    return failed
+
+
 # Module-level registry for the console's friendly-names fetch worker (same
 # rationale as backend/runner.py's registry): the console page can be torn
 # down and rebuilt on a theme switch while the fetch is in flight, and a
@@ -1317,6 +1350,7 @@ class _WaveformContainer(QFrame):
 class _TaskCard(QFrame):
     selected = Signal(object)
     deleted = Signal(object)
+    delete_requested = Signal(object)
 
     def __init__(self, song_name, input_path=None, parent=None):
         super().__init__(parent)
@@ -1766,36 +1800,11 @@ class _TaskCard(QFrame):
             QDesktopServices.openUrl(QUrl.fromLocalFile(d))
 
     def _menu_delete_outputs(self):
-        song = self._song_name
-        ret = QMessageBox.question(
-            self, "Delete Output",
-            f'Permanently delete output files for "{song}"?',
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if ret != QMessageBox.Yes:
-            return
-        failed = []
-        for p in list(self._output_paths):
-            if p and os.path.isfile(p):
-                try:
-                    os.remove(p)
-                except Exception:
-                    failed.append(p)
-        out_dir = getattr(self, "_output_dir", None)
-        if out_dir and os.path.isdir(out_dir) and not os.listdir(out_dir):
-            try:
-                os.rmdir(out_dir)
-            except Exception:
-                pass
-        self._output_paths = []
-        self._output_files = []
-        if failed:
-            QMessageBox.warning(
-                self, "Delete Output",
-                "Some files failed to delete:\n" + "\n".join(failed),
-            )
-        self.deleted.emit(self)
+        # Deletion is orchestrated at the page level: it must unload the
+        # detail view's waveform (the QMediaPlayer instances keep these
+        # files open — a delete here would fail while WMF still references
+        # them) and retry on transient locks before removing the card.
+        self.delete_requested.emit(self)
 
     def reapply_theme(self):
         self._apply_style()
@@ -1807,6 +1816,7 @@ class _TaskCard(QFrame):
 class _OutputListPanel(QWidget):
     cardSelected = Signal(object)
     cardDeleted = Signal(object)
+    cardDeleteRequested = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1869,6 +1879,7 @@ class _OutputListPanel(QWidget):
         row.setSpacing(8)
         card.selected.connect(self._on_card_selected)
         card.deleted.connect(self.cardDeleted.emit)
+        card.delete_requested.connect(self.cardDeleteRequested.emit)
         row.addWidget(card, 1)
         dot = self._make_dot_widget(card)
         self._update_dot_color(dot, card)
@@ -2063,6 +2074,7 @@ class _LoadingSpinner(QWidget):
 
 class _DetailView(QFrame):
     cardDeleted = Signal(object)
+    deleteRequested = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2335,45 +2347,10 @@ class _DetailView(QFrame):
         card = self._card
         if not card:
             return
-        song = card._song_name
-        ret = QMessageBox.question(
-            self, "Delete Output",
-            f'Permanently delete output files for "{song}"?',
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if ret != QMessageBox.Yes:
-            return
-
-        # Stop playback and release file handles before deleting.
-        self._waveform.stop_and_unload()
-
-        failed = []
-        for p in list(card._output_paths):
-            if p and os.path.isfile(p):
-                try:
-                    os.remove(p)
-                except Exception:
-                    failed.append(p)
-        # Remove the output directory if it is now empty.
-        out_dir = getattr(card, "_output_dir", None)
-        if out_dir and os.path.isdir(out_dir) and not os.listdir(out_dir):
-            try:
-                os.rmdir(out_dir)
-            except Exception:
-                pass
-
-        card._output_paths = []
-        card._output_files = []
-
-        if failed:
-            QMessageBox.warning(
-                self, "Delete Output",
-                "Some files failed to delete:\n" + "\n".join(failed),
-            )
-
-        self.cardDeleted.emit(card)
-        self._show_empty()
+        # Deletion is orchestrated at the page level so the waveform's file
+        # handles are released before any os.remove attempt (see
+        # ConsolePage._on_delete_requested).
+        self.deleteRequested.emit(card)
 
     def _open_folder(self):
         card = self._card
@@ -2639,10 +2616,12 @@ class ConsolePage(QWidget):
         self._output_list = _OutputListPanel()
         self._output_list.cardSelected.connect(self._on_card_selected)
         self._output_list.cardDeleted.connect(self._on_card_deleted)
+        self._output_list.cardDeleteRequested.connect(self._on_delete_requested)
         content_layout.addWidget(self._output_list, 35)
 
         self._detail_view = _DetailView()
         self._detail_view.cardDeleted.connect(self._on_card_deleted)
+        self._detail_view.deleteRequested.connect(self._on_delete_requested)
         self._detail_view._show_empty()
         content_layout.addWidget(self._detail_view, 65)
 
@@ -2660,6 +2639,69 @@ class ConsolePage(QWidget):
 
     def _on_card_selected(self, card):
         self._detail_view.show_card(card)
+
+    def _on_delete_requested(self, card):
+        """Delete a card's output files for real.
+
+        Both delete entry points (the card's context menu and the detail
+        view's trash button) land here. The waveform's QMediaPlayer
+        instances keep every displayed output file open on Windows, so they
+        are unloaded first; deletion then retries briefly to ride out WMF's
+        async handle release and any antivirus scan. When a file genuinely
+        cannot be deleted (locked by something outside the app), the card is
+        kept — its entry must stay true to the files still on disk — and the
+        user is told exactly which files remain."""
+        if card is None:
+            return
+        song = card._song_name
+        ret = QMessageBox.question(
+            self, "Delete Output",
+            f'Permanently delete output files for "{song}"?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if ret != QMessageBox.Yes:
+            return
+
+        # Stop playback and release the app's own file handles before any
+        # deletion attempt (WMF releases asynchronously — the retry loop in
+        # _remove_files_with_retry covers that window).
+        try:
+            self._detail_view._waveform.stop_and_unload()
+        except Exception:
+            pass
+
+        failed = _remove_files_with_retry(list(card._output_paths))
+
+        if failed:
+            # Keep the entry: the files still exist, so the card reflects
+            # what is actually on disk and the user can retry once whatever
+            # holds the files (another app, Explorer preview) closes.
+            remaining = set(failed)
+            card._output_paths = [p for p in card._output_paths
+                                  if p in remaining]
+            card._output_files = [f for f in card._output_files
+                                  if any(p and os.path.basename(p) == f
+                                         for p in remaining)]
+            QMessageBox.warning(
+                self, "Delete Output",
+                "Some files are still in use and could not be deleted:\n"
+                + "\n".join(failed)
+                + "\n\nClose whatever has them open (the in-app waveform "
+                  "player was already stopped), then try deleting again.")
+            return
+
+        # Remove the output directory if it is now empty.
+        out_dir = getattr(card, "_output_dir", None)
+        if out_dir and os.path.isdir(out_dir) and not os.listdir(out_dir):
+            try:
+                os.rmdir(out_dir)
+            except Exception:
+                pass
+
+        card._output_paths = []
+        card._output_files = []
+        self._on_card_deleted(card)
 
     def _on_card_deleted(self, card):
         self._output_list.remove_card(card)

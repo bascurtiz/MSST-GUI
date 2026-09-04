@@ -3,4 +3,4 @@
 Keep in sync with `#define AppVersion` in MSST-GUI.iss (used for the
 installer's version metadata and update comparisons via release tags).
 """
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"

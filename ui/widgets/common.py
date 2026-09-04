@@ -272,6 +272,16 @@ class GlyphButton(QPushButton):
             self._glyph_lbl._dy = int(round(max(-2.0, min(2.0, dy))))
             self._glyph_lbl.update()
 
+    def set_label(self, text):
+        """Replace the visible label. (The QPushButton text itself is unused —
+        GlyphButton paints its text through an inner QLabel so the glyph can
+        sit beside it.) Re-centers the content when the new text's width
+        differs."""
+        if self._text_lbl.text() == text:
+            return
+        self._text_lbl.setText(text)
+        self._layout_icon()
+
     def _refresh_icon(self):
         # own transparent backgrounds: page containers use bare `background:`
         # stylesheets that cascade into descendants — without these the labels

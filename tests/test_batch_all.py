@@ -1,11 +1,13 @@
-"""Regression test: TEST ALL MODELS batch button (inference page).
+"""Regression test: BATCH MODEL MODE batch flow (inference page).
 
-A one-click smoke run across every registered model must process models in
-name order, continue past per-model failures, spawn exactly one inference job
-per *supported* model, and never spawn for models a pre-run guard blocks
-(missing files, no engine branch). Exercises the real InferencePage
-._test_all_models() offscreen with a stubbed settings store and a stubbed
-ProcessRunner that reports success — no torch, no network, no subprocess.
+Arming multi-select ("Batch model mode") then ticking every model via
+Select all and pressing Separate must process models in name order, continue
+past per-model failures, spawn exactly one inference job per *supported*
+model, and never spawn for models a pre-run guard blocks (missing files, no
+engine branch). Exercises the real InferencePage (._toggle_multi_mode,
+._on_select_all_toggled, ._run -> ._run_multi_selection) offscreen with a
+stubbed settings store and a stubbed ProcessRunner that reports success — no
+torch, no network, no subprocess.
 
 Models under test (registry-entry shape):
   * a_future_zoo     — supported-type files present, engine type unknown to
@@ -33,11 +35,16 @@ FAILURES = []
 
 class _FakeMsgBox:
     """Stand-in for ui.pages.inference_page.QMessageBox: records every
-    warning instead of opening a modal dialog offscreen."""
+    warning / info instead of opening a modal dialog offscreen."""
     warns = []
 
     @staticmethod
     def warning(parent, title, text):
+        _FakeMsgBox.warns.append(text)
+        return None
+
+    @staticmethod
+    def information(parent, title, text):
         _FakeMsgBox.warns.append(text)
         return None
 
@@ -112,9 +119,18 @@ def main():
         d["registered_models"] = list(models)
         return d
 
+    def _register_all(page):
+        """The app's main window feeds registered models into the page via
+        on_model_registered; the harness must do the same so the library
+        rows exist before Select all is exercised."""
+        for m in models:
+            page.on_model_registered(m)
+        page._flush_library_visibility()
+
     bs.load = fake_load
     try:
         page = ip.InferencePage()
+        _register_all(page)
         page._input_row.set_value([audio])
         page._output_row.set_value(out)
         placeholder = {"name": "placeholder"}
@@ -124,7 +140,9 @@ def main():
         page.log_output.connect(logs.append)
         page.process_running.connect(running.append)
 
-        page._test_all_models()
+        page._toggle_multi_mode()
+        page._on_select_all_toggled(True)
+        page._run()
         text = "\n".join(logs)
 
         # 1. Name-sorted processing order.
@@ -182,15 +200,18 @@ def main():
         # owns the selection per model. (Before the fix this path hit a
         # NameError on QMessageBox inside the slot and did nothing at all.)
         page2 = ip.InferencePage()
+        _register_all(page2)
         page2._input_row.set_value([audio])
         page2._output_row.set_value(out)
         page2._selected_model = None
         logs2 = []
         page2.log_output.connect(logs2.append)
-        page2._test_all_models()
+        page2._toggle_multi_mode()
+        page2._on_select_all_toggled(True)
+        page2._run()
         text2 = "\n".join(logs2)
         check("batch runs without a model pre-selected",
-              "TESTING ALL INSTALLED MODELS (3)" in text2
+              "RUNNING SELECTED MODELS (3)" in text2
               and "TEST SUMMARY" in text2)
         check("no selection -> no warning dialog",
               _FakeMsgBox.warns == [])
@@ -199,16 +220,19 @@ def main():
 
         # 8. No input file -> a visible warning, clean state, no batch start.
         page3 = ip.InferencePage()
+        _register_all(page3)
         page3._output_row.set_value(out)
         page3._selected_model = None
         logs3 = []
         page3.log_output.connect(logs3.append)
-        page3._test_all_models()
+        page3._toggle_multi_mode()
+        page3._on_select_all_toggled(True)
+        page3._run()
         check("missing input shows a warning dialog",
               _FakeMsgBox.warns
               and "select at least one audio file" in _FakeMsgBox.warns[-1])
         check("missing input does not start the batch",
-              not "TESTING ALL INSTALLED MODELS" in "\n".join(logs3))
+              not "RUNNING SELECTED MODELS" in "\n".join(logs3))
         check("test-all button still enabled after warning",
               page3.btn_test_all.isEnabled())
 
@@ -256,12 +280,17 @@ def main():
         bs.load = fake_load2
         try:
             page4 = ip.InferencePage()
+            for m in models2:
+                page4.on_model_registered(m)
+            page4._flush_library_visibility()
             page4._input_row.set_value([audio])
             page4._output_row.set_value(out)
             page4._selected_model = None
             logs4 = []
             page4.log_output.connect(logs4.append)
-            page4._test_all_models()
+            page4._toggle_multi_mode()
+            page4._on_select_all_toggled(True)
+            page4._run()
             text4 = "\n".join(logs4)
             check("per-stem batch runs both models",
                   "2/2 models passed" in text4)

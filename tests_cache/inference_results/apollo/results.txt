@@ -1,7 +1,0 @@
-Namespace(model_type='apollo', config_path='D:\\Downloads\\MSST-GUI-main\\tests_cache\\configs\\config_apollo.yaml', start_check_point='', valid_path=['D:\\Downloads\\MSST-GUI-main\\tests_cache\\valid_tracks'], store_dir='D:\\Downloads\\MSST-GUI-main\\tests_cache\\inference_results\\apollo', draw_spectro=0, device_ids='0', num_workers=0, pin_memory=False, extension='wav', use_tta=False, metrics=['sdr', 'si_sdr', 'l1_freq'], lora_checkpoint_peft='', lora_checkpoint_loralib='', lora_checkpoint='')
-Num overlap: 4
-Instr restored sdr: -0.0038 (Std: 0.0000)
-Instr restored si_sdr: -63.7356 (Std: 0.4386)
-Instr restored l1_freq: 0.4414 (Std: 0.0001)
-Instr restored k_sdr: 78.7496 (Std: 0.0000)
-Elapsed time: 9.36 sec

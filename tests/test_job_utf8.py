@@ -50,12 +50,21 @@ CHILD = ("import sys; print('Bet\\u00fcl Damla — N\\u00e9onheart'); "
 
 
 def collect(env_override=None):
+    # The child inherits the harness environment; a stray PYTHONIOENCODING
+    # (the suite runner sets it for mojibake-free console output) would
+    # force UTF-8 stdout on the child and defeat the PYTHONUTF8=0 override
+    # scenario below. Strip it so the child's encoding is deterministic.
     lines = []
-    runner = ProcessRunner([sys.executable, "-c", CHILD], env=env_override)
-    runner.log_line.connect(lines.append)
-    runner.start()
-    ok = pump_until(lambda: not runner.isRunning())
-    runner.wait()
+    saved = os.environ.pop("PYTHONIOENCODING", None)
+    try:
+        runner = ProcessRunner([sys.executable, "-c", CHILD], env=env_override)
+        runner.log_line.connect(lines.append)
+        runner.start()
+        ok = pump_until(lambda: not runner.isRunning())
+        runner.wait()
+    finally:
+        if saved is not None:
+            os.environ["PYTHONIOENCODING"] = saved
     return "\n".join(lines), ok
 
 
@@ -73,13 +82,23 @@ def main():
 
     # Override: PYTHONUTF8=0 simulates a child NOT in UTF-8 mode (cp1252
     # bytes into the utf-8 decode) — the mojibake the fix prevents. Only
-    # asserted on Windows, where the ANSI code page is not UTF-8.
+    # reproducible when the machine's ANSI code page is genuinely not UTF-8:
+    # with the Windows "use Unicode UTF-8" language setting enabled, even a
+    # non-UTF-8-mode child emits UTF-8 bytes and there is nothing to decode
+    # wrong.
     if sys.platform == "win32":
+        import locale
+        ansi_utf8 = locale.getpreferredencoding(False).lower() in ("utf-8", "utf8")
         text, ok = collect({"PYTHONUTF8": "0"})
         check(ok, "override runner never finished")
-        check("\ufffd" in text,
-              "override run should show replacement chars (documents the "
-              f"failure mode): {text!r}")
+        if ansi_utf8:
+            check("Betül Damla — Néonheart" in text,
+                  "UTF-8 ANSI code page: child output stayed clean "
+                  f"(no failure mode on this machine): {text!r}")
+        else:
+            check("\ufffd" in text,
+                  "override run should show replacement chars (documents "
+                  f"the failure mode): {text!r}")
 
     if FAILURES:
         print(f"{len(FAILURES)}/{CHECKS} checks FAILED:")

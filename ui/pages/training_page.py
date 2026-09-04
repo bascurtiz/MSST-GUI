@@ -32,6 +32,7 @@ from backend.runner import ProcessRunner
 from backend.paths import REPO_ROOT, TRAIN_SCRIPT, get_python_exe
 from backend.gpu_utils import list_gpus
 from backend import settings as settings_store
+from ui.strings import T_EXPORT_WEIGHTS
 from ui.theme import theme_manager, UIConstants
 from ui.widgets.common import (
     PageHeader, solid_button_ss, EllipsisButton, GlyphButton, css_color,
@@ -1554,6 +1555,22 @@ class TrainingPage(QWidget):
         self._latest_chip.setStyleSheet(_chip_ss(False))
         self._latest_chip.clicked.connect(self._pick_latest_ckpt)
         self._ckpt_row.add_extra(self._latest_chip)
+        self._clear_ckpt_btn = QPushButton("\u2715")
+        self._clear_ckpt_btn.setFixedSize(18, 18)
+        self._clear_ckpt_btn.setCursor(Qt.PointingHandCursor)
+        self._clear_ckpt_btn.setToolTip(
+            "Remove the resume checkpoint so the next run trains from scratch")
+        self._clear_ckpt_btn.setStyleSheet(
+            "QPushButton{font-family:'Montserrat';font-size:9px;font-weight:700;"
+            f"color:{theme_manager.theme.text_label};background:{theme_manager.theme.surface_alt};"
+            f"border:1px solid {theme_manager.theme.border};border-radius:9px;padding:0;"
+            "}"
+            f"QPushButton:hover{{color:{theme_manager.theme.error};"
+            f"border:1px solid {theme_manager.theme.error};}}"
+        )
+        self._clear_ckpt_btn.clicked.connect(self._clear_ckpt)
+        self._clear_ckpt_btn.setVisible(False)
+        self._ckpt_row.add_extra(self._clear_ckpt_btn)
         self._ckpt_row.changed.connect(self._on_ckpt_changed)
         self._ckpt_row.pick_requested.connect(self._open_pretrained)
         cfg.addWidget(self._ckpt_row)
@@ -1763,8 +1780,7 @@ class TrainingPage(QWidget):
         self.btn_logs.clicked.connect(self._open_logs)
         self.btn_export = _IconTextButton("Export Weights", "export")
         self.btn_export.setFixedSize(170, 40)
-        self.btn_export.setToolTip("Strip a training checkpoint down to the model weights\n"
-                                   "(no optimizer / scheduler / metrics history) for inference.")
+        self.btn_export.setToolTip(T_EXPORT_WEIGHTS)
         self.btn_export.clicked.connect(self._export_weights)
         right.addWidget(self.btn_export)
         right.addWidget(self.btn_results)
@@ -1971,6 +1987,20 @@ class TrainingPage(QWidget):
                         "load_epoch", "load_best_metric"):
                 self._run_opts[key] = True
         self._refresh_latest_chip()
+        self._refresh_ckpt_clear()
+
+    def _clear_ckpt(self):
+        """Drop the resume checkpoint so the next run trains from scratch
+        (the run flags armed for resuming are left as-is — they are
+        harmless no-ops without --start_check_point, and unchecking them is
+        one switch in Run Options)."""
+        if not self._ckpt_row.value():
+            return
+        self._ckpt_row.set_paths([])  # emits changed -> _on_ckpt_changed
+
+    def _refresh_ckpt_clear(self):
+        """Show the ✕ clear chip only while a checkpoint is actually set."""
+        self._clear_ckpt_btn.setVisible(bool(self._ckpt_row.value()))
 
     def _refresh_latest_chip(self):
         newest = self._newest_ckpt()
@@ -2023,6 +2053,7 @@ class TrainingPage(QWidget):
         if isinstance(ro, dict):
             self._run_opts.update({k: v for k, v in ro.items() if k in self._run_opts})
         self._ckpt_row.set_value(d.get("checkpoint", ""))
+        self._refresh_ckpt_clear()
         has_fields = any(d.get(k) for k in ("batch_size", "lr", "epochs"))
         if has_fields:
             for key, row in (("batch_size", self._batch_row), ("lr", self._lr_row),
