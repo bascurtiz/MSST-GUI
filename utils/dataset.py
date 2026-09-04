@@ -4,6 +4,7 @@ __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 
 import os
 import random
+import re
 import numpy as np
 import torch
 import soundfile as sf
@@ -181,23 +182,113 @@ def load_chunk(path, length, chunk_size, offset=None, target_channels = 2):
     return x.T
 
 
+# Stems that mean the same separation target under different community
+# naming. 'other' is the MDX / mel-band complement stem; pair datasets from
+# the music-separation community (SDR30+ 'Remixpack' etc.) name it
+# '(Instrumental)' / '(Instr)' / 'Accompaniment' instead of 'other', and
+# the vocal stem '(Acapella)' / '(Vocal)' instead of 'vocals'. Tokens are
+# matched with word boundaries, so 'other' never collides with 'Mother'.
+_INSTRUMENT_ALIASES = {
+    'vocals': ['acapella', 'vocal'],
+    'other': ['instrumental', 'instrument', 'instr', 'accompaniment'],
+}
+
+
+def _find_instrument_file(folder, instrument, file_types, exclude=None):
+    """Locate the audio file for one instrument inside a track folder.
+
+    The exact ``<instrument>.<ext>`` file is matched first. When missing, the
+    instrument name is matched against the actual file names
+    case-insensitively with word boundaries, preferring suffix forms
+    (``Track - Vocals.flac`` / ``Track (Vocals).flac``), so community pair
+    datasets load without renaming every file. Returns the matched file name,
+    or None.
+    """
+    try:
+        names = [n for n in os.listdir(folder)
+                 if not n.startswith('.')
+                 and os.path.isfile(os.path.join(folder, n))]
+    except OSError:
+        return None
+    if exclude:
+        names = [n for n in names if n not in exclude]
+    tokens = [instrument.lower()]
+    tokens += _INSTRUMENT_ALIASES.get(instrument.lower(), [])
+    best, best_key = None, None
+    for name in names:
+        ext = os.path.splitext(name)[1].lstrip('.').lower()
+        if ext not in file_types:
+            continue
+        base = os.path.splitext(name)[0]
+        low = base.lower()
+        score = None
+        for tok in tokens:
+            if low == tok:
+                score = 0
+                break
+            if len(low) > len(tok) and low.endswith(tok) \
+                    and not low[-len(tok) - 1].isalnum():
+                score = 1  # separate-word suffix: '... - Vocals', '...(Vocals)'
+                break
+            if re.search(r'(?<![a-z0-9])' + re.escape(tok) + r'(?![a-z0-9])', low):
+                score = 2  # word-boundary substring match
+                break
+        if score is None:
+            continue
+        key = (score, len(base), name)
+        if best_key is None or key < best_key:
+            best, best_key = name, key
+    return best
+
+
+def _instrument_path(folder, instrument, file_types, exclude=None):
+    name = _find_instrument_file(folder, instrument, file_types, exclude)
+    return os.path.join(folder, name) if name else None
+
+
 def get_track_set_length(params):
     path, instruments, file_types, dataset_type = params
     should_print = (not dist.is_initialized() or dist.get_rank() == 0) and dataset_type != 7
     # Check lengths of all instruments (it can be different in some cases)
     lengths_arr = []
+    missing = []
+    claimed = set()
     for instr in instruments:
-        length = -1
-        for extension in file_types:
-            path_to_audio_file = path + '/{}.{}'.format(instr, extension)
-            if os.path.isfile(path_to_audio_file):
-                length = sf.info(path_to_audio_file).frames
-                break
-        if length == -1:
-            if should_print:
-                print('Cant find file "{}" in folder {}'.format(instr, path))
+        matched = _find_instrument_file(path, instr, file_types, exclude=claimed)
+        if matched is None:
+            missing.append(instr)
             continue
+        try:
+            length = sf.info(os.path.join(path, matched)).frames
+        except Exception as e:
+            if should_print:
+                print('Cannot read file "{}" in folder {}: {}'.format(matched, path, e))
+            missing.append(instr)
+            continue
+        claimed.add(matched)
         lengths_arr.append(length)
+    if missing:
+        # A track is only usable when every configured stem matched — a
+        # partially-matched folder would crash later at load time with a
+        # 'Required stem not found' FileNotFoundError.
+        if should_print:
+            if not lengths_arr:
+                # Nothing matched at all — show what the folder actually
+                # contains so a naming mismatch is diagnosable at a glance
+                # (e.g. stems named 'Track - Lead Vocals.flac' vs 'vocals.wav').
+                try:
+                    present = sorted(os.listdir(path))
+                except OSError:
+                    present = []
+                shown = [n for n in present if not n.startswith('.')][:6]
+                print('No stem files matched in folder {} (expected one per '
+                      'instrument: {}). Files present: {}'.format(
+                          path, ', '.join(instruments),
+                          ', '.join(shown) if shown else '<none>'))
+            else:
+                print('Missing stem(s) in folder {}: {} - skipping track.'.format(
+                    path, ', '.join(missing)))
+        return path, 0
     lengths_arr = np.array(lengths_arr)
     if lengths_arr.min() != lengths_arr.max() and should_print:
         print(f'Warning: lengths of stems are different for path: {path}. ({lengths_arr.min()} != {lengths_arr.max()})')
@@ -219,17 +310,15 @@ def process_chunk_worker(args):
     try:
         for instrument in instruments:
             instrument_loud_enough = False
-            for extension in file_types:
-                path_to_audio_file = track_path + '/{}.{}'.format(instrument, extension)
-                if os.path.isfile(path_to_audio_file):
-                    try:
-                        source = load_chunk(path_to_audio_file, length=track_length, offset=offset,
-                                            chunk_size=chunk_size)
-                        if np.abs(source).mean() >= min_mean_abs:
-                            instrument_loud_enough = True
-                            break
-                    except Exception as e:
-                        return (track_path, offset, False)
+            path_to_audio_file = _instrument_path(track_path, instrument, file_types)
+            if path_to_audio_file is not None:
+                try:
+                    source = load_chunk(path_to_audio_file, length=track_length, offset=offset,
+                                        chunk_size=chunk_size)
+                    if np.abs(source).mean() >= min_mean_abs:
+                        instrument_loud_enough = True
+                except Exception as e:
+                    return (track_path, offset, False)
 
             if not instrument_loud_enough:
                 return (track_path, offset, False)
@@ -250,7 +339,7 @@ class MSSDataset(torch.utils.data.Dataset):
         if batch_size is None:
             batch_size = config.training.batch_size
         self.batch_size = batch_size
-        self.file_types = ['wav', 'flac']
+        self.file_types = ['wav', 'flac', 'mp3']
         self.metadata_path = metadata_path
 
         should_print = (not dist.is_initialized() or dist.get_rank() == 0)
@@ -274,8 +363,16 @@ class MSSDataset(torch.utils.data.Dataset):
                     print('Found tracks in dataset: {}'.format(len(metadata)))
             else:
                 if should_print:
-                    print('No tracks found for training. Check paths you provided!')
-                exit()
+                    print(
+                        'No tracks found for training. Check paths you provided! '
+                        'Each track folder must contain one audio file per '
+                        'configured instrument (e.g. vocals.wav / other.wav). '
+                        'File names are matched case-insensitively and by '
+                        'substring, so stems named "Track - Vocals.flac" / '
+                        '"Track (Instrumental).flac" work too; .wav / .flac / '
+                        '.mp3 are all supported.'
+                    )
+                exit(1)
         else:
             for instr in self.instruments:
                 if self.verbose and should_print:
@@ -402,11 +499,8 @@ class MSSDataset(torch.utils.data.Dataset):
 
         for track_path, _ in track_iter:
             for instr in self.instruments:
-                for ext in self.file_types:
-                    path = f"{track_path}/{instr}.{ext}"
-                    if os.path.isfile(path):
-                        class_to_tracks[instr].append(track_path)
-                        break
+                if _instrument_path(track_path, instr, self.file_types):
+                    class_to_tracks[instr].append(track_path)
 
         filtered_class_to_tracks = {}
 
@@ -496,21 +590,19 @@ class MSSDataset(torch.utils.data.Dataset):
 
         for idx, instr in enumerate(self.instruments):
             found = False
-            for extension in self.file_types:
-                path_to_audio_file = f"{track_path}/{instr}.{extension}"
-                if os.path.isfile(path_to_audio_file):
-                    try:
-                        source = load_chunk(
-                            path_to_audio_file,
-                            track_length,
-                            self.chunk_size,
-                            offset=offset
-                        )
-                        active_stem_ids.append(idx)
-                        found = True
-                        break
-                    except Exception as e:
-                        print(e)
+            path_to_audio_file = _instrument_path(track_path, instr, self.file_types)
+            if path_to_audio_file is not None:
+                try:
+                    source = load_chunk(
+                        path_to_audio_file,
+                        track_length,
+                        self.chunk_size,
+                        offset=offset
+                    )
+                    active_stem_ids.append(idx)
+                    found = True
+                except Exception as e:
+                    print(e)
 
             if not found:
                 source = np.zeros((2, self.chunk_size), dtype=np.float32)
@@ -699,19 +791,17 @@ class MSSDataset(torch.utils.data.Dataset):
         try:
             for instrument in self.instruments:
                 instrument_loud_enough = False
-                for extension in self.file_types:
-                    path_to_audio_file = track_path + '/{}.{}'.format(instrument, extension)
-                    if os.path.isfile(path_to_audio_file):
-                        try:
-                            source = load_chunk(path_to_audio_file, length=track_length, offset=offset,
-                                                chunk_size=chunk_size)
-                            if np.abs(source).mean() >= self.min_mean_abs:
-                                instrument_loud_enough = True
-                                break
-                        except Exception as e:
-                            if not dist.is_initialized() or dist.get_rank() == 0:
-                                print('Error loading: {} Path: {}'.format(e, path_to_audio_file))
-                            return False
+                path_to_audio_file = _instrument_path(track_path, instrument, self.file_types)
+                if path_to_audio_file is not None:
+                    try:
+                        source = load_chunk(path_to_audio_file, length=track_length, offset=offset,
+                                            chunk_size=chunk_size)
+                        if np.abs(source).mean() >= self.min_mean_abs:
+                            instrument_loud_enough = True
+                    except Exception as e:
+                        if not dist.is_initialized() or dist.get_rank() == 0:
+                            print('Error loading: {} Path: {}'.format(e, path_to_audio_file))
+                        return False
 
                 if not instrument_loud_enough:
                     return False
@@ -804,6 +894,11 @@ class MSSDataset(torch.utils.data.Dataset):
                         for f in as_completed(futures):
                             metadata.append(f.result())
 
+        # Folders where no stem matched report length 0 — drop them so the
+        # 'Found tracks' count and every loader only see usable tracks.
+        if self.dataset_type in (1, 4, 5, 6):
+            metadata = [(p, l) for p, l in metadata if l > 0]
+
         elif self.dataset_type == 2:
             metadata = dict()
             for instr in self.instruments:
@@ -811,11 +906,11 @@ class MSSDataset(torch.utils.data.Dataset):
                 track_paths = []
                 if type(self.data_path) == list:
                     for tp in self.data_path:
-                        track_paths += sorted(glob(tp + '/{}/*.wav'.format(instr)))
-                        track_paths += sorted(glob(tp + '/{}/*.flac'.format(instr)))
+                        for ext in ('wav', 'flac', 'mp3'):
+                            track_paths += sorted(glob(tp + '/{}/*.{}'.format(instr, ext)))
                 else:
-                    track_paths += sorted(glob(self.data_path + '/{}/*.wav'.format(instr)))
-                    track_paths += sorted(glob(self.data_path + '/{}/*.flac'.format(instr)))
+                    for ext in ('wav', 'flac', 'mp3'):
+                        track_paths += sorted(glob(self.data_path + '/{}/*.{}'.format(instr, ext)))
 
                 track_paths, metadata[instr] = self.read_from_metadata_cache(track_paths, instr)
 
@@ -890,18 +985,16 @@ class MSSDataset(torch.utils.data.Dataset):
             if self.dataset_type in [1, 4, 5, 6, 7]:
                 track_path, track_length = random.choice(metadata)
                 found_any = False
-                for extension in self.file_types:
-                    path_to_audio_file = track_path + '/{}.{}'.format(instr, extension)
-                    if os.path.isfile(path_to_audio_file):
-                        found_any = True
-                        try:
-                            source = load_chunk(path_to_audio_file, track_length, self.chunk_size)
-                        except Exception as e:
-                            # Sometimes error during FLAC reading, catch it and use zero stem
-                            if should_print:
-                                print('Error: {} Path: {}'.format(e, path_to_audio_file))
-                            source = np.zeros((2, self.chunk_size), dtype=np.float32)
-                        break
+                path_to_audio_file = _instrument_path(track_path, instr, self.file_types)
+                if path_to_audio_file is not None:
+                    found_any = True
+                    try:
+                        source = load_chunk(path_to_audio_file, track_length, self.chunk_size)
+                    except Exception as e:
+                        # Sometimes error during FLAC reading, catch it and use zero stem
+                        if should_print:
+                            print('Error: {} Path: {}'.format(e, path_to_audio_file))
+                        source = np.zeros((2, self.chunk_size), dtype=np.float32)
                 if not found_any:
                     raise FileNotFoundError(
                         f"Required stem '{instr}' not found in track folder '{track_path}' "

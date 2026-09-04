@@ -1,0 +1,68 @@
+audio:
+  chunk_size: 264600
+  min_mean_abs: 0.0
+  num_channels: 2
+  sample_rate: 44100
+augmentations:
+  enable: true
+  loudness: true
+  loudness_max: 1.5
+  loudness_min: 0.5
+  mixup: true
+  mixup_loudness_max: 1.5
+  mixup_loudness_min: 0.5
+  mixup_probs: !!python/tuple
+  - 0.2
+  - 0.02
+inference:
+  batch_size: 1
+  dim_t: 256
+  num_overlap: 4
+model:
+  bandsplit_ratios:
+  - 0.175
+  - 0.392
+  - 0.433
+  d_conv: 4
+  d_expand: 2
+  d_state: 16
+  dims:
+  - 4
+  - 32
+  - 64
+  - 128
+  downsample_strides:
+  - 1
+  - 4
+  - 16
+  hop_length: 1024
+  n_conv_modules:
+  - 3
+  - 2
+  - 1
+  n_fft: 4096
+  n_rnn_layers: 6
+  n_sources: 2
+  rnn_hidden_dim: 128
+  stft_normalized: false
+  use_mamba: false
+  win_length: 4096
+training:
+  batch_size: 1
+  coarse_loss_clip: true
+  ema_momentum: 0.999
+  grad_clip: 0
+  gradient_accumulation_steps: 1
+  instruments:
+  - vocals
+  - other
+  lr: 0.0005
+  num_epochs: 2
+  num_steps: 3
+  optimizer: adam
+  other_fix: true
+  patience: 2
+  q: 0.95
+  reduce_factor: 0.95
+  target_instrument: null
+  use_amp: true

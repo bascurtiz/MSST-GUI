@@ -70,12 +70,16 @@ auraloss>=0.4.0
 torch-log-wmse>=0.3.0,<1.0
 # l1_snr* losses and the l1_snr metric
 torch_l1_snr>=0.1.2
-# optimizers selectable in the TRAINING tab: muon / adago (utils/muon.py) and prodigy
+# optimizers selectable in the TRAINING tab: muon / adago (utils/muon.py), prodigy,
+# and adamw8bit (bitsandbytes — official Windows wheels have shipped since 0.43;
+# the old comment claimed Linux-only and left adamw8bit broken at runtime).
 pytorch-optimizer>=3.0
 prodigyopt>=1.0
-# adamw8bit optimizer needs bitsandbytes (official wheels are Linux-only):
-#   bitsandbytes
-# LoRA training (--train_lora_peft) needs:  peft
+bitsandbytes>=0.43
+# LoRA training (--train_lora_peft): train.py wraps the model via get_peft_model
+# (train.py:355) and resumes/saves adapters with PeftModel (model.save_pretrained);
+# valid.py reloads the adapter with PeftModel.from_pretrained for evaluation.
+peft>=0.11
 pytorch-lightning>=2.0.0
 # torchmetrics must stay <=0.11.4: asteroid (used by the Bandit architecture)
 # hard-pins torchmetrics<=0.11.4 in its metadata, so requiring >=1.0 is

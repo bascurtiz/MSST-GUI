@@ -33,6 +33,7 @@ def walk_datas(src_root, dest_root, exts=None):
 
 datas = []
 for f in ("inference.py", "ensemble.py", "train.py", "valid.py",
+          "train_accelerate.py", "valid_ddp.py",
           "requirements-runtime.txt"):
     datas.append((os.path.join(ROOT, f), "."))
 
@@ -76,6 +77,12 @@ exe = EXE(
     name="MSST-GUI",
     debug=False,
     bootloader_ignore_signals=False,
+    # Windowed build: double-clicking the exe opens no terminal window.
+    # Nothing is lost — main.py tees stdout/stderr into msst-gui.log (in the
+    # app-data dir), installs a Qt message handler that logs Qt warnings and
+    # qFatal aborts, and dumps all-thread stacks via faulthandler before a
+    # hard crash. For live console output run:  MSST-GUI.exe --console
+    # (re-attaches to the terminal the exe was launched from).
     strip=False,
     upx=False,
     console=False,

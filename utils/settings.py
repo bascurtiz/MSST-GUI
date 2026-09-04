@@ -5,6 +5,7 @@ import yaml
 import numpy as np
 import torch
 import argparse
+import inspect
 import socket
 from typing import Dict, List, Tuple, Union
 from omegaconf import OmegaConf
@@ -12,6 +13,11 @@ from ml_collections import ConfigDict
 import torch.distributed as dist
 from torch import nn
 import soundfile as sf
+
+# Stand-in for the bitsandbytes package so torch.load can unpickle
+# checkpoints saved with bnb optimizers (scnet_huge_* family, etc.) even
+# though the package isn't part of the runtime. See utils/bnb_stub.py.
+import utils.bnb_stub  # noqa: F401  (self-installs on import)
 
 
 def parse_args_train(dict_args: Union[argparse.Namespace, Dict, None]) -> argparse.Namespace:
@@ -98,6 +104,10 @@ def parse_args_train(dict_args: Union[argparse.Namespace, Dict, None]) -> argpar
                         help="All stems in naming checkpoints")
     parser.add_argument("--use_standard_loss", action='store_true',
                         help="Roformers will use provided loss instead of internal")
+    parser.add_argument("--custom_backend", type=str, default=None,
+                        help="Path to a folder containing an author-provided backend .py (e.g. bs_roformer.py). "
+                             "When given, the model class is loaded dynamically from that file instead of the "
+                             "bundled model code — used for fine-tune starts from fork-architecture checkpoints.")
     parser.add_argument("--save_weights_every_epoch", action='store_true',
                         help="Weights will be saved every epoch with all metric values")
     parser.add_argument("--persistent_workers", action='store_true',
@@ -227,6 +237,11 @@ def parse_args_inference(dict_args: Union[Dict, None]) -> argparse.Namespace:
     parser.add_argument("--bigshifts", type=int, default=1,
                         help="Number of circular time shifts to average during demix. Values <= 0 are treated as 1.")
     parser.add_argument("--lora_checkpoint_peft", type=str, default='', help="Initial checkpoint to LoRA weights")
+    parser.add_argument("--custom_backend", type=str, default=None,
+                        help="Path to a folder containing an author-provided backend .py (e.g. bs_roformer.py). "
+                             "When given, the model class is loaded dynamically from that file instead of the "
+                             "bundled model code — lets fork architectures (pcunwa HyperACE/Large-Inst, etc.) run "
+                             "without app code changes.")
     parser.add_argument("--filename_template", type=str, default='{file_name}/{instr}',
                         help="Output filename template, without extension, using '/' for subdirectories. Default: '{file_name}/{instr}'")
     parser.add_argument("--lora_checkpoint_loralib", type=str, default='', help="Initial checkpoint to LoRA weights")
@@ -272,19 +287,319 @@ def load_config(model_type: str, config_path: str) -> Union[ConfigDict, OmegaCon
         ValueError: If the configuration cannot be parsed or is otherwise invalid.
     """
     try:
-        with open(config_path, 'r') as f:
-            if model_type == 'htdemucs':
-                config = OmegaConf.load(config_path)
-            else:
-                config = ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
-            return config
+        with open(config_path, 'rb') as f:
+            raw = f.read()
+        # Config files are UTF-8 (some carry non-ASCII comments, e.g. the
+        # tsurumeso vr6 family has Russian text); opening with the locale
+        # default (cp1252 on Windows) choked on those. Decode explicitly with
+        # sensible fallbacks so any legacy cp1252/latin-1 config still loads.
+        text = None
+        for encoding in ('utf-8', 'cp1252', 'latin-1'):
+            try:
+                text = raw.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        if text is None:
+            text = raw.decode('utf-8', errors='replace')
+        if model_type == 'htdemucs':
+            config = OmegaConf.load(config_path)
+        else:
+            config = ConfigDict(yaml.load(text, Loader=yaml.FullLoader))
+        return config
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
     except Exception as e:
         raise ValueError(f"Error loading configuration: {e}")
 
 
-def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module, Union[ConfigDict, OmegaConf]]:
+def _load_custom_backend(model_type, config, custom_backend):
+    """Build the model from an author-provided backend .py (fork architectures).
+
+    Some models ship their own architecture file alongside the checkpoint
+    (e.g. pcunwa's BS-Roformer-Large-Inst / HyperACE publish a bs_roformer.py
+    next to the weights). Loading the class from that file lets those forks
+    run without vendoring code into the app. The folder is expected to
+    contain the backend file named bs_roformer.py.
+    """
+    import importlib.util, sys
+    # Fork authors name their side-car differently (pcunwa ships
+    # bs_roformer.py, others model.py); try the known names in order.
+    backend_file = ""
+    for name in ("bs_roformer.py", "model.py", "models.py"):
+        candidate = os.path.join(custom_backend, name)
+        if os.path.isfile(candidate):
+            backend_file = candidate
+            break
+    if not backend_file:
+        raise ImportError(f"Custom backend module not found in {custom_backend}")
+    sys.path.insert(0, custom_backend)
+    try:
+        spec = importlib.util.spec_from_file_location("custom_backend", backend_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+    CLASS_NAME_MAP = {
+        "bs_roformer": "BSRoformer", "bs_conformer": "BSConformer",
+        "mel_band_roformer": "MelBandRoformer", "mel_band_conformer": "MelBandConformer",
+        "bs_roformer_experimental": "BSRoformer",
+        "mel_band_roformer_experimental": "MelBandRoformer",
+        "bs_mamba2": "BSMamba2Model",
+        "scnet": "SCNet", "scnet_unofficial": "SCNet",
+        "apollo": "BaseModel", "bandit": "MultiMaskMultiSourceBandSplitRNNSimple",
+        "htdemucs": "get_model", "mdx23c": "TFC_TDF_net",
+        # DTTNet (upstream Music-Source-Separation-Training spells it
+        # both 'dttnet' and 'dtt_net'); the top-level model class is DPTDFNet.
+        "dtt_net": "DPTDFNet", "dttnet": "DPTDFNet",
+    }
+    class_name = CLASS_NAME_MAP.get(model_type, "BSRoformer")
+    model_class = getattr(module, class_name, None)
+    if model_class is None:
+        available = [n for n in dir(module) if not n.startswith('_')]
+        raise ImportError(
+            f"Class '{class_name}' not found in custom backend.\n"
+            f"Available exports: {', '.join(available[:20])}")
+    if model_type in ('htdemucs',):
+        model = model_class(config)
+    elif model_type in ('mdx23c', 'dtt_net', 'dttnet', 'segm_models',
+                        'torchseg', 'swin_upernet',
+                        'experimental_mdx23c_stht'):
+        model = model_class(config)
+    elif model_type == 'apollo':
+        model = model_class.apollo(**_fit_model_kwargs(model_class.apollo, dict(config.model)))
+    elif model_type == 'bandit':
+        model = model_class(**_fit_model_kwargs(model_class, dict(config.model)))
+    elif model_type == 'conformer':
+        from models.conformer_model import NeuralModel
+        model = model_class(
+            core=NeuralModel(**_fit_model_kwargs(NeuralModel, dict(config.model))),
+            n_fft=config.stft.n_fft,
+            hop_length=config.stft.hop_length,
+            win_length=getattr(config.stft, 'win_length', config.stft.n_fft),
+            center=config.stft.center)
+    else:
+        model = model_class(**_fit_model_kwargs(model_class, dict(config.model)))
+    return model, config
+
+
+def _resolve_bs_roformer_variant(config, checkpoint_path=None):
+    """Build the right BS-Roformer class for a config (+ optionally checkpoint).
+
+    Several distinct architectures register under the single "BS Roformer
+    Architecture" group, and their checkpoints are only strictly loadable by
+    the matching class:
+
+    * top-level ``conformer: true``  -> BSConformer
+    * top-level ``siamese: true``    -> BSRoformer(siamese=True) two-stream trunk
+    * top-level ``sw: true``         -> BSRoformerSW(learned positions)
+    * 6-stem configs with no flag    -> BSRoformerSW(rope) shared-bias "Logic"
+    * unwa's "Instrumental Large v2" fork adds a 4-layer axial TransformerBlock
+      inside the MaskEstimator, so its state dicts carry
+      ``mask_estimators.N.layers...`` / ``mask_estimators.N.norm.gamma`` keys
+      the stock classes never create. When no explicit marker is present and
+      a checkpoint is available, the checkpoint's own keys are sniffed and
+      the vendored fork class (models/bs_roformer/bs_roformer_unwa_large.py)
+      is used so already-installed fork checkpoints keep loading even without
+      their author side-car file.
+    """
+    from models.bs_roformer import BSRoformer, BSConformer
+    from models.bs_roformer.bs_roformer_sw import BSRoformerSW
+
+    _model_cfg = dict(config.model)
+    if getattr(config, 'conformer', None) is True:
+        return BSConformer(**_fit_model_kwargs(BSConformer, _model_cfg))
+    if getattr(config, 'siamese', None) is True:
+        fit = _fit_model_kwargs(BSRoformer, _model_cfg)
+        return BSRoformer(siamese=True, **fit)
+    if getattr(config, 'sw', None) is True:
+        fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
+        return BSRoformerSW(position_mode='learned', **fit)
+    if _model_cfg.get('num_stems', 1) == 6:
+        fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
+        return BSRoformerSW(position_mode='rope', **fit)
+    if checkpoint_path:
+        fork_cls = _sniff_unwa_large_fork(checkpoint_path)
+        if fork_cls is not None:
+            fit = _fit_model_kwargs(fork_cls, _model_cfg)
+            return fork_cls(**fit)
+    return BSRoformer(**_fit_model_kwargs(BSRoformer, _model_cfg))
+
+
+def _read_ckpt_keys(checkpoint_path):
+    """Read a checkpoint's state-dict key names without materializing any
+    tensor data, using zipfile + pickle interception on the archive's
+    ``data.pkl`` member.
+
+    Why: the sniffers used to ``torch.load`` the checkpoint just to look at
+    key names, and inference.py loads the same checkpoint again right after.
+    torch 2.11 on Windows returns a *broken* mapping from the second mmap
+    load of a ZIP64 (>4 GB) archive — reading any storage from that second
+    load dies with a native access violation. Reading keys from the pickle
+    alone means the engine performs exactly one torch.load per checkpoint.
+
+    Handles old (``data.pkl`` at any prefix, e.g. Lightning checkpoints
+    like ``last_mel_band_roformer/data.pkl``) and new
+    (``archive/data.pkl``) torch zip layouts, and multi-archive Lightning
+    files by trying every ``data.pkl`` member. Returns the unwrapped key
+    list, or None if nothing readable was found.
+    """
+    import io
+    import pickle
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(checkpoint_path) as z:
+            # Read the small metadata pickles inside the with-block; the
+            # handle is closed once we leave it.
+            payloads = []
+            for n in z.namelist():
+                if n.endswith('data.pkl'):
+                    try:
+                        payloads.append(z.read(n))
+                    except Exception:
+                        continue
+    except Exception:
+        return None
+
+    class _KeysUnpickler(pickle.Unpickler):
+        """Materialize the object *structure* but never tensor storage:
+        every torch global is stubbed and storage persistent-ids return
+        None, so only plain containers/strings (the keys) survive."""
+        def find_class(self, module, name):
+            if module.startswith('torch'):
+                return lambda *a: None
+            return super().find_class(module, name)
+
+        def persistent_load(self, pid):
+            return None
+
+    for raw in payloads:
+        try:
+            obj = _KeysUnpickler(io.BytesIO(raw)).load()
+        except Exception:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        for wrapper in ('state_dict', 'state', 'model_state_dict'):
+            if isinstance(obj.get(wrapper), dict):
+                obj = obj[wrapper]
+                break
+        return list(obj.keys())
+    return None
+
+
+def _torch_load_ckpt_keys(checkpoint_path):
+    """Fallback key reader using torch.load (full load, lazy mmap first).
+    Only reached when the pickle-interception reader fails on an exotic
+    checkpoint layout."""
+    try:
+        sd = torch.load(checkpoint_path, map_location='cpu', mmap=True,
+                        weights_only=True)
+    except Exception:
+        try:
+            sd = torch.load(checkpoint_path, map_location='cpu',
+                            weights_only=False)
+        except Exception:
+            return None
+    if not isinstance(sd, dict):
+        return None
+    for wrapper in ('state_dict', 'state', 'model_state_dict'):
+        if isinstance(sd.get(wrapper), dict):
+            sd = sd[wrapper]
+            break
+    return list(sd.keys())
+
+
+def _sniff_unwa_large_fork(checkpoint_path):
+    """Return the vendored fork class if the checkpoint is unwa's Large-Inst.
+
+    The fork's MaskEstimator contains axial TransformerBlocks (rotary
+    embeddings, attention qkv/gates, GLU MLPs) plus a final RMSNorm — keys
+    like ``mask_estimators.0.layers.0.0.layers.0.0.to_qkv.weight`` and
+    ``mask_estimators.0.norm.gamma`` that no other BS-Roformer variant
+    produces. Keys are read without materializing tensor data (see
+    _read_ckpt_keys). Returns the class, or None if the checkpoint doesn't
+    match.
+    """
+    keys = _read_ckpt_keys(checkpoint_path)
+    if keys is None:
+        keys = _torch_load_ckpt_keys(checkpoint_path)
+    if not keys:
+        return None
+    has_est_layers = any(k.startswith('mask_estimators.0.layers.')
+                         for k in keys)
+    has_est_norm = any(k.startswith('mask_estimators.0.norm.') for k in keys)
+    if not (has_est_layers and has_est_norm):
+        return None
+    from models.bs_roformer.bs_roformer_unwa_large import BSRoformer
+    return BSRoformer
+
+
+def _sniff_melband_mask_estimator_depth(checkpoint_path):
+    """Return the mask-estimator MLP depth baked into a mel-band checkpoint.
+
+    MelBandRoformer's per-band mask-estimator head is
+    ``MLP(dim, dim_in*2, depth=...) -> GLU`` — i.e. ``depth+1`` Linear layers
+    named ``mask_estimators.<stem>.to_freqs.<band>.0.<2*i>``. Some checkpoints
+    (JazzPear's ``mbr_expl_jazzpear`` among them) were trained with a
+    different ``mask_estimator_depth`` than the side-car YAML declares;
+    every other weight matches perfectly, so the strict load dies only on the
+    head's layer count. Sniffing the actual depth from the checkpoint lets us
+    build the matching architecture instead of failing with a wall of
+    "missing key / size mismatch" errors.
+
+    Keys are read without materializing tensor data (see _read_ckpt_keys),
+    so the later torch.load in inference.py is the only load of the
+    checkpoint. Returns None if the checkpoint can't be read or has no
+    mel-band mask-estimator keys.
+    """
+    keys = _read_ckpt_keys(checkpoint_path)
+    if keys is None:
+        keys = _torch_load_ckpt_keys(checkpoint_path)
+    if not keys:
+        return None
+    # Largest per-band linear index inside the first stem's heads. Linear
+    # layers of the MLP live at even indices 0, 2, 4, ... (odd slots are the
+    # activations / GLU), so max_idx // 2 == mask_estimator_depth.
+    max_linear_idx = -1
+    for key in keys:
+        if (key.startswith('mask_estimators.0.to_freqs.')
+                and key.endswith('.weight')):
+            try:
+                idx = int(key.rsplit('.', 2)[1])
+            except (ValueError, IndexError):
+                continue
+            if idx > max_linear_idx:
+                max_linear_idx = idx
+    if max_linear_idx < 0 or max_linear_idx % 2 != 0:
+        return None
+    return max_linear_idx // 2
+
+
+def _fit_model_kwargs(cls, kwargs: dict) -> dict:
+    """Drop config keys a model constructor doesn't accept.
+
+    The model library ships newer YAML configs than the bundled model code
+    sometimes supports (e.g. `sage_attention`, added in a later upstream
+    revision). Passing those straight through crashes with an "unexpected
+    keyword argument" TypeError. Filtering to the constructor's signature
+    makes the app resilient to such config/model version drift — the extras
+    are optional features that simply default off. If the signature can't be
+    read or the class accepts **kwargs, the config is passed as-is.
+    """
+    try:
+        params = inspect.signature(cls.__init__).parameters
+    except (TypeError, ValueError):
+        return kwargs
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return kwargs
+    return {k: v for k, v in kwargs.items() if k in params}
+
+
+def get_model_from_config(model_type: str, config_path: str,
+                          custom_backend: str = None,
+                          checkpoint_path: str = None) -> Tuple[nn.Module, Union[ConfigDict, OmegaConf]]:
     """
     Load and instantiate a model using a configuration file.
 
@@ -296,6 +611,13 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
             'scnet', 'mel_band_conformer', etc.).
         config_path (str): Filesystem path to the configuration file used to
             initialize the model.
+        custom_backend (str, optional): Path to a folder containing an
+            author-provided backend file (e.g. bs_roformer.py). When given,
+            the model class is loaded dynamically from that file instead of
+            the bundled model code — used for fork architectures.
+        checkpoint_path (str, optional): Checkpoint path, used only by model
+            types whose architecture is built from the checkpoint itself
+            (e.g. mdxnet ONNX).
 
     Returns:
         Tuple[nn.Module, Union[ConfigDict, OmegaConf]]: A tuple containing the
@@ -305,11 +627,54 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
         ValueError: If `model_type` is unknown or model initialization fails.
         FileNotFoundError: If `config_path` does not exist (may be raised by the
             underlying config loader).
+        ImportError: If `custom_backend` is provided but the module cannot be
+            loaded or the expected class is not found.
     """
 
     config = load_config(model_type, config_path)
     if 'model_type' in config.training:
         model_type = config.training.model_type
+    # Bandit v1 and v2 are indistinguishable by the "Bandit Architecture"
+    # label the GUI / ensemble runners pass down (both map to 'bandit'), but
+    # their config layouts differ: v1 nests hyper-parameters under `model:`,
+    # v2 under `kwargs:` (see config_dnr_bandit_v2_mus64.yaml). Sniff the
+    # layout so a v2 config isn't fed to the v1 branch (which would die on
+    # the missing `config.model` with KeyError 'model').
+    if model_type == 'bandit' and 'model' not in config and 'kwargs' in config:
+        model_type = 'bandit_v2'
+        # Record the refined type so callers that re-read config.training
+        # (e.g. inference.py's args.model_type propagation) stay consistent.
+        config.training.model_type = model_type
+    # Same collapse problem for SCNet: the "SCNet Architecture" label maps
+    # every variant (scnet, scnet_masked, scnet_tran) back to 'scnet', but
+    # tran configs nest extra hyper-parameters under `tran_*` keys that the
+    # plain SCNet constructor rejects (TypeError: unexpected keyword argument
+    # 'tran_attn_dropout') — and building the wrong class would also break
+    # the checkpoint load. Sniff the config and refine to the tran variant.
+    if (model_type == 'scnet' and hasattr(config, 'model')
+            and any(str(k).startswith('tran_') for k in dict(config.model))):
+        model_type = 'scnet_tran'
+        config.training.model_type = model_type
+    # Fork architectures (unwa's "Instrumental Large v2", pcunwa HyperACE,
+    # etc.) are NOT special-cased here any more: the engine builds the model
+    # from the author's own side-car file via --custom_backend when one was
+    # installed with the model. When a side-car is missing or fails to load,
+    # the fall back below is a checkpoint-sniffing resolver (see
+    # _resolve_bs_roformer_variant): it inspects the state dict's
+    # MaskEstimator keys and routes to the vendored fork class
+    # (models/bs_roformer/bs_roformer_unwa_large.py) so an already-installed
+    # fork checkpoint still loads without its author file.
+    if custom_backend:
+        try:
+            return _load_custom_backend(model_type, config, custom_backend)
+        except Exception as exc:
+            # A broken/incompatible side-car must never brick the job:
+            # warn and fall back to the bundled model code (whose variant
+            # sniffing may still handle the architecture).
+            print(
+                f"WARNING: could not load custom backend '{custom_backend}' ({exc}).\n"
+                f"Falling back to the bundled model code."
+            )
     if model_type == 'mdx23c':
         from models.mdx23c_tfc_tdf_v3 import TFC_TDF_net
         model = TFC_TDF_net(config)
@@ -324,19 +689,35 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
         model = Torchseg_Net(config)
     elif model_type == 'mel_band_roformer':
         from models.bs_roformer import MelBandRoformer
-        model = MelBandRoformer(**dict(config.model))
+        kwargs = dict(config.model)
+        # A checkpoint's mask-estimator MLP depth can disagree with the
+        # side-car config (e.g. JazzPear's expl model was trained with depth
+        # 1 while its YAML says 2). Build with the depth the weights actually
+        # have so the strict load succeeds; otherwise every other layer
+        # matches and only the head's layer count fails.
+        depth = _sniff_melband_mask_estimator_depth(checkpoint_path)
+        if depth is not None and kwargs.get('mask_estimator_depth') != depth:
+            print(
+                f"[mel_band_roformer] checkpoint mask-estimator depth is "
+                f"{depth} (config: {kwargs.get('mask_estimator_depth')}) — "
+                f"building with {depth}."
+            )
+            kwargs['mask_estimator_depth'] = depth
+        model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, kwargs))
     elif model_type == 'mel_band_conformer':
         from models.bs_roformer import MelBandConformer
-        model = MelBandConformer(**dict(config.model))
+        model = MelBandConformer(**_fit_model_kwargs(MelBandConformer, dict(config.model)))
     elif model_type == 'mel_band_roformer_experimental':
         from models.bs_roformer.mel_band_roformer_experimental import MelBandRoformer
-        model = MelBandRoformer(**dict(config.model))
+        model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, dict(config.model)))
     elif model_type == 'bs_roformer':
-        from models.bs_roformer import BSRoformer
-        model = BSRoformer(**dict(config.model))
+        model = _resolve_bs_roformer_variant(config, checkpoint_path)
+    elif model_type == 'bs_roformer_unwa_large':
+        from models.bs_roformer.bs_roformer_unwa_large import BSRoformer
+        model = BSRoformer(**_fit_model_kwargs(BSRoformer, dict(config.model)))
     elif model_type == 'bs_conformer':
         from models.bs_roformer import BSConformer
-        model = BSConformer(**dict(config.model))
+        model = BSConformer(**_fit_model_kwargs(BSConformer, dict(config.model)))
     elif model_type == 'bs_roformer_experimental':
         from models.bs_roformer.bs_roformer_experimental import BSRoformer
         model = BSRoformer(**dict(config.model))
@@ -354,13 +735,13 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
         model = Bandit(**config.kwargs)
     elif model_type == 'scnet_unofficial':
         from models.scnet_unofficial import SCNet
-        model = SCNet(**config.model)
+        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
     elif model_type == 'scnet':
         from models.scnet import SCNet
-        model = SCNet(**config.model)
+        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
     elif model_type == 'scnet_tran':
         from models.scnet.scnet_tran import SCNet_Tran
-        model = SCNet_Tran(**config.model)
+        model = SCNet_Tran(**_fit_model_kwargs(SCNet_Tran, dict(config.model)))
     elif model_type == 'apollo':
         from models.look2hear.models import BaseModel
         model = BaseModel.apollo(**config.model)
@@ -372,7 +753,7 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
         model = DPTDFNet(config)
     elif model_type == 'scnet_masked':
         from models.scnet.scnet_masked import SCNet
-        model = SCNet(**config.model)
+        model = SCNet(**_fit_model_kwargs(SCNet, dict(config.model)))
     elif model_type == 'conformer':
         from models.conformer_model import ConformerMSS, NeuralModel
         model = ConformerMSS(
@@ -388,6 +769,22 @@ def get_model_from_config(model_type: str, config_path: str) -> Tuple[nn.Module,
     elif model_type == 'moises_light':
         from moises_light import MoisesLight
         model = MoisesLight(**dict(config.model))
+    elif model_type == 'vr':
+        # UVR5 VR-family models (band-split cascaded nets). VRNet is a
+        # self-contained wrapper: it registers the network's children directly
+        # on itself so raw UVR checkpoints strict-load as-is, and its forward()
+        # consumes raw audio (batch, channels, samples) -> (batch, 2, channels,
+        # samples) with [primary, secondary] stems matching the config's
+        # instrument order.
+        from models.vr_arch import VRNet
+        model = VRNet(config)
+    elif model_type == 'medley_vox':
+        # Medley-Vox (Conv-TasNet + STFT) models. build_medley_vox returns the
+        # checkpoint-compatible wrapper (online/ema DataParallel layout + the
+        # load_state_dict override for the initted/step bookkeeping scalars)
+        # and fills in inference defaults (chunk size from seq_dur, fp32).
+        from models.medley_vox.medley_vox import build_medley_vox
+        model = build_medley_vox(config)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 

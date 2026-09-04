@@ -8,12 +8,14 @@ Opened from _FolderManagerWidget when user clicks Install on a model folder.
 from __future__ import annotations
 from typing import Optional
 
+import threading
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QScrollArea,
     QSizePolicy, QMessageBox, QProgressBar, QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QTimer
+from PySide6.QtCore import Qt, Signal, QObject, QTimer
 
 from ui.theme import theme_manager, UIConstants
 from backend.model_manager import install_model, ModelInfo
@@ -56,12 +58,27 @@ def _combo_style():
     )
 
 
-class _InstallThread(QThread):
-    progress = Signal(str, int, int)
+# Module-level registry: keeps every running install worker referenced for as
+# long as it runs, regardless of dialog lifetime. A background task whose
+# Python wrapper is garbage-collected mid-run (or whose QThread is destroyed
+# while running) corrupts Qt's thread state and surfaces later as a random
+# native access violation — this dialog used to crash inside QThread.__init__
+# the moment a new install thread was created. Workers here are plain Python
+# threads emitting Qt signals (queued delivery), so there is no QThread object
+# to leak, destroy, or corrupt.
+_ACTIVE_WORKERS = set()
+
+
+class _InstallWorker(QObject):
+    # float, not int: byte counts for large models (>2 GiB, e.g. 6 GB Mel-Band
+    # XL) overflow a 32-bit C int during shiboken conversion and the resulting
+    # OverflowError surfaces on the main thread as a fatal crash.
+    progress = Signal(str, float, float)
     status = Signal(str)
     speed = Signal(float)   # megabits per second
     finished_signal = Signal(bool, str)
     error = Signal(str)
+    done = Signal()         # emitted last, after finished_signal/error
 
     def __init__(self, info: ModelInfo, arch: str, stem_type: str, backend_url: str = ""):
         super().__init__()
@@ -70,8 +87,21 @@ class _InstallThread(QThread):
         self._stem_type = stem_type
         self._backend_url = backend_url
         self._cancelled = False
+        self._running = False
 
-    def run(self):
+    def start(self):
+        """Launch the install on a plain daemon thread (never a QThread)."""
+        self._running = True
+        _ACTIVE_WORKERS.add(self)
+        threading.Thread(target=self._run, name="model-install", daemon=True).start()
+
+    def isRunning(self) -> bool:
+        return self._running
+
+    def cancel(self):
+        self._cancelled = True
+
+    def _run(self):
         try:
             override_info = ModelInfo(
                 key=self._info.key,
@@ -97,6 +127,9 @@ class _InstallThread(QThread):
             self.finished_signal.emit(success, msg)
         except Exception as e:
             self.error.emit(str(e))
+        finally:
+            self._running = False
+            self.done.emit()
 
 
 class ModelInstallDialog(QDialog):
@@ -310,13 +343,14 @@ class ModelInstallDialog(QDialog):
         stem_type = self._type_combo.currentText()
         backend_url = self._backend_input.text().strip() if self._backend_group.isVisible() else ""
 
-        self._install_thread = _InstallThread(self._info, arch, stem_type, backend_url)
+        self._install_thread = _InstallWorker(self._info, arch, stem_type, backend_url)
         self._install_thread.progress.connect(self._on_progress)
         self._install_thread.status.connect(self._status_lbl.setText)
         self._install_thread.speed.connect(self._on_speed)
         self._install_thread.finished_signal.connect(self._on_install_done)
         self._install_thread.error.connect(self._on_install_error)
-        self._install_thread.finished.connect(self._install_thread.deleteLater)
+        self._install_thread.done.connect(
+            lambda: _ACTIVE_WORKERS.discard(self._install_thread))
         self._install_thread.start()
 
     def _on_progress(self, name, cur, total):
@@ -359,7 +393,7 @@ class ModelInstallDialog(QDialog):
     def _on_cancel(self):
         if self._install_thread and self._install_thread.isRunning():
             self._cancelled = True
-            self._install_thread._cancelled = True
+            self._install_thread.cancel()
             self._cancel_btn.setEnabled(False)
             self._status_lbl.setText("Cancelling...")
         elif self._completed:

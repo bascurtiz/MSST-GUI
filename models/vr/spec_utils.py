@@ -9,6 +9,35 @@ import librosa
 import numpy as np
 import torch
 
+# `sinc_*` res_types map to the optional `samplerate` (libsamplerate)
+# backend, which some runtimes don't ship (the 32000 Hz UVR configs use
+# them and died with `ModuleNotFoundError: No module named 'samplerate'`
+# mid-inference). Fall back to the scipy-backed `polyphase` resampler that
+# the rest of the VR configs already use.
+_SINC_RES_TYPES = {"sinc_best", "sinc_medium", "sinc_fast", "sinc_fastest", "sinc_hq"}
+_samplerate_available = None
+
+
+def resample_audio(wave, orig_sr, target_sr, res_type):
+    """librosa.resample wrapper that tolerates a missing `samplerate` backend.
+
+    When ``res_type`` is a ``sinc_*`` variant and the optional ``samplerate``
+    package isn't importable, resample with the scipy-backed ``polyphase``
+    instead of crashing. All VR band resampling (down in ``vr_arch._separate``
+    and back up in ``cmb_spectrogram_to_wave``) goes through here.
+    """
+    global _samplerate_available
+    if res_type in _SINC_RES_TYPES:
+        if _samplerate_available is None:
+            try:
+                import samplerate  # noqa: F401
+                _samplerate_available = True
+            except ImportError:
+                _samplerate_available = False
+        if not _samplerate_available:
+            res_type = "polyphase"
+    return librosa.resample(wave, orig_sr=orig_sr, target_sr=target_sr, res_type=res_type)
+
 
 def crop_center(h1, h2):
     """Crop the centre of ``h1`` (time axis) to the width of ``h2``."""
@@ -193,7 +222,7 @@ def cmb_spectrogram_to_wave(spec_m, mp, extra_bins_h=None, extra_bins=None, is_v
                 else:
                     spec_s = fft_lp_filter(spec_s, bp["lpf_start"], bp["lpf_stop"])
 
-                wave = librosa.resample(
+                wave = resample_audio(
                     spectrogram_to_wave(spec_s, bp["hl"], mp, d, is_v51_model),
                     orig_sr=bp["sr"], target_sr=sr, res_type=bp["res_type"],
                 )
@@ -206,7 +235,7 @@ def cmb_spectrogram_to_wave(spec_m, mp, extra_bins_h=None, extra_bins=None, is_v
                     spec_s = fft_lp_filter(spec_s, bp["lpf_start"], bp["lpf_stop"])
 
                 wave2 = np.add(wave, spectrogram_to_wave(spec_s, bp["hl"], mp, d, is_v51_model))
-                wave = librosa.resample(wave2, orig_sr=bp["sr"], target_sr=sr, res_type=bp["res_type"])
+                wave = resample_audio(wave2, orig_sr=bp["sr"], target_sr=sr, res_type=bp["res_type"])
 
     return wave
 

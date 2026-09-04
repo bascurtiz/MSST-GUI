@@ -2,35 +2,47 @@
 ui/pages/inference_page.py
 Premium cinematic dark UI — 2 column layout.
 """
-import os, sys, time
+import os, sys, time, threading
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
-    QDialogButtonBox, QMenu,
+    QDialogButtonBox, QMenu, QMessageBox,
 )
 from PySide6.QtGui import QCursor
-from PySide6.QtCore import (Qt, Signal, Property, QEasingCurve, QSize, QPoint,
-                            QRectF, QPointF, QPropertyAnimation, QVariantAnimation,
-                            QEvent, QUrl, QThread, QTimer)
+from PySide6.QtCore import (Qt, Signal, Property, QObject, QEasingCurve, QSize,
+                            QPoint, QRectF, QPointF, QPropertyAnimation,
+                            QVariantAnimation, QEvent, QUrl, QTimer)
 from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
 
 
-from backend.runner import ProcessRunner
+from backend.runner import ProcessRunner, describe_exit_code
 from backend.model_manager import fetch_model_index
-from backend.paths import REPO_ROOT, get_python_exe
+from backend.paths import REPO_ROOT, APP_DIR, get_python_exe
 from backend.audio_names import INFERENCE_FILENAME_TEMPLATE
 from backend.gpu_utils import list_gpus, device_ids_from_selection
 from backend import settings as settings_store
+from backend import msst_catalog as model_catalog
+from backend.msst_catalog import (
+    engine_effective_type,
+    engine_unsupported_models,
+    has_custom_sidecar,
+    resolve_engine_model_type,
+)
 from backend.yaml_analyzer import classify_model_type, get_stems_for_type
+from utils.stem_planning import (
+    KEEP, complement_stem_name, is_single_output, plan_output_stems,
+    resolve_target, rest_needed,
+)
 from ui.theme import theme_manager, UIConstants, FONT_STACK
 from ui.widgets.common import (
     ConsoleLog, SpectrogramPanel, WaveformPanel, ProcessingStatusPanel, PageHeader,
     outline_button_ss, solid_button_ss, paint_chevron, EllipsisButton,
     GlyphButton, dark_menu_qss, run_blurred_dialog,
     _outline_icon_color, _solid_icon_color, _stop_icon_color, _add_icon_color,
-    _type_badge_ss, _custom_badge_ss, _type_badge_color, _type_title,
+    _type_badge_ss, _custom_badge_ss, _blocked_badge_ss,
+    _type_badge_color, _type_title,
 )
 
 AUDIO_FILTER = ("Audio files (*.wav *.flac *.mp3 *.ogg *.aiff *.m4a *.opus *.wv);;"
@@ -57,11 +69,14 @@ ARCH_TO_MODEL_TYPE = {
     "Bandit Architecture": "bandit",
     "BSMamba2 Architecture": "bs_mamba2",
     "Conformer Architecture": "conformer",
-    "DTTNet Architecture": "dtt_net",
+    # Engine dispatch branch is spelled 'dttnet' (upstream also uses
+    # 'dtt_net' in places); the registry stores the buildable spelling.
+    "DTTNet Architecture": "dttnet",
     "Swin Upernet Architecture": "swin_upernet",
     "TorchSeg Architecture": "torchseg",
     "VitLarge23 Architecture": "segm_models",
 }
+
 
 # Display overrides for the MODEL LIBRARY card titles (the arch label itself
 # stays unchanged — it's used as a key for grouping / model type mapping).
@@ -592,6 +607,20 @@ def _combo_ss():
 ROW_H = 46
 
 
+def _test_all_ss():
+    """Outline style for the TEST ALL MODELS batch button — accent outline
+    that dims to neutral when disabled (during a batch or normal run)."""
+    t = theme_manager.theme
+    return (
+        "QPushButton{background:transparent;"
+        f"color:{theme_manager.accent};"
+        f"border:1px solid {theme_manager.accent};border-radius:6px;"
+        "font-family:'Montserrat',sans-serif;font-weight:600;font-size:12px;}"
+        f"QPushButton:hover{{background:{theme_manager._accent_soft};}}"
+        f"QPushButton:disabled{{color:{t.text_muted};border-color:{t.border};}}"
+    )
+
+
 def _audio_files_in_folder(folder, extensions):
     """All supported audio files under `folder`, walked recursively."""
     found = []
@@ -869,10 +898,12 @@ class _StemTitleBar(QWidget):
 
 
 class _StemSelectionDialog(QDialog):
-    def __init__(self, all_stems, selected_stems, save_rest, primary_target=None, parent=None):
+    def __init__(self, all_stems, selected_stems, save_rest, primary_target=None,
+                 single_output=False, parent=None):
         super().__init__(parent)
         self._all_stems = all_stems[:]
         self._primary_target = primary_target.lower() if primary_target else None
+        self._single_output = single_output
         self._orig_selected = set(selected_stems)
         self._orig_save_rest = save_rest
         self._selected = set(selected_stems)
@@ -1056,6 +1087,19 @@ class _StemSelectionDialog(QDialog):
                     )
                     tag.setFixedHeight(16)
                     row.addWidget(tag)
+                elif self._single_output and self._primary_target:
+                    # Single-output models can only separate their trained
+                    # target; every other stem is auto-derived as the
+                    # complement (mix minus the separated stems).
+                    hint = QLabel("(mix \u2212 selected)")
+                    hint.setStyleSheet(
+                        "font-family:'Montserrat';font-size:8px;font-weight:600;"
+                        f"color:{theme_manager.theme.text_muted};"
+                        f"background:{theme_manager.theme.surface_alt};"
+                        "padding:1px 5px;border-radius:3px;"
+                    )
+                    hint.setFixedHeight(16)
+                    row.addWidget(hint)
                 row.addSpacing(4)
                 self._checkboxes.append(cb)
             row.addStretch()
@@ -1108,6 +1152,7 @@ class _OutputStemsRow(QFrame):
         self._selected_stems = set()
         self._save_rest = False
         self._primary_target = None
+        self._single_output = False
         self.setObjectName("cfgRow")
         self.setFixedHeight(ROW_H)
         self.setStyleSheet(_row_ss())
@@ -1137,9 +1182,10 @@ class _OutputStemsRow(QFrame):
         self._arrow = _ExpandArrow()
         hl.addWidget(self._arrow)
 
-    def set_stems(self, all_stems, primary_target=None):
+    def set_stems(self, all_stems, primary_target=None, single_output=False):
         self._all_stems = all_stems[:] if all_stems else []
         self._primary_target = primary_target.lower() if primary_target else None
+        self._single_output = bool(single_output)
         self._selected_stems = set()
         self._save_rest = False
         self._update_summary()
@@ -1187,6 +1233,7 @@ class _OutputStemsRow(QFrame):
             list(self._selected_stems),
             self._save_rest,
             primary_target=self._primary_target,
+            single_output=self._single_output,
             parent=self
         )
         if run_blurred_dialog(dlg) == QDialog.Accepted:
@@ -1285,36 +1332,63 @@ class _CircleCheck(QFrame):
 
 # ── Model Item ────────────────────────────────────────────────────────────────
 
-class _NamesFetchThread(QThread):
+# Module-level registry: the fetch worker is referenced here while it runs so
+# the Python wrapper can never be garbage-collected mid-run (the QThread crash
+# class — a wrapper destroyed while its thread is winding down corrupts Qt's
+# thread state and surfaces later as a native access violation).
+_NAMES_FETCHERS = set()
+_NAMES_FETCHERS_LOCK = threading.Lock()
+
+
+class _NamesFetchThread(QObject):
     """Fetches the zoo index once so ckpt filenames can be shown with their
-    friendly full names in the MODEL LIBRARY."""
+    friendly full names in the MODEL LIBRARY. Plain QObject + daemon thread
+    (never a QThread): signals are emitted from the worker and delivered
+    queued to the GUI thread."""
     done = Signal(list)
 
-    def run(self):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._thread = None
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        with _NAMES_FETCHERS_LOCK:
+            _NAMES_FETCHERS.add(self)
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
         try:
             self.done.emit(fetch_model_index())
         except Exception:
             self.done.emit([])
+        finally:
+            with _NAMES_FETCHERS_LOCK:
+                _NAMES_FETCHERS.discard(self)
 
 
 class _ModelItem(QFrame):
-    selected = Signal(str, str, str, str, str, bool)
+    selected = Signal(str, str, str, str, str, str, bool)
     settings_requested = Signal(str, str, str, str)
 
     def sizeHint(self):
         return QSize(0, 38)
 
     def __init__(self, name, ckpt="", yaml_path="", arch="", model_type="",
-                 backend_module="", custom_backend_enabled=False, display="",
-                 parent=None):
+                 engine_type="", backend_module="", custom_backend_enabled=False,
+                 display="", runnable=True, blocked_reason="", parent=None):
         super().__init__(parent)
         self._name = name
         self._ckpt = ckpt
         self._yaml = yaml_path
         self._arch = arch
         self._type = model_type
+        self._engine_type = engine_type
         self._backend_module = backend_module
         self._custom = custom_backend_enabled
+        self._runnable = runnable
         self._is_selected = False
         self.setFixedHeight(38)
         self.setStyleSheet("QFrame{background:transparent;border:none;}")
@@ -1339,6 +1413,14 @@ class _ModelItem(QFrame):
         self._lbl.setObjectName("modelItemLabel")
         if self._display != name:
             self._lbl.setToolTip(name)
+        # The label must be allowed to shrink (and elide) below its full
+        # text width: rows whose name is a long ckpt filename and/or carry
+        # extra badges (CUSTOM + type) would otherwise push the fixed
+        # right-side cluster — the ··· menu — past the card's visible
+        # edge in narrow panes, hiding it (the "3-dot missing in arch view"
+        # bug). Shrinkable + elided keeps the dots on-screen at any width.
+        self._lbl.setMinimumWidth(0)
+        self._lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self._lbl.setStyleSheet(
             f"font-family:{FONT_STACK};font-size:12px;"
             "font-weight:600;letter-spacing:0.5px;"
@@ -1360,6 +1442,18 @@ class _ModelItem(QFrame):
             tag.setFixedHeight(17)
             hl.addWidget(tag)
 
+        if not runnable:
+            # The type this card would launch with has no branch in the
+            # engine — surface it here so it's visible before clicking Run
+            # (the pre-run validation still blocks the run as a backstop).
+            btag = QLabel("NOT RUNNABLE")
+            btag.setToolTip(
+                "Not runnable in this build — " + (blocked_reason or "")
+                + " Select a different model or update the app.")
+            btag.setStyleSheet(_blocked_badge_ss())
+            btag.setFixedHeight(17)
+            hl.addWidget(btag)
+
         self._dots = QPushButton("\u00b7\u00b7\u00b7")
         self._dots.setFixedSize(26, 26)
         self._dots.setStyleSheet(
@@ -1380,21 +1474,40 @@ class _ModelItem(QFrame):
             f"background:{theme_manager.theme.border};border:none;")
         outer.addWidget(self._divider)
 
+    def _elide_label(self):
+        """Clip the label to its allotted width (it is free to shrink because
+        its size policy is Ignored), keeping the full name in `self._display`
+        for search. The full text is exposed as a tooltip when elided."""
+        lbl = self._lbl
+        full = self._display or ""
+        w = lbl.width()
+        text = full if w <= 0 else lbl.fontMetrics().elidedText(
+            full, Qt.ElideRight, w)
+        if text != lbl.text():
+            lbl.setText(text)
+            if text != full and not lbl.toolTip():
+                lbl.setToolTip(full)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, "_lbl", None) is not None:
+            self._elide_label()
+
     def set_display(self, text):
         """Show a friendlier label (e.g. the zoo full name); the ckpt
         filename stays in the tooltip and is still matched by search."""
         if not text or text == self._display:
             return
         self._display = text
-        self._lbl.setText(text)
         self._lbl.setToolTip(self._name if text != self._name else "")
+        self._elide_label()
 
     def _on_circle_toggled(self, checked):
         self._is_selected = checked
         self._update_style()
         if checked:
             self.selected.emit(self._name, self._ckpt, self._yaml, self._arch,
-                               self._backend_module, self._custom)
+                               self._engine_type, self._backend_module, self._custom)
 
     def _on_dots_clicked(self):
         self.settings_requested.emit(self._name, self._ckpt, self._yaml, self._arch)
@@ -1585,7 +1698,7 @@ class _LinkBadge(QWidget):
 # ── Architecture Card ─────────────────────────────────────────────────────────
 
 class _ArchCard(QFrame):
-    model_selected = Signal(str, str, str, str, str, bool)
+    model_selected = Signal(str, str, str, str, str, str, bool)
     ckpt_settings_requested = Signal(str, str, str, str)
 
     def __init__(self, arch_name, parent=None, dot_color=None,
@@ -1839,16 +1952,30 @@ class _ArchCard(QFrame):
                 w.set_selected(False)
 
     def add_model(self, name, ckpt="", yaml_path="", arch="", model_type="",
-                  backend_module="", custom_backend_enabled=False, display=""):
+                  engine_type="", backend_module="", custom_backend_enabled=False,
+                  display=""):
         if name in self._items:
             return
         if not self._has_models:
             self._empty_lbl.setVisible(False)
             self._has_models = True
-        item = _ModelItem(name, ckpt, yaml_path, arch, model_type,
-                          backend_module, custom_backend_enabled, display=display)
-        item.selected.connect(lambda n, ck, y, a, bm, cb:
-                              self.model_selected.emit(n, ck, y, a, bm, cb))
+        # Runnable = the effective engine type (stored precise type or arch
+        # fallback, yaml override/variant sniffs, side-car exemption) has a
+        # branch in this build. Same rule the pre-run validation applies, so
+        # the badge can never disagree with the actual run.
+        mini = {"name": name, "ckpt": ckpt, "yaml": yaml_path,
+                "arch": arch, "model_type": engine_type,
+                "backend_module": backend_module,
+                "custom_backend_enabled": custom_backend_enabled}
+        blocked = engine_unsupported_models([mini], ARCH_TO_MODEL_TYPE)
+        runnable = not blocked
+        blocked_reason = (f"model type '{engine_effective_type(mini, ARCH_TO_MODEL_TYPE)}' "
+                          "has no branch in the inference engine." if blocked else "")
+        item = _ModelItem(name, ckpt, yaml_path, arch, model_type, engine_type,
+                          backend_module, custom_backend_enabled, display=display,
+                          runnable=runnable, blocked_reason=blocked_reason)
+        item.selected.connect(lambda n, ck, y, a, et, bm, cb:
+                              self.model_selected.emit(n, ck, y, a, et, bm, cb))
         item.settings_requested.connect(self.ckpt_settings_requested)
         self._list_vl.addWidget(item)
         self._items.append(name)
@@ -2116,8 +2243,8 @@ class InferencePage(QWidget):
         self._fmt_row = _ComboRow(
             None, "Quality",
             ["FLAC (16-bit)", "FLAC (24-bit)", "WAV (32-bit float)"],
-            tooltip="Output format for the stems (all lossless).\n"
-                    "16/24-bit stems that clip are written as WAV instead of FLAC.")
+            tooltip="Output format applied to all stems (lossless).\n"
+                    "FLAC stems that would clip are peak-normalized to stay FLAC.")
         self._fmt_combo = self._fmt_row.combo
         cfg.addWidget(self._fmt_row)
 
@@ -2181,7 +2308,17 @@ class InferencePage(QWidget):
         )
         self.btn_stop.clicked.connect(self._stop)
 
+        self.btn_test_all = QPushButton("Test All Models")
+        self.btn_test_all.setFixedSize(168, 44)
+        self.btn_test_all.setCursor(Qt.PointingHandCursor)
+        self.btn_test_all.setToolTip(
+            "Runs every installed model once on the selected input, so you "
+            "can see at a glance which models work in this build.")
+        self.btn_test_all.setStyleSheet(_test_all_ss())
+        self.btn_test_all.clicked.connect(self._test_all_models)
+
         btn_row.addWidget(self.btn_run)
+        btn_row.addWidget(self.btn_test_all)
         btn_row.addWidget(self.btn_stop)
         btn_row.addStretch()
         ll.addLayout(btn_row)
@@ -2392,6 +2529,7 @@ class InferencePage(QWidget):
 
         # Update run/stop buttons
         self.btn_run.setStyleSheet(solid_button_ss())
+        self.btn_test_all.setStyleSheet(_test_all_ss())
         self.btn_stop.setStyleSheet(
             "QPushButton{"
             f"background:{t.surface};color:{t.text_muted};"
@@ -2515,6 +2653,7 @@ class InferencePage(QWidget):
                 name, model.get("ckpt", ""),
                 model.get("yaml", ""), arch,
                 model.get("type", ""),
+                model.get("model_type", ""),
                 model.get("backend_module", ""),
                 model.get("custom_backend_enabled", False),
                 display=display)
@@ -2528,6 +2667,7 @@ class InferencePage(QWidget):
             tcard.add_model(
                 name, model.get("ckpt", ""), model.get("yaml", ""),
                 arch, type_key,
+                model.get("model_type", ""),
                 model.get("backend_module", ""),
                 model.get("custom_backend_enabled", False),
                 display=display)
@@ -2586,7 +2726,7 @@ class InferencePage(QWidget):
                     w.set_selected(False)
                     break
 
-    def _on_model_selected(self, name, ckpt, yaml_path, arch,
+    def _on_model_selected(self, name, ckpt, yaml_path, arch, engine_type="",
                            backend_module="", custom_backend_enabled=False):
         if self._selected_model:
             old_name = self._selected_model.get("name")
@@ -2609,13 +2749,27 @@ class InferencePage(QWidget):
 
         self._selected_model = {
             "name": name, "ckpt": ckpt, "yaml": yaml_path, "arch": arch,
+            "model_type": engine_type,
             "backend_module": backend_module,
             "custom_backend_enabled": custom_backend_enabled,
         }
+        self._refresh_output_stems_row()
 
-        yaml_path = self._selected_model.get("yaml", "")
+    def _refresh_output_stems_row(self):
+        """(Re)apply the current _selected_model's stem context to the output
+        row: list the model's config stems, flag single-output models, and
+        default to "all stems" unless the user customized THIS model's
+        selection. Shared by a real card click and the TEST ALL batch — the
+        batch previously reused whatever stem state the row had from the last
+        manual click (or none), so a model whose config pins a single target
+        (e.g. bs_inst_large2_unwa: num_stems 1, target_instrument
+        "instrument", instruments [vocals, instrument]) silently emitted only
+        that one stem instead of its full output."""
+        model = self._selected_model or {}
+        yaml_path = model.get("yaml", "")
         instruments = []
         target_inst = None
+        single_output = False
         if yaml_path and os.path.isfile(yaml_path):
             try:
                 import yaml as _yaml
@@ -2623,12 +2777,20 @@ class InferencePage(QWidget):
                     _cfg = _yaml.load(_f, Loader=_yaml.FullLoader)
                 instruments = _cfg.get("training", {}).get("instruments", []) or []
                 target_inst = _cfg.get("training", {}).get("target_instrument", None)
+                # A single-output model (model.num_stems == 1) can only
+                # separate its trained target; every other stem is auto-
+                # derived as mix minus the separated stems, so flag those
+                # in the stem dialog. (Shared helper: utils/stem_planning.py)
+                single_output = is_single_output(_cfg)
             except Exception:
                 pass
-        self._output_stems_row.set_stems(instruments, primary_target=target_inst)
+        self._output_stems_row.set_stems(
+            instruments, primary_target=target_inst, single_output=single_output)
         # Default: all stems. Only restore a selection the user explicitly
         # made for THIS model (never carry one model's choice to another).
-        saved = self._loaded_stems_by_model.pop(name, None) or self._stems_by_model.get(name)
+        name = model.get("name", "")
+        saved = (self._loaded_stems_by_model.pop(name, None)
+                 or self._stems_by_model.get(name))
         if saved is not None:
             stems = saved.get("stems", [])
             rest = saved.get("save_rest", False)
@@ -2752,7 +2914,102 @@ class InferencePage(QWidget):
         ckpt = self._selected_model.get("ckpt", "")
         yaml_path = self._selected_model.get("yaml", "")
         arch = self._selected_model.get("arch", "")
-        model_type = ARCH_TO_MODEL_TYPE.get(arch, "bs_roformer")
+        # Prefer the precise engine type recorded at install time (e.g.
+        # 'scnet_tran', 'bandit_v2' — the arch label collapses variants).
+        # Fall back to the arch→type map for manually registered models;
+        # the yaml sniffs below then refine coarse labels as a safety net.
+        model_type = self._selected_model.get("model_type") or \
+            ARCH_TO_MODEL_TYPE.get(arch, "bs_roformer")
+        # "Bandit Architecture" covers both bandit generations but only v2
+        # configs nest hyper-parameters under `kwargs:` (v1 uses `model:`).
+        # Refine the type from the yaml so the engine builds the right class;
+        # the engine also sniffs this as a safety net (utils/settings.py).
+        if model_type == "bandit" and yaml_path and os.path.isfile(yaml_path):
+            try:
+                with open(yaml_path, "r", encoding="utf-8") as _f:
+                    _bcfg = yaml.load(_f, Loader=yaml.FullLoader)
+                if _bcfg and "model" not in _bcfg and "kwargs" in _bcfg:
+                    model_type = "bandit_v2"
+            except Exception:
+                pass
+        # Same collapse as bandit: "SCNet Architecture" maps every SCNet
+        # variant back to plain 'scnet', but tran configs carry tran_* keys
+        # the plain class rejects (and needs the tran architecture). Refine
+        # from the yaml so the engine builds SCNet_Tran.
+        if model_type == "scnet" and yaml_path and os.path.isfile(yaml_path):
+            try:
+                with open(yaml_path, "r", encoding="utf-8") as _f:
+                    _scfg = yaml.load(_f, Loader=yaml.FullLoader)
+                _sm = (_scfg or {}).get("model", {}) or {}
+                if isinstance(_sm, dict) and any(
+                        str(k).startswith("tran_") for k in _sm):
+                    model_type = "scnet_tran"
+            except Exception:
+                pass
+
+        # Pre-run validation: the model's files must still exist on disk.
+        # A missing checkpoint here means the install lives in the app's
+        # code folder, which app updates wipe (older builds); re-registering
+        # stores the model under the writable data folder instead.
+        missing = [p for p in (ckpt, yaml_path) if p and not os.path.isfile(p)]
+        if missing:
+            _nm = self._selected_model.get("name") or ""
+            self.log_output.emit(
+                f"ERROR: model '{_nm}' is missing its files on disk:")
+            for p in missing:
+                self.log_output.emit("  " + p)
+            self.log_output.emit(
+                "The files were probably removed by an app update (older "
+                "builds stored them in the app's code folder). Re-add the "
+                "model from SETTINGS to store it in the persistent data "
+                "folder, or reinstall it from the model library.")
+            if self._tmp_input and os.path.isdir(self._tmp_input):
+                try:
+                    shutil.rmtree(self._tmp_input)
+                except OSError:
+                    pass
+                self._tmp_input = None
+            return
+
+        # Pre-run validation: the model type must have an inference-engine
+        # branch. Otherwise inference.py dies mid-launch with a raw
+        # "Unknown model type" traceback; catch it here so the console shows
+        # a clear error and nothing is spawned. Accepted types are parsed out
+        # of get_model_from_config (backend.msst_catalog — the same source
+        # the TRAINING tab uses) plus the ONNX 'mdxnet' special case handled
+        # directly in inference.py. The yaml may override the type exactly as
+        # the engine does, and models shipping an author side-car backend
+        # bypass the built-in branches entirely.
+        known_engine_types = model_catalog.model_types()
+        if known_engine_types:
+            engine_types = set(known_engine_types) | {"mdxnet"}
+            # mdxnet is special-cased in inference.py *before* the config is
+            # consulted, so its yaml never overrides the type.
+            effective_type = (model_type if model_type == "mdxnet" else
+                              resolve_engine_model_type(model_type, yaml_path))
+            # Fork models with an author side-car bypass the built-ins.
+            if not has_custom_sidecar(self._selected_model) and \
+                    effective_type not in engine_types:
+                _nm = (self._selected_model.get("name") or ""
+                       or os.path.basename(ckpt or ""))
+                self.log_output.emit(
+                    f"ERROR: model '{_nm}' cannot be run: model type "
+                    f"'{effective_type}' has no branch in this build's "
+                    "inference engine.")
+                self.log_output.emit(
+                    "Supported model types: " + ", ".join(sorted(engine_types))
+                    + ".")
+                self.log_output.emit(
+                    "Pick another model, or update the app if this model "
+                    "needs a newer engine.")
+                if self._tmp_input and os.path.isdir(self._tmp_input):
+                    try:
+                        shutil.rmtree(self._tmp_input)
+                    except OSError:
+                        pass
+                    self._tmp_input = None
+                return
+
         device_ids = device_ids_from_selection(self._device_combo.currentText())
         force_cpu  = device_ids is None
         use_tta    = self._tta_combo.currentText() == "Enabled"
@@ -2811,15 +3068,12 @@ class InferencePage(QWidget):
                 if "batch_size" in ckpt_settings:
                     config["inference"]["batch_size"] = ckpt_settings["batch_size"]
 
-                if not custom_selection and not effective_save_rest:
-                    pass
-                elif len(selected_stems) == 1 and not effective_save_rest:
+                resolved = resolve_target(
+                    config, selected_stems, effective_save_rest, custom_selection)
+                if resolved is not KEEP:
                     if "training" not in config:
                         config["training"] = {}
-                    config["training"]["target_instrument"] = selected_stems[0]
-                else:
-                    if "training" in config:
-                        config["training"]["target_instrument"] = None
+                    config["training"]["target_instrument"] = resolved
 
                 self._tmp_yaml = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".yaml", delete=False)
@@ -2839,6 +3093,11 @@ class InferencePage(QWidget):
         if store_dir and ckpt:
             store_dir = os.path.join(
                 store_dir, os.path.splitext(os.path.basename(ckpt))[0])
+        # Remember the per-model output folder so the completion scan reports
+        # only THIS run's files — scanning the whole base folder picked up
+        # the previous model's stems when runs were fast back-to-back (their
+        # mtimes fell inside the scan window), leaking them onto this card.
+        self._last_store_dir = store_dir
 
         cmd = [
             get_python_exe(), os.path.join(REPO_ROOT, "inference.py"),
@@ -2852,7 +3111,8 @@ class InferencePage(QWidget):
         else: cmd += ["--device_ids"] + [str(d) for d in device_ids]
 
         # Map the Quality selection to upstream's --pcm_type: PCM_16/24 are
-        # written as FLAC (WAV if the stem clips), FLOAT as 32-bit WAV.
+        # written as FLAC for every stem (hot stems are peak-normalized so
+        # the integer codec doesn't clip), FLOAT as 32-bit WAV.
         fmt = self._fmt_combo.currentText()
         if "24" in fmt:
             cmd += ["--pcm_type", "PCM_24"]
@@ -2864,6 +3124,15 @@ class InferencePage(QWidget):
         cmd += ["--filename_template", INFERENCE_FILENAME_TEMPLATE]
 
         if use_tta: cmd.append("--use_tta")
+        # Fork architectures ship their own backend .py (downloaded to
+        # models/custom/<module> at install time, under the writable APP_DIR);
+        # pass the folder so the engine loads the model class from the
+        # author's file.
+        if self._selected_model.get("custom_backend_enabled"):
+            bm = self._selected_model.get("backend_module", "")
+            if bm:
+                cmd += ["--custom_backend",
+                        os.path.join(APP_DIR, "models", "custom", bm)]
         # The stem *selection* is applied through the temp config above
         # (single stem -> target_instrument); "rest" maps onto upstream's
         # --extract_instrumental (mix minus the vocals / first stem).
@@ -2872,6 +3141,28 @@ class InferencePage(QWidget):
 
         if isinstance(store_dir, str) and store_dir.strip():
             self.log_output.emit(f"Output directory: {store_dir}")
+
+        # Show the resolved stem names (target + mix-complement) up front so
+        # naming issues are visible before any file is written. Shared
+        # planner: utils/stem_planning.py (same logic the engine applies).
+        try:
+            plan_cfg_path = self._selected_model.get("yaml", "")
+            if plan_cfg_path and os.path.isfile(plan_cfg_path):
+                with open(plan_cfg_path, "r", encoding="utf-8") as _f:
+                    plan_cfg = yaml.load(_f, Loader=yaml.FullLoader)
+                plan = plan_output_stems(
+                    plan_cfg, selected_stems, save_rest, all_stems)
+                if plan:
+                    labels = [str(s) for s in plan]
+                    if effective_save_rest and len(plan) >= 2:
+                        labels[-1] = f"{plan[-1]} (mix \u2212 selected)"
+                        if len(plan) == 2:
+                            labels[0] = f"{plan[0]} (target)"
+                    elif len(plan) == 1:
+                        labels[0] = f"{plan[0]} (target)"
+                    self.log_output.emit("Stems: " + ", ".join(labels))
+        except Exception:
+            pass
 
         self.input_files_submitted.emit(
             [f for f in files if isinstance(f, str)] if isinstance(files, list) else []
@@ -2896,8 +3187,14 @@ class InferencePage(QWidget):
     def _report_written_files(self):
         """Upstream inference.py writes the stems silently; list every audio
         file that appeared under the output folder since the run started so
-        the CONSOLE cards pick them up ("Wrote file: ..." lines)."""
-        out = self._output_row.value()
+        the CONSOLE cards pick them up ("Wrote file: ..." lines).
+
+        The scan is scoped to the current model's own per-checkpoint
+        subfolder: scanning the whole base output folder could re-report the
+        previous run's files when runs are fast back-to-back (their mtimes
+        still fall inside the `since` window) and leak their stems onto this
+        model's card."""
+        out = getattr(self, "_last_store_dir", None) or self._output_row.value()
         if not isinstance(out, str) or not os.path.isdir(out):
             return
         since = getattr(self, "_run_started", 0) - 2
@@ -2914,11 +3211,167 @@ class InferencePage(QWidget):
         for p in sorted(found, key=os.path.getmtime):
             self.log_output.emit(f"Wrote file: {p}")
 
+    # ── Batch smoke test: run every installed model on the same input ─────
+
+    def _test_all_models(self):
+        """Test every registered model once on the selected input and report
+        per-model PASS/FAIL, continuing past failures so a single broken
+        model never blocks the rest. Useful to find which installed models
+        fail (missing files, unsupported type, engine crash) in this build.
+
+        The whole body is guarded so an unexpected error is logged to the
+        console instead of dying silently inside the Qt slot (PySide only
+        prints slot exceptions to stderr, invisible in the packaged app)."""
+        try:
+            from PySide6.QtCore import QEventLoop
+            from ui.widgets.runtime_dialog import ensure_runtime
+            if not ensure_runtime(self):
+                return
+            # The batch iterates every installed model, so no library model
+            # needs to be pre-selected — only the shared input/output are
+            # required (and a missing selection must show a real dialog, not
+            # a swallowed NameError: QMessageBox is imported at module level).
+            if not self._input_row.value():
+                QMessageBox.warning(self, "Missing input",
+                                    "Please select at least one audio file.")
+                return
+            if not self._output_row.value():
+                QMessageBox.warning(self, "Missing input",
+                                    "Please select an output folder.")
+                return
+
+            models = [m for m in settings_store.load()
+                      .get("registered_models", [])
+                      if m.get("name")]
+            if not models:
+                self.log_output.emit("No installed models to test.")
+                return
+            models = sorted(models,
+                            key=lambda m: (m.get("name") or "").lower())
+
+            original = self._selected_model
+            self._batch_testing = True
+            self._batch_cancel = False
+            results = []
+            try:
+                self.btn_run.setEnabled(False)
+                self.btn_test_all.setEnabled(False)
+                self.btn_stop.setEnabled(True)
+                self.process_running.emit(True)
+                self.log_output.emit(
+                    f"\u2500\u2500 TESTING ALL INSTALLED MODELS ({len(models)})"
+                    " \u2014 same input, one run per model \u2500\u2500")
+                for i, model in enumerate(models, 1):
+                    if self._batch_cancel:
+                        self.log_output.emit("Batch aborted by user.")
+                        break
+                    name = model.get("name", "?")
+                    self.log_output.emit(f"[{i}/{len(models)}] {name}")
+                    # Mirror the batch markers to stdout so msst-gui.log
+                    # (tee) records which model was in flight when the app
+                    # dies natively overnight — the console page alone
+                    # disappears with the process.
+                    print(f"[TEST-ALL {i}/{len(models)}] {name}",
+                          flush=True)
+                    self._selected_model = model
+                    # Each model runs with ITS OWN stem context (default:
+                    # all stems from its config). Without this the row kept
+                    # the last manually-clicked model's state, so configs
+                    # pinning a single target emitted only that one stem.
+                    self._refresh_output_stems_row()
+                    self._run_inner()
+
+                    runner = self._runner
+                    if runner is None:
+                        # A pre-run guard (missing files / unsupported type)
+                        # already logged the details; summarize here.
+                        reason = self._batch_block_reason(model)
+                        self.log_output.emit(f"  TEST FAIL: {reason}")
+                        print(f"[TEST-ALL {i}/{len(models)}] {name}: "
+                              f"FAIL ({reason})", flush=True)
+                        results.append((name, False, reason))
+                        continue
+
+                    code_box = {}
+                    loop = QEventLoop()
+                    runner.finished.connect(
+                        lambda c: (code_box.update(code=c), loop.quit()))
+                    loop.exec()
+                    code = code_box.get("code", -1)
+                    self._runner = None
+                    if code == 0:
+                        self.log_output.emit("  TEST OK")
+                        print(f"[TEST-ALL {i}/{len(models)}] {name}: OK",
+                              flush=True)
+                        results.append((name, True, ""))
+                    else:
+                        code_str = describe_exit_code(code)
+                        self.log_output.emit(
+                            f"  TEST FAIL (exit code {code_str})")
+                        print(f"[TEST-ALL {i}/{len(models)}] {name}: "
+                              f"FAIL ({code_str})", flush=True)
+                        results.append(
+                            (name, False, f"exit code {code_str}"))
+                    # _on_finished re-enables the run buttons after each
+                    # model; re-lock them so the batch keeps control.
+                    self.btn_run.setEnabled(False)
+                    self.btn_test_all.setEnabled(False)
+                if self._batch_cancel:
+                    results.append(("<aborted>", False, "cancelled"))
+            finally:
+                self._batch_testing = False
+                self._batch_cancel = False
+                self._selected_model = original
+                # Put the stem row back on the model the user had selected
+                # before the batch (each batch run swapped it to its own).
+                if original:
+                    self._refresh_output_stems_row()
+                else:
+                    self._output_stems_row.set_stems([])
+                passed = [n for n, ok, _r in results if ok]
+                failed = [(n, r) for n, ok, r in results if not ok]
+                self.log_output.emit("\u2500\u2500 TEST SUMMARY \u2500\u2500")
+                summary = (
+                    f"{len(passed)}/{len(results)} models passed"
+                    + (f" \u2014 FAILED: {', '.join(n for n, _ in failed)}"
+                       if failed else ""))
+                self.log_output.emit(summary)
+                print(f"[TEST-ALL SUMMARY] {summary}", flush=True)
+                self.btn_run.setEnabled(True)
+                self.btn_test_all.setEnabled(True)
+                self.btn_stop.setEnabled(False)
+                self.process_running.emit(False)
+        except Exception as exc:
+            import traceback as _tb
+            self.log_output.emit(f"ERROR: Test All Models failed: {exc}")
+            for ln in _tb.format_exc().splitlines():
+                self.log_output.emit(ln)
+            self._batch_testing = False
+            self._batch_cancel = False
+            self.btn_run.setEnabled(True)
+            self.btn_test_all.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+            self.process_running.emit(False)
+
+    def _batch_block_reason(self, model):
+        """Why a model was blocked before launch (mirrors _run_inner's
+        pre-run guards) for the batch summary line."""
+        miss = [p for p in (model.get("ckpt", ""), model.get("yaml", ""))
+                if p and not os.path.isfile(p)]
+        if miss:
+            return "files missing on disk (see log above)"
+        if engine_unsupported_models([model], ARCH_TO_MODEL_TYPE):
+            eff = engine_effective_type(model, ARCH_TO_MODEL_TYPE)
+            return f"model type '{eff}' has no engine branch in this build"
+        return "blocked before launch (see log above)"
+
     def _stop(self):
         # Only announce a stop when an inference job is actually ours to stop
         # — the console Stop button can reach this while an ensemble job (a
         # different runner) is active, and a false process_running(False)
         # would clear the console's job state mid-run.
+        if getattr(self, "_batch_testing", False):
+            self._batch_cancel = True
         if self._runner:
             self._runner.stop()
             self.process_running.emit(False)
@@ -2932,7 +3385,12 @@ class InferencePage(QWidget):
         if code == 0:
             self.log_output.emit("Completed: processing")
         else:
-            self.log_output.emit("ERROR: processing failed")
+            # A native child crash (e.g. exit code 0xC0000005) is readable
+            # here, not a bare negative integer.
+            code_str = describe_exit_code(code)
+            self.log_output.emit(
+                f"ERROR: processing failed (exit code {code_str})")
+            print(f"[RUN FAILED] exit code {code_str}", flush=True)
         if self._tmp_input and os.path.isdir(self._tmp_input):
             import shutil
             try: shutil.rmtree(self._tmp_input)

@@ -6,6 +6,7 @@ Supports local files and HuggingFace URL downloads.
 """
 import os
 import shutil
+import threading
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from PySide6.QtWidgets import (
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QMessageBox, QProgressBar,
     QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QPoint, QEvent, QRectF, QUrl
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint, QEvent, QRectF, QUrl
 from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath, QDesktopServices, QPixmap
 from ui.theme import theme_manager, UIConstants
 from backend import update_checker as uc
@@ -148,7 +149,6 @@ ARCH_TO_MODEL_FOLDER = {
     "Bandit Architecture": "models/bandit",
 }
 
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".."))
 from backend.paths import APP_DIR as _DATA_ROOT  # writable root for downloads
 
 
@@ -563,8 +563,21 @@ class _ModelCard(QFrame):
         return "—"
 
 
-class _DownloadWorker(QThread):
-    progress = Signal(str, int, int)
+# Module-level registry for the settings download worker: a running worker
+# is referenced here so its Python wrapper can never be garbage-collected
+# mid-run (a QThread wrapper destroyed while its thread still runs corrupts
+# Qt's thread state and surfaces later as a random native access violation —
+# e.g. a plain QPushButton() constructor crashing during a model-list
+# re-render). The worker itself is a plain QObject on a daemon thread, so
+# there is no QThread object to leak, destroy, or corrupt.
+_ACTIVE_DOWNLOAD_WORKERS = set()
+_DOWNLOAD_WORKERS_LOCK = threading.Lock()
+
+
+class _DownloadWorker(QObject):
+    # float, not int: byte counts for large downloads (>2 GiB) overflow a
+    # 32-bit C int during shiboken conversion and crash the app.
+    progress = Signal(str, float, float)
     speed = Signal(float)
     status = Signal(str)
     finished = Signal(bool, str, dict)
@@ -580,8 +593,38 @@ class _DownloadWorker(QThread):
         self._backend_url = backend_url
         self._backend_dest = backend_dest
         self._cancelled = False
+        self._running = False
+        self._thread: threading.Thread | None = None
         from backend.download_utils import _make_session
         self._session = _make_session()
+
+    # ------------------------------------------------------------------
+    # Public API (mirrors the old QThread surface)
+    # ------------------------------------------------------------------
+
+    def start(self):
+        """Spawn the worker on a plain daemon thread (never a QThread)."""
+        if self._thread and self._thread.is_alive():
+            return
+        self._running = True
+        with _DOWNLOAD_WORKERS_LOCK:
+            _ACTIVE_DOWNLOAD_WORKERS.add(self)
+        self._thread = threading.Thread(
+            target=self._run_wrapped, name="settings-download", daemon=True)
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread and self._thread.is_alive())
+
+    def _run_wrapped(self):
+        """Thread entry: runs the download, then releases the registry hold
+        (always, including cancelled/failed paths)."""
+        try:
+            self._run()
+        finally:
+            self._running = False
+            with _DOWNLOAD_WORKERS_LOCK:
+                _ACTIVE_DOWNLOAD_WORKERS.discard(self)
 
     def _cleanup(self):
         for p in (self._ckpt_dest, self._yaml_dest, self._backend_dest):
@@ -589,7 +632,7 @@ class _DownloadWorker(QThread):
                 try: os.remove(p)
                 except OSError: pass
 
-    def run(self):
+    def _run(self):
         import threading
 
         def _resolve(url):
@@ -871,11 +914,43 @@ class _DownloadProgressDialog(QDialog):
             e.accept()
 
 
-class _MgrFetchThread(QThread):
+class _MgrFetchThread(QObject):
+    """Fetches the model-zoo index off the UI thread.
+
+    Plain QObject driven by a daemon thread (see the registry note on
+    _DownloadWorker) — never a QThread, so the manager's old
+    `self._fetch_thread = None` on arrival can no longer destroy a still-
+    winding-down thread."""
     done = Signal(object, str, object)
     error = Signal(str)
 
-    def run(self):
+    def __init__(self):
+        super().__init__()
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._running = True
+        with _FETCH_WORKERS_LOCK:
+            _ACTIVE_FETCH_WORKERS.add(self)
+        self._thread = threading.Thread(
+            target=self._run_wrapped, name="settings-mgr-fetch", daemon=True)
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread and self._thread.is_alive())
+
+    def _run_wrapped(self):
+        try:
+            self._run()
+        finally:
+            self._running = False
+            with _FETCH_WORKERS_LOCK:
+                _ACTIVE_FETCH_WORKERS.discard(self)
+
+    def _run(self):
         try:
             models = fetch_model_index()
             try:
@@ -891,15 +966,16 @@ class _MgrFetchThread(QThread):
             self.error.emit(str(e))
 
 
-# Fetch threads outliving their page (e.g. when a theme switch rebuilds the
-# settings page mid-fetch). They must not be garbage-collected or destroyed
-# while running, so they are parked here until they finish.
-_PENDING_FETCH_THREADS = set()
+# Module-level registry for the model-manager fetch workers (index + per-
+# folder). Same rationale as _ACTIVE_DOWNLOAD_WORKERS: keep every running
+# worker referenced for its whole lifetime so no wrapper can be garbage-
+# collected (or a QThread destroyed) mid-run.
+_ACTIVE_FETCH_WORKERS = set()
+_FETCH_WORKERS_LOCK = threading.Lock()
 
 
 def _thread_alive(thread):
-    """False once the thread's C++ object has been deleted (its retire hook
-    may have fired between our checks), True otherwise."""
+    """False once the worker wrapper is gone, True otherwise."""
     try:
         thread.isRunning()
         return True
@@ -907,53 +983,73 @@ def _thread_alive(thread):
         return False
 
 
-def _retire_fetch_thread(thread):
-    _PENDING_FETCH_THREADS.discard(thread)
-    thread.deleteLater()
-
-
 def orphan_fetch_threads(manager):
     """Detach an about-to-be-destroyed _FolderManagerWidget from its
-    in-flight fetch threads.
+    in-flight fetch workers.
 
-    QThreads must never be destroyed while running, and requests cannot be
-    interrupted mid-transfer — so instead of blocking on them, running
-    threads are un-parented and parked in a module-level set (their results
-    simply go nowhere); the manager's own model-index thread additionally
-    gets retired once it finishes. Returns the running model-index thread
-    so the caller can defer the manager's deletion until it is done."""
+    The workers are plain QObjects on daemon threads with no QThread object
+    to destroy, and the module registry keeps each one alive until it
+    finishes — so tearing the manager down cannot corrupt Qt thread state.
+    We simply disconnect the manager's slots (a late result must not touch
+    dead state; Qt drops any signal aimed at the destroyed manager anyway)
+    and return None: nothing needs deferring anymore."""
     if manager is None:
         return None
-    for th in list(getattr(manager, "_folder_fetch_threads", []) or []):
-        if _thread_alive(th) and th.isRunning():
-            th.setParent(None)
-            _PENDING_FETCH_THREADS.add(th)
-            th.finished.connect(lambda th=th: _retire_fetch_thread(th))
+    for wk in list(getattr(manager, "_folder_fetch_threads", []) or []):
+        for sig, slot in ((wk.done, manager._on_folder_fetched),
+                          (wk.failed, manager._on_folder_fetch_error)):
+            try:
+                sig.disconnect(slot)
+            except Exception:
+                pass
     fetch = getattr(manager, "_fetch_thread", None)
-    if fetch is not None and _thread_alive(fetch) and fetch.isRunning():
+    if fetch is not None:
         for sig, slot in ((fetch.done, manager._on_loaded),
                           (fetch.error, manager._on_error)):
             try:
                 sig.disconnect(slot)
             except Exception:
                 pass
-        _PENDING_FETCH_THREADS.add(fetch)
-        fetch.finished.connect(
-            lambda f=fetch: _retire_fetch_thread(f))
-        return fetch
     return None
 
 
-class _FolderFetchThread(QThread):
-    """Fetches one folder's file dates/sizes off the UI thread."""
+class _FolderFetchThread(QObject):
+    """Fetches one folder's file dates/sizes off the UI thread.
+
+    Plain QObject on a daemon thread (never a QThread) — see the registry
+    note on _DownloadWorker."""
     done = Signal(str, object, object)
     failed = Signal(str)
 
     def __init__(self, folder_key, parent=None):
-        super().__init__(parent)
+        super().__init__()
         self._key = folder_key
+        self._running = False
+        self._thread: threading.Thread | None = None
 
-    def run(self):
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._running = True
+        with _FETCH_WORKERS_LOCK:
+            _ACTIVE_FETCH_WORKERS.add(self)
+        self._thread = threading.Thread(
+            target=self._run_wrapped, name=f"settings-folder-{self._key}",
+            daemon=True)
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread and self._thread.is_alive())
+
+    def _run_wrapped(self):
+        try:
+            self._run()
+        finally:
+            self._running = False
+            with _FETCH_WORKERS_LOCK:
+                _ACTIVE_FETCH_WORKERS.discard(self)
+
+    def _run(self):
         try:
             dates, sizes = fetch_folder_tree(self._key)
             self.done.emit(self._key, dates, sizes)
@@ -1066,6 +1162,10 @@ class _FolderManagerWidget(QWidget):
         self._folder_file_dates: dict[str, str] = {}
         self._folder_file_sizes: dict[str, int] = {}
         self._show_new_badge: dict[str, bool] = {}
+        # Pending render deferred because a modal dialog is up (see
+        # _request_render) — (search_term,) while queued, None when idle.
+        self._render_pending = None
+        self._render_timer_active = False
 
         self.setStyleSheet("background:transparent;")
         lo = QVBoxLayout(self)
@@ -1185,7 +1285,7 @@ class _FolderManagerWidget(QWidget):
                 self._folder_order.append(key)
             self._model_type_map[key].append(m)
         self._folder_order.sort()  # alphabetical, like the MODEL LIBRARY
-        self._render()
+        self._request_render()
         # Let the page reconcile registered models' types against the zoo
         # (older installs stored the "vocals" fallback for uncovered cats).
         self.index_loaded.emit(models)
@@ -1229,7 +1329,10 @@ class _FolderManagerWidget(QWidget):
         if not self._loading_folders:
             self._dot_timer.stop()
             self._dot_phase = 0
-        self._render()
+        # May fire while an install dialog (opened from a row button) is in
+        # its modal loop — deferring prevents deleteLater'ing the tree under
+        # the parked click emission (see _request_render).
+        self._request_render()
 
     def _tick_dots(self):
         self._dot_phase = (self._dot_phase + 1) % 4
@@ -1259,7 +1362,7 @@ class _FolderManagerWidget(QWidget):
         lbl.setStyleSheet(
             f"font-family:'Montserrat';font-size:11px;color:{theme_manager.theme.text_muted};background:transparent;border:none;"
         )
-        self._list_layout.addWidget(lbl)
+        self._insert_row(lbl)
 
     # ──── Search ────
 
@@ -1276,6 +1379,52 @@ class _FolderManagerWidget(QWidget):
             if item and item.widget():
                 item.widget().deleteLater()
 
+    def _insert_row(self, widget):
+        # Rows are inserted before the layout's single trailing stretch (the
+        # addStretch() in __init__) so the folder list top-aligns directly
+        # under the mode radios. Appending rows AFTER that stretch would
+        # bottom-align them: when the window is maximized and the viewport is
+        # taller than the list, the stretch absorbs the spare height and
+        # pushes the cards down, leaving the reported gap between the radios
+        # and the first folder.
+        self._list_layout.insertWidget(self._list_layout.count() - 1, widget)
+
+    def _request_render(self, search_term=""):
+        """Rebuild the folder list, deferring while any modal dialog is open.
+
+        A rebuild calls deleteLater() on every widget in the list — including
+        the very Install button whose clicked handler may be parked inside a
+        modal dialog's nested event loop right now (install dialogs are opened
+        from those buttons and run a nested loop for minutes). The nested loop
+        processes the deferred deletions underneath the live signal emission;
+        the sender ends up destroyed mid-emission, which is native
+        use-after-free in Qt. It does not crash at that moment — it corrupts
+        the heap and explodes later as a random "Windows fatal exception:
+        access violation" at an unrelated widget allocation on the main
+        thread (e.g. a plain QVBoxLayout()/QLabel() inside the post-install
+        re-render). Background-triggered rebuilds (folder fetch completed,
+        index loaded, install accepted) must therefore wait until the modal
+        is gone; the deferred request is coalesced to a single render.
+        """
+        from PySide6.QtWidgets import QApplication
+        if QApplication.activeModalWidget() is not None:
+            self._render_pending = (search_term,)
+            if not self._render_timer_active:
+                self._render_timer_active = True
+                QTimer.singleShot(120, self._flush_pending_render)
+            return
+        self._render_pending = None
+        self._render(search_term)
+
+    def _flush_pending_render(self):
+        """Re-check the modal guard after a deferred render's timer fires
+        (timers fire inside modal loops too, so each tick re-arms until the
+        dialog is gone, then renders exactly once)."""
+        self._render_timer_active = False
+        pending, self._render_pending = self._render_pending, None
+        if pending is not None:
+            self._request_render(pending[0])
+
     def _render(self, search_term=""):
         self._clear()
         self._render_root(search_term)
@@ -1289,7 +1438,7 @@ class _FolderManagerWidget(QWidget):
             lbl.setStyleSheet(
                 f"font-family:'Montserrat';font-size:11px;color:{theme_manager.theme.text_muted};background:transparent;border:none;"
             )
-            self._list_layout.addWidget(lbl)
+            self._insert_row(lbl)
             return
 
         for fk in folders:
@@ -1345,7 +1494,7 @@ class _FolderManagerWidget(QWidget):
             arrow.clicked.connect(lambda x=fk: self._toggle_folder(x))
             clo.addWidget(arrow, 0, Qt.AlignVCenter)
 
-            self._list_layout.addWidget(card)
+            self._insert_row(card)
 
             if fk in self._loading_folders:
                 overlay = QFrame(card)
@@ -1374,7 +1523,7 @@ class _FolderManagerWidget(QWidget):
 
             show = fk in self._expanded or bool(search_term)
             if show:
-                self._list_layout.addWidget(self._render_inside(fk, search_term))
+                self._insert_row(self._render_inside(fk, search_term))
 
     def _model_new_and_date(self, info, folder_key=""):
         model_date = ""
@@ -1587,7 +1736,12 @@ class _FolderManagerWidget(QWidget):
             info.file_size = file_size
         dialog = ModelInstallDialog(info, self)
         if run_blurred_dialog(dialog) == ModelInstallDialog.Accepted:
-            self._render()
+            # Modal is gone now (exec returned), but we are still inside the
+            # Install button's clicked emission — _request_render() renders
+            # immediately and its deleteLater()s only take effect after the
+            # handler unwinds, which is safe. Render first, then tell the
+            # page the registered list changed.
+            self._request_render()
             self.model_installed.emit()
 
 
@@ -1748,6 +1902,7 @@ class SettingsPage(QWidget):
         # available page height, which made Qt squeeze and round the group
         # heights (1px mode differences). With fixed 65px groups this fits.
         ll.setSpacing(20)
+        self._ll = ll
 
         # Search folders sits on the same row as the REGISTER MODEL header,
         # right-aligned and styled like the MODEL LIBRARY search bar.
@@ -1986,9 +2141,15 @@ class SettingsPage(QWidget):
         self._folder_search.textChanged.connect(self._model_mgr.set_search_text)
         ll.addWidget(self._model_mgr, 2)
 
-        # No trailing stretch: the manager panel stretches to the bottom so
-        # both scroll panels end on the same line (with the page's bottom
-        # margin as breathing room).
+        # Surplus-height sink. In URL / LOCAL FILES modes the manager panel
+        # is hidden, leaving the column with no item that absorbs extra
+        # vertical space — a maximized window would inflate the stretchable
+        # rows instead (the mode radios ballooned to ~200-350px, visually
+        # detaching them from the content below). This trailing spacer takes
+        # that surplus in URL/LOCAL modes; _set_mode pins its factor to 0 in
+        # MODEL MANAGER mode so the panel keeps absorbing it and both scroll
+        # panels still end on the same line.
+        self._ll.addStretch(0)
         main.addWidget(left, 1)
 
         right = QWidget()
@@ -2082,6 +2243,13 @@ class SettingsPage(QWidget):
         self._grp_arch.setVisible(show_arch_type)
         self._grp_type.setVisible(show_arch_type)
 
+        # Trail spacer: in URL / LOCAL modes it soaks up surplus height so
+        # the radios stay pinned to the content below (see the column ctor);
+        # in MODEL MANAGER mode it must not compete with the folder panel's
+        # own stretch (factor 2), or the list would stop short of the bottom
+        # and the two columns would no longer end on the same line.
+        self._ll.setStretch(self._ll.count() - 1, 0 if is_manager else 1)
+
         if is_local:
             self._ckpt.edit.setFocus()
         elif is_url:
@@ -2113,6 +2281,14 @@ class SettingsPage(QWidget):
             new_type = STEM_MAP.get(getattr(info, "category", ""), "")
             if new_type and reg.get("type") != new_type:
                 reg["type"] = new_type
+                changed.append(reg)
+            # Backfill the precise engine type (e.g. 'scnet_tran',
+            # 'bandit_v2') for installs made before model_type was stored —
+            # the arch label collapses variants, so without this an old
+            # install keeps falling back to config sniffing.
+            zoo_mt = getattr(info, "model_type", "")
+            if zoo_mt and reg.get("model_type") != zoo_mt:
+                reg["model_type"] = zoo_mt
                 changed.append(reg)
         if not changed:
             return
@@ -2243,8 +2419,10 @@ class SettingsPage(QWidget):
         custom_backend = bool(backend_script_path) and os.path.isfile(backend_script_path)
         if custom_backend:
             backend_module = os.path.splitext(ckpt_name)[0]
+            # Writable app-data root (APP_DIR) — never _REPO_ROOT, which is
+            # _internal when frozen and is wiped on every app update.
             dest_dir = os.path.abspath(
-                os.path.join(_REPO_ROOT, "models", "custom", backend_module))
+                os.path.join(_DATA_ROOT, "models", "custom", backend_module))
             ckpt_dest_dir = dest_dir
             yaml_dest_dir = dest_dir
         else:
@@ -2319,8 +2497,10 @@ class SettingsPage(QWidget):
         custom_backend = bool(backend_url_value)
         if custom_backend:
             backend_module = os.path.splitext(ckpt_name)[0]
+            # Writable app-data root (APP_DIR) — never _REPO_ROOT, which is
+            # _internal when frozen and is wiped on every app update.
             dest_dir = os.path.abspath(
-                os.path.join(_REPO_ROOT, "models", "custom", backend_module))
+                os.path.join(_DATA_ROOT, "models", "custom", backend_module))
             ckpt_dest_dir = dest_dir
             yaml_dest_dir = dest_dir
         else:
@@ -2393,7 +2573,7 @@ class SettingsPage(QWidget):
         backend_module = getattr(self, '_pending_backend_module', '')
         if backend_module:
             self._ensure_custom_init(
-                os.path.abspath(os.path.join(_REPO_ROOT, "models", "custom", backend_module)))
+                os.path.abspath(os.path.join(_DATA_ROOT, "models", "custom", backend_module)))
         self._pending_reg = {
             "ckpt_name": ckpt_name,
             "yaml_name": yaml_name,
@@ -2423,9 +2603,17 @@ class SettingsPage(QWidget):
     def _finalize_registration(self, ckpt_name, yaml_name, ckpt_dest, yaml_dest, arch, model_type,
                                backend_module=""):
         name = ckpt_name
+        # Record the precise engine type (config.training.model_type or a
+        # name match) so every consumer — inference page, ensemble runners,
+        # runnability badge — resolves the same type the engine will build,
+        # instead of depending on the coarser arch label alone. '' lets them
+        # fall back to the arch→type map.
+        from backend.msst_catalog import guess_registry_engine_type
+        engine_model_type = guess_registry_engine_type(yaml_dest, ckpt_name)
         model = {
             "name": name, "ckpt": ckpt_dest, "yaml": yaml_dest,
             "arch": arch, "type": model_type,
+            "model_type": engine_model_type,
             "backend_module": backend_module,
             "custom_backend_enabled": bool(backend_module),
         }
@@ -2490,7 +2678,7 @@ class SettingsPage(QWidget):
         backend_module = model.get("backend_module", "")
         if backend_module:
             module_dir = _os.path.abspath(
-                _os.path.join(_REPO_ROOT, "models", "custom", backend_module))
+                _os.path.join(_DATA_ROOT, "models", "custom", backend_module))
             if _os.path.isdir(module_dir):
                 for fname in _os.listdir(module_dir):
                     if fname.endswith(".py"):

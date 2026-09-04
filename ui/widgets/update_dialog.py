@@ -10,9 +10,10 @@ available, a themed dialog offers to open the Releases page.
   (used by the Settings page button).
 """
 import sys
+import threading
 import webbrowser
 
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import Qt, QObject, QTimer, Signal
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 
 from backend import update_checker as uc
@@ -20,10 +21,46 @@ from ui.theme import theme_manager
 from ui.widgets.common import run_blurred_dialog
 
 
-class _CheckThread(QThread):
+# Module-level registry for update-check workers (same rationale as
+# backend/runner.py's registry): the parent window/page can be rebuilt (theme
+# switch) or closed while the check is in flight, and a QThread wrapper
+# destroyed mid-run corrupts Qt's thread state — later surfacing as a random
+# native access violation. Workers are plain QObjects on daemon threads,
+# kept referenced until they finish.
+_ACTIVE_CHECK_WORKERS = set()
+_CHECK_WORKERS_LOCK = threading.Lock()
+
+
+class _CheckThread(QObject):
     done = Signal(bool, object)  # newer_available, latest tag (or None)
 
-    def run(self):
+    def __init__(self, parent=None):
+        super().__init__()
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._running = True
+        with _CHECK_WORKERS_LOCK:
+            _ACTIVE_CHECK_WORKERS.add(self)
+        self._thread = threading.Thread(
+            target=self._run_wrapped, name="update-check", daemon=True)
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread and self._thread.is_alive())
+
+    def _run_wrapped(self):
+        try:
+            self._run()
+        finally:
+            self._running = False
+            with _CHECK_WORKERS_LOCK:
+                _ACTIVE_CHECK_WORKERS.discard(self)
+
+    def _run(self):
         newer, tag = uc.check_for_update()
         self.done.emit(newer, tag)
 

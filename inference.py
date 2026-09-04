@@ -19,7 +19,10 @@ sys.path.append(current_dir)
 from utils.audio_utils import normalize_audio, denormalize_audio, draw_spectrogram
 from utils.settings import get_model_from_config, load_config, parse_args_inference
 from utils.model_utils import bigshifts_wrapper
-from utils.model_utils import prefer_target_instrument, apply_tta, load_start_checkpoint
+from utils.model_utils import (
+    prefer_target_instrument, apply_tta, load_start_checkpoint,
+    ensure_readable_checkpoint)
+from utils.stem_planning import complement_stem_name
 
 import warnings
 
@@ -100,6 +103,20 @@ def run_folder(
 
         mix_orig = mix.copy()
 
+        # Mono models (stereo: false — e.g. 16 kHz speech-denoising mel-band
+        # checkpoints with num_channels: 1) only accept a single channel.
+        # Downmix stereo sources for the model, then re-expand the separated
+        # stems to two channels below so output files keep the source's
+        # channel layout and mix-minus complements stay channel-consistent.
+        model_stereo = getattr(model, 'stereo', True)
+        if model_stereo is None:
+            model_stereo = True
+        downmixed = False
+        if not model_stereo and mix.shape[0] > 1:
+            print("Model is mono (stereo: false) - downmixing stereo input to mono...")
+            mix = np.mean(mix, axis=0, keepdims=True)
+            downmixed = True
+
         # Normalize input audio if enabled
         if "normalize" in config.inference:
             if config.inference["normalize"] is True:
@@ -129,12 +146,29 @@ def run_folder(
                 pbar=detailed_pbar
             )
 
-        # Extract instrumental track if requested
+        # Mono-model run: give the separated stems the same two-channel
+        # layout as the source track (they were produced from the downmixed
+        # mono input).
+        if downmixed:
+            waveforms_orig = {
+                k: (np.repeat(v, 2, axis=0)
+                    if v.ndim == 2 and v.shape[0] == 1 else v)
+                for k, v in waveforms_orig.items()
+            }
+
+        # Extract the complement track if requested (mix minus the separated
+        # target). Name it after the model's *other* trained stem when there is
+        # exactly one (e.g. a vocals/instrument model yields real "vocals",
+        # not a misleading "instrumental"); for multi-stem models the mix
+        # minus one target is not any single trained stem, so keep upstream's
+        # generic "instrumental" label. (Shared helper: utils/stem_planning.py)
         if args.extract_instrumental:
+            all_instruments = list(getattr(config.training, 'instruments', []) or [])
+            complement_name = complement_stem_name(all_instruments, instruments)
             instr = "vocals" if "vocals" in instruments else instruments[0]
-            waveforms_orig["instrumental"] = mix_orig - waveforms_orig[instr]
-            if "instrumental" not in instruments:
-                instruments.append("instrumental")
+            waveforms_orig[complement_name] = mix_orig - waveforms_orig[instr]
+            if complement_name not in instruments:
+                instruments.append(complement_name)
 
         for instr in instruments:
             estimates = waveforms_orig[instr]
@@ -145,10 +179,12 @@ def run_folder(
                     estimates = denormalize_audio(estimates, norm_params)
 
             peak: float = float(np.abs(estimates).max())
-            if peak <= 1.0 and args.pcm_type != 'FLOAT':
-                codec = "flac"
-            else:
-                codec = "wav"
+            codec, norm_scale = output_codec(args.pcm_type, peak)
+            if norm_scale is not None:
+                print(f"Note: stem '{instr}' peaks at {peak:.2f} (>1.0) \u2014 "
+                      "peak-normalizing to keep the selected FLAC format "
+                      "without clipping.")
+                estimates = estimates * norm_scale
 
             subtype = args.pcm_type
 
@@ -179,6 +215,21 @@ def run_folder(
                 print("Wrote file:", output_img_path)
 
     print(f"Elapsed time: {time.time() - start_time:.2f} seconds.")
+
+def output_codec(pcm_type: str, peak: float):
+    """Pick the output codec (and optional peak-normalize scale) for a stem.
+
+    The configured PCM type decides the format for EVERY stem — the old
+    per-stem fallback wrote hot stems as WAV even when FLAC was selected,
+    producing mixed .wav/.flac folders. Integer types (FLAC PCM_16/24)
+    always yield '.flac'; stems peaking above 1.0 get a scale-down factor so
+    the integer codec never clips. FLOAT always yields '.wav' (32-bit float).
+    """
+    if pcm_type != 'FLOAT':
+        scale = 1.0 / peak if peak > 1.0 else None
+        return "flac", scale
+    return "wav", None
+
 
 def format_filename(template, **kwargs):
     '''
@@ -216,14 +267,47 @@ def proc_folder(dict_args):
         config = load_config(args.model_type, args.config_path)
         model = MDXNetModel(config, args.start_check_point)
     else:
-        model, config = get_model_from_config(args.model_type, args.config_path)
+        # custom_backend: author-shipped architecture file (fork models such
+        # as pcunwa's HyperACE / BS-Roformer-Large-Inst) — the model class is
+        # loaded from that folder's bs_roformer.py instead of the bundled code.
+        try:
+            model, config = get_model_from_config(
+                args.model_type, args.config_path,
+                custom_backend=getattr(args, 'custom_backend', None),
+                checkpoint_path=args.start_check_point)
+        except ValueError as exc:
+            # A model whose type has no dispatch branch used to die here as
+            # a raw traceback; the GUI pre-validates registered models, but
+            # manual CLI / ensemble launches can still reach this point, so
+            # report it clearly and exit instead.
+            if str(exc).startswith('Unknown model type'):
+                print(f"ERROR: {exc}")
+                print("This model type is not supported by this build's "
+                      "inference engine. Pick another model or update the app.")
+                sys.exit(1)
+            raise
     if 'model_type' in config.training and args.model_type != 'mdxnet':
         args.model_type = config.training.model_type
     # MDX-Net checkpoints are ONNX, so torch.load/load_start_checkpoint don't
     # apply — the ONNX session is built inside MDXNetModel from the checkpoint.
     if args.start_check_point and args.model_type != 'mdxnet':
-        checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
-        load_start_checkpoint(args, model, checkpoint, type_='inference')
+        # >=4 GiB checkpoints are ZIP64 archives that torch 2.11's C++
+        # reader crashes on natively when an older torch wrote them (access
+        # violation in get_storage_from_record). mmap=True reads them but
+        # its mapped storages intermittently fault during the state-dict
+        # copy on Windows, so the deterministic path is: rewrite the
+        # archive once with python's zipfile (ensure_readable_checkpoint)
+        # and plain-load that — torch reads python-written ZIP64 fine.
+        checkpoint = torch.load(
+            ensure_readable_checkpoint(args.start_check_point),
+            weights_only=False, map_location='cpu')
+        try:
+            load_start_checkpoint(args, model, checkpoint, type_='inference')
+        finally:
+            # Free the source state dict before model.to(device) to keep
+            # peak RAM (and commit) low; load_start_checkpoint already
+            # copied the weights into the model's own parameters.
+            del checkpoint
 
     print("Instruments: {}".format(config.training.instruments))
 

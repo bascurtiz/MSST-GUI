@@ -13,22 +13,61 @@ import threading
 import time
 import re
 from datetime import datetime
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QObject, Signal
 
-from backend.paths import REPO_ROOT, get_python_exe
+from backend.paths import REPO_ROOT, APP_DIR, get_python_exe
 from backend.mvsep.api_client import MVSepApiClient, MVSepAPIError
 from backend.mvsep.models import MVSepModel
 from backend.audio_names import format_output_filename, INFERENCE_FILENAME_TEMPLATE
+from backend.msst_catalog import (
+    engine_supported_type_list,
+    engine_unsupported_models,
+)
 
 
 TQDM_PATTERN = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+
+# Arch label → engine type fallback for manually registered models (zoo
+# installs carry the precise type in model_type). Kept next to
+# _get_model_type so the pre-flight check and the launch path can never
+# disagree on what type a model will run as.
+ARCH_TO_MODEL_TYPE = {
+    "MDX Architecture": "mdx23c",
+    "MDX23c Architecture": "mdx23c",
+    "MDX-Net Architecture": "mdxnet",
+    "VR Architecture": "vr",
+    "Demucs Architecture": "htdemucs",
+    "BS Roformer Architecture": "bs_roformer",
+    "Melband Roformer Architecture": "mel_band_roformer",
+    "Medley Vox Architecture": "medley_vox",
+    "SCNet Architecture": "scnet",
+    "Apollo Architecture": "apollo",
+    "Bandit Architecture": "bandit",
+    "Conformer Architecture": "conformer",
+    "DTTNet Architecture": "dttnet",
+    "BSMamba2 Architecture": "bs_mamba2",
+    "Swin Upernet Architecture": "swin_upernet",
+    "TorchSeg Architecture": "torchseg",
+    "VitLarge23 Architecture": "segm_models",
+}
 
 
 def _strip_tqdm(line):
     return TQDM_PATTERN.sub('', line).strip()
 
 
-class IterativeEnsembleRunner(QThread):
+# Module-level registry for the iterative ensemble runner (same rationale as
+# backend/runner.py's registry): the page can be torn down and rebuilt (theme
+# switch) while the pipeline is running, and a QThread wrapper destroyed
+# while its thread is still winding down corrupts Qt's thread state — later
+# surfacing as a random native access violation. The runner is a plain QObject
+# on a daemon thread, kept referenced until the job finishes — no QThread
+# object exists to leak or corrupt.
+_ACTIVE_ITERATIVE_RUNNERS = set()
+_ITERATIVE_RUNNERS_LOCK = threading.Lock()
+
+
+class IterativeEnsembleRunner(QObject):
     stage_changed = Signal(str, int, int)
     file_progress = Signal(str, int)
     iteration_progress = Signal(int, int)
@@ -39,13 +78,51 @@ class IterativeEnsembleRunner(QThread):
     error = Signal(str)
 
     def __init__(self, config, parent=None):
-        super().__init__(parent)
+        super().__init__()
         self._config = config
         self._temp_dir = None
         self._cancelled = False
         self._paused = False
         self._pause_event = threading.Event()
         self._pause_event.set()
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    # ------------------------------------------------------------------
+    # Public API (mirrors the old QThread surface)
+    # ------------------------------------------------------------------
+
+    def start(self):
+        """Spawn the pipeline on a plain daemon thread (never a QThread)."""
+        if self._thread and self._thread.is_alive():
+            return
+        self._running = True
+        with _ITERATIVE_RUNNERS_LOCK:
+            _ACTIVE_ITERATIVE_RUNNERS.add(self)
+        self._thread = threading.Thread(
+            target=self._run_wrapped, name="iterative-ensemble", daemon=True)
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread and self._thread.is_alive())
+
+    def _run_wrapped(self):
+        """Thread entry: runs the pipeline, then releases the registry hold."""
+        try:
+            try:
+                self.run()
+            except Exception as exc:  # noqa: BLE001 — never die silently
+                import traceback as _tb
+                self.log_line.emit(f"FATAL ERROR: {exc}")
+                self.log_line.emit(_tb.format_exc())
+                try:
+                    self.finished.emit(False, f"Error: {exc}", "")
+                except RuntimeError:
+                    pass
+        finally:
+            self._running = False
+            with _ITERATIVE_RUNNERS_LOCK:
+                _ACTIVE_ITERATIVE_RUNNERS.discard(self)
 
     def cancel(self):
         self._cancelled = True
@@ -101,6 +178,32 @@ class IterativeEnsembleRunner(QThread):
         overlap = cfg.get("overlap", 2)
         delete_prev_pass = cfg.get("delete_prev_pass", True)
         cleanup_intermediate = cfg.get("cleanup_intermediate", True)
+
+        # Fail fast: no enabled local model may use a type the engine has no
+        # branch for — abort the whole pipeline before any subprocess spawns
+        # (each such model would otherwise die with a raw 'Unknown model
+        # type' traceback after the job already started).
+        enabled_local = [m for m in models_local.values()
+                         if m.get("enabled", False)]
+        unsupported = engine_unsupported_models(enabled_local,
+                                                ARCH_TO_MODEL_TYPE)
+        if unsupported:
+            for model, eff in unsupported:
+                self._log(
+                    "ERROR: model '" + str(model.get("name", "Unknown"))
+                    + "' cannot be run: model type '" + eff
+                    + "' has no branch in this build's inference engine.")
+            self._log("Supported model types: "
+                      + ", ".join(engine_supported_type_list()) + ".")
+            self._log("Aborting before any model ran: pick another model, "
+                      "or update the app if it needs a newer engine.")
+            self.finished.emit(
+                False,
+                "Aborted: " + str(len(unsupported))
+                + " model(s) cannot run in this build.",
+                "",
+            )
+            return
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -369,7 +472,9 @@ class IterativeEnsembleRunner(QThread):
             return False
 
         arch = model.get("arch", "bs_roformer")
-        model_type = self._get_model_type(arch)
+        # Precise engine type recorded at install time wins (e.g. 'scnet_tran',
+        # 'bandit_v2'); fall back to the arch map for manual registrations.
+        model_type = model.get("model_type") or self._get_model_type(arch)
 
         cmd = [
             get_python_exe(), os.path.join(REPO_ROOT, "inference.py"),
@@ -382,12 +487,21 @@ class IterativeEnsembleRunner(QThread):
         # upstream inference.py nests "{file_name}/{instr}" by default; keep the
         # flat layout the stem discovery below walks for.
         cmd += ["--filename_template", INFERENCE_FILENAME_TEMPLATE]
+        # Fork architectures: load the model class from the author's
+        # backend file (models/custom/<module> under the writable APP_DIR)
+        # instead of the bundled code.
+        if model.get("custom_backend_enabled"):
+            bm = model.get("backend_module", "")
+            if bm:
+                cmd += ["--custom_backend",
+                        os.path.join(APP_DIR, "models", "custom", bm)]
 
         try:
             process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace", cwd=REPO_ROOT,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                env={**os.environ, "PYTHONUTF8": "1"},
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
             def read_stream(stream, prefix=""):
@@ -412,20 +526,7 @@ class IterativeEnsembleRunner(QThread):
             return False
 
     def _get_model_type(self, arch):
-        mapping = {
-            "MDX Architecture": "mdx23c",
-            "MDX23c Architecture": "mdx23c",
-            "MDX-Net Architecture": "mdxnet",
-            "VR Architecture": "vr",
-            "Demucs Architecture": "htdemucs",
-            "BS Roformer Architecture": "bs_roformer",
-            "Melband Roformer Architecture": "mel_band_roformer",
-            "Medley Vox Architecture": "medley_vox",
-            "SCNet Architecture": "scnet",
-            "Apollo Architecture": "apollo",
-            "Bandit Architecture": "bandit",
-        }
-        return mapping.get(arch, "bs_roformer")
+        return ARCH_TO_MODEL_TYPE.get(arch, "bs_roformer")
 
     def _find_instrumental_stem(self, output_dir, stem_type):
         patterns = {
@@ -461,7 +562,8 @@ class IterativeEnsembleRunner(QThread):
             process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace", cwd=REPO_ROOT,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                env={**os.environ, "PYTHONUTF8": "1"},
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             stdout, stderr = process.communicate()
             for line in stdout.splitlines():

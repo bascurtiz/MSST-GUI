@@ -4,7 +4,7 @@
 
 #define AppName "MSST GUI"
 #define AppExe "MSST-GUI.exe"
-#define AppVersion "1.0.1"
+#define AppVersion "1.0.2"
 #define AppMutex "MSST-GUI-Mutex"
 
 [Setup]
@@ -42,12 +42,14 @@ Source: "dist\MSST-GUI\*"; DestDir: "{app}"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
-; v1.0.1: clear the whole install folder before writing the new files, so
-; stale artifacts from a previous install (e.g. a broken bundled
-; zstd/backports stub in _internal) can never survive an upgrade. This
-; intentionally wipes user data too (msst_settings.json, runtime\,
-; models\ downloads) — it is recreated / re-downloaded on the next run.
-Type: filesandordirs; Name: "{app}\*"
+; TESTING MODE: only wipe the bundled app code (_internal), so stale
+; artifacts from a previous install (e.g. a broken bundled zstd/backports
+; stub) can never survive an upgrade — but keep the installed GPU runtime
+; (runtime\, ~2.5-3 GB / ~5 min to reinstall), downloaded models\ and
+; configs\, and msst_settings.json intact while iterating on builds.
+; For release, consider restoring the full wipe:
+;   Type: filesandordirs; Name: "{app}\*"
+Type: filesandordirs; Name: "{app}\_internal\*"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

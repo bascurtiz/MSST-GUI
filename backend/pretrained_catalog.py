@@ -73,6 +73,18 @@ class PretrainedModel:
     _dest_dir: str = field(default="", repr=False)
 
     @property
+    def backend_file(self) -> str:
+        """Author side-car architecture file (fork models), or "" if absent.
+
+        Fork authors (pcunwa's BS-Roformer-Large-Inst / HyperACE, etc.)
+        publish their modified model code — usually ``bs_roformer.py`` —
+        next to the weights. The installer probes the model's repo for it
+        and downloads it alongside the config; training then builds the
+        model from that file instead of the bundled code.
+        """
+        return self._backend_file
+
+    @property
     def is_installed(self) -> bool:
         """True once both files exist on disk under the Pretrained folder.
 
@@ -111,6 +123,10 @@ class PretrainedModel:
     @property
     def config_path(self) -> str:
         return os.path.join(self.dest_dir, self.config_name)
+
+    # Populated by install_model() when the model's repo ships an author
+    # architecture file (see probe_sidecar_backend). "" = bundled code.
+    _backend_file: str = field(default="", repr=False)
 
 
 # ── URL helpers ──────────────────────────────────────────────────────────────
@@ -407,6 +423,80 @@ def _fetch_doc(url: str, parser, timeout: tuple) -> list[PretrainedModel]:
     return parser(text)
 
 
+# ── Author side-car (fork architecture) detection ───────────────────────────
+
+# File names fork authors give their modified model code. Checked in this
+# order against the model repo's file listing.
+_SIDECAR_NAMES = ("bs_roformer.py", "model.py", "models.py")
+
+
+def probe_sidecar_backend(model_url: str, timeout: float = 15.0) -> Optional[dict]:
+    """Check a model's hosting repo for an author side-car architecture file.
+
+    Only Hugging Face repos are probed (the hosting for every fork we've
+    seen): the file list of ``https://huggingface.co/<user>/<repo>`` is
+    fetched from the public API and matched against _SIDECAR_NAMES.
+
+    Returns {"url", "filename"} for the first side-car found, or None.
+    Never raises — any failure simply means "no side-car detected" and the
+    install proceeds with the bundled model code.
+    """
+    try:
+        import requests
+        m = re.match(r"https?://huggingface\.co/([^/]+)/([^/]+)/?", model_url.split("?")[0])
+        if not m:
+            return None
+        user, repo = m.group(1), m.group(2)
+        api = f"https://huggingface.co/api/models/{user}/{repo}/tree/main"
+        resp = requests.get(api, timeout=timeout)
+        if resp.status_code != 200:
+            return None
+        files = [entry.get("path", "") for entry in resp.json()
+                 if isinstance(entry, dict) and entry.get("type") == "file"]
+        for name in _SIDECAR_NAMES:
+            for path in files:
+                if os.path.basename(path).lower() == name:
+                    url = f"https://huggingface.co/{user}/{repo}/resolve/main/{path}"
+                    return {"url": url, "filename": name}
+        return None
+    except Exception:
+        return None
+
+
+def _download_sidecar(
+    model: "PretrainedModel",
+    status_callback: Optional[Callable[[str], None]],
+    cancel_callback: Optional[Callable[[], bool]],
+) -> str:
+    """Probe the model repo for an author side-car and download it.
+
+    Returns the local path of the downloaded backend file, or "" when the
+    repo ships none (the common case) or the probe/download fails — a
+    missing side-car must never fail the overall install.
+    """
+    try:
+        hit = probe_sidecar_backend(model.checkpoint_url)
+    except Exception:
+        hit = None
+    if not hit:
+        return ""
+    if cancel_callback and cancel_callback():
+        return ""
+    if status_callback:
+        status_callback("Downloading author backend (fork architecture)...")
+    dest = os.path.join(model.dest_dir, hit["filename"])
+    try:
+        ok, msg = _download(hit["url"], dest, None, status_callback,
+                            cancel_callback, None)
+        if not ok or not os.path.isfile(dest):
+            _cleanup(dest)
+            return ""
+    except Exception:
+        _cleanup(dest)
+        return ""
+    return dest
+
+
 # ── Install ──────────────────────────────────────────────────────────────────
 
 def install_model(
@@ -449,6 +539,11 @@ def install_model(
     if cancel_callback and cancel_callback():
         _cleanup(yaml_dest, ckpt_dest)
         return False, "Cancelled"
+
+    # Fork architectures: probe the model's repo for an author backend
+    # file (e.g. bs_roformer.py) and fetch it too. Best-effort — absence
+    # or failure here never fails the install; the bundled code is used.
+    model._backend_file = _download_sidecar(model, status_callback, cancel_callback)
 
     if status_callback:
         status_callback("Installed!")

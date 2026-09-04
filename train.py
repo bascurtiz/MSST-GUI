@@ -16,6 +16,15 @@ from typing import List, Callable, Union
 import torch.distributed as dist
 from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 
+# Compiled layout: the bundled runtime may not put this script's folder on
+# sys.path (inference.py carries the same preamble). Make utils/ importable
+# regardless of how the process is launched.
+import os as _entry_os
+import sys as _entry_sys
+_entry_dir = _entry_os.path.dirname(_entry_os.path.abspath(__file__))
+if _entry_dir not in _entry_sys.path:
+    _entry_sys.path.insert(0, _entry_dir)
+
 from utils.settings import get_scheduler, parse_args_train, initialize_environment_ddp, \
     initialize_environment, get_model_from_config, wandb_init
 from utils.model_utils import save_weights, normalize_batch, \
@@ -24,8 +33,14 @@ from utils.model_utils import save_weights, normalize_batch, \
 from valid import valid_multi_gpu, valid
 
 import warnings
+import logging
 
 warnings.filterwarnings("ignore")
+# torch.utils.flop_counter logs a one-time "triton not found" line via the
+# logging module (not warnings), so the filterwarnings above can't silence
+# it. The bundled runtime never ships triton by design; the message is
+# informational only, so mute just that logger before anything imports it.
+logging.getLogger("torch.utils.flop_counter").setLevel(logging.ERROR)
 
 
 def forward_step(x, y, active_stem_ids, get_internal_loss, model, multi_loss, device_ids):
@@ -294,8 +309,9 @@ def train_model(args: Union[argparse.Namespace, None], rank=None, world_size=Non
     """
 
     from utils.dataset import prepare_data
-    from utils.model_utils import load_start_checkpoint
+    from utils.model_utils import load_start_checkpoint, ensure_readable_checkpoint
     from utils.model_utils import get_lora
+    from utils.model_utils import assert_cuda_available, effective_use_amp
     from utils.losses import choice_loss
     from torch.cuda.amp.grad_scaler import GradScaler
     from utils.model_utils import get_optimizer, log_model_info
@@ -306,10 +322,18 @@ def train_model(args: Union[argparse.Namespace, None], rank=None, world_size=Non
         initialize_environment_ddp(rank, world_size, args.seed, args.results_path)
     else:
         initialize_environment(args.seed, args.results_path)
-    model, config = get_model_from_config(args.model_type, args.config_path)
+    # custom_backend: author-shipped architecture file (fork models such as
+    # pcunwa's HyperACE / BS-Roformer-Large-Inst) — build the model from the
+    # author's file when fine-tuning starts from their checkpoint. The
+    # checkpoint is also handed to the resolver so fork checkpoints without a
+    # side-car are still matched to the right vendored class.
+    model, config = get_model_from_config(
+        args.model_type, args.config_path,
+        custom_backend=getattr(args, 'custom_backend', None),
+        checkpoint_path=args.start_check_point or None)
     if 'model_type' in config.training:
         args.model_type = config.training.model_type
-    use_amp = getattr(config.training, 'use_amp', True)
+    use_amp = effective_use_amp(config)
     device_ids = args.device_ids
     if ddp:
         batch_size = config.training.batch_size
@@ -321,9 +345,28 @@ def train_model(args: Union[argparse.Namespace, None], rank=None, world_size=Non
 
     train_loader = prepare_data(config, args, batch_size)
 
+    resume_meta = None
     if args.start_check_point:
-        checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
-        load_start_checkpoint(args, model, checkpoint, type_='train')
+        # >=4 GiB checkpoints are ZIP64 archives torch 2.11's C++ reader
+        # crashes on natively when written by an older torch — rewrite once
+        # with python's zipfile and plain-load that (see
+        # ensure_readable_checkpoint).
+        checkpoint = torch.load(
+            ensure_readable_checkpoint(args.start_check_point),
+            weights_only=False, map_location='cpu')
+        try:
+            load_start_checkpoint(args, model, checkpoint, type_='train')
+        finally:
+            # Keep only the small resume metadata the blocks below consume
+            # (optimizer/scheduler/epoch/best-metric/all-metrics/all-losses)
+            # and free the rest of the dict — including the (possibly
+            # multi-GB) source state dict — before the model moves to GPU
+            # and the optimizer is built, so peak RAM stays low.
+            resume_meta = {k: checkpoint[k] for k in (
+                "optimizer_state_dict", "scheduler_state_dict", "epoch",
+                "best_metric", "all_metrics", "all_losses")
+                if k in checkpoint}
+            del checkpoint
     model = get_lora(args, config, model)
 
     if args.freeze_layers is not None:
@@ -372,30 +415,30 @@ def train_model(args: Union[argparse.Namespace, None], rank=None, world_size=Non
     optimizer = get_optimizer(config, model)
     scheduler = get_scheduler(config, optimizer)
 
-    if args.start_check_point and "optimizer_state_dict" in checkpoint and args.load_optimizer:
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    if args.start_check_point and "optimizer_state_dict" in resume_meta and args.load_optimizer:
+        optimizer.load_state_dict(resume_meta["optimizer_state_dict"])
 
-    if args.start_check_point and "scheduler_state_dict" in checkpoint and args.load_scheduler:
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+    if args.start_check_point and "scheduler_state_dict" in resume_meta and args.load_scheduler:
+        scheduler.load_state_dict(resume_meta["scheduler_state_dict"])
 
     # load num epoch
-    if args.start_check_point and "epoch" in checkpoint and args.load_epoch:
-        start_epoch = checkpoint["epoch"] + 1
+    if args.start_check_point and "epoch" in resume_meta and args.load_epoch:
+        start_epoch = resume_meta["epoch"] + 1
     else:
         start_epoch = 0
 
-    if args.start_check_point and "best_metric" in checkpoint and args.load_best_metric:
-        best_metric = checkpoint["best_metric"]
+    if args.start_check_point and "best_metric" in resume_meta and args.load_best_metric:
+        best_metric = resume_meta["best_metric"]
     else:
         best_metric = float('-inf')
 
-    if args.start_check_point and "all_metrics" in checkpoint and args.load_all_metrics:
-        all_time_all_metrics = checkpoint["all_metrics"]
+    if args.start_check_point and "all_metrics" in resume_meta and args.load_all_metrics:
+        all_time_all_metrics = resume_meta["all_metrics"]
     else:
         all_time_all_metrics = {}
 
-    if args.start_check_point and "all_losses" in checkpoint and args.load_all_losses:
-        all_losses = checkpoint["all_losses"]
+    if args.start_check_point and "all_losses" in resume_meta and args.load_all_losses:
+        all_losses = resume_meta["all_losses"]
     else:
         all_losses = {}
 
@@ -403,6 +446,9 @@ def train_model(args: Union[argparse.Namespace, None], rank=None, world_size=Non
     scaler = GradScaler()
 
     if args.set_per_process_memory_fraction:
+        assert_cuda_available(
+            "--set_per_process_memory_fraction (cap training VRAM usage)",
+            "Remove the flag to train without a GPU.")
         torch.cuda.set_per_process_memory_fraction(1.0)
     torch.cuda.empty_cache()
 

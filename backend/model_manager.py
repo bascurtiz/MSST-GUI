@@ -221,7 +221,9 @@ def _arch_folder(arch: str) -> str:
         "Swin Upernet Architecture": "swin_upernet",
         "BSMamba2 Architecture": "bs_mamba2",
         "Conformer Architecture": "conformer",
-        "DTTNet Architecture": "dtt_net",
+        # Engine dispatch branch is spelled 'dttnet' (upstream also uses
+        # 'dtt_net' in places).
+        "DTTNet Architecture": "dttnet",
     }
     return mapping.get(arch, "bs_roformer")
 
@@ -285,7 +287,9 @@ def install_model(
 
     if info.backend_script_url:
         backend_module = os.path.splitext(ckpt_name)[0]
-        custom_backend_dir = os.path.join(REPO_ROOT, "models", "custom", backend_module)
+        # Side-car lives under the writable APP_DIR (REPO_ROOT is _internal
+        # when frozen and gets wiped on every app update).
+        custom_backend_dir = os.path.join(APP_DIR, "models", "custom", backend_module)
         backend_dest = os.path.join(custom_backend_dir, "bs_roformer.py")
         custom_backend = True
 
@@ -352,6 +356,11 @@ def install_model(
         "ckpt": os.path.normpath(ckpt_dest),
         "yaml": os.path.normpath(yaml_dest),
         "arch": arch,
+        # Precise engine type (e.g. 'scnet_tran', 'bandit_v2') straight from
+        # models.json — the arch label collapses variants (all SCNet flavors
+        # are "SCNet Architecture"), so this is what keeps the right class
+        # through GUI -> engine without relying on config sniffing alone.
+        "model_type": info.model_type,
         "type": info.stem_type,
         "backend_module": backend_module,
         "custom_backend_enabled": custom_backend,

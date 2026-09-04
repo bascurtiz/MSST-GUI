@@ -1554,7 +1554,7 @@ class TrainingPage(QWidget):
         self._latest_chip.setStyleSheet(_chip_ss(False))
         self._latest_chip.clicked.connect(self._pick_latest_ckpt)
         self._ckpt_row.add_extra(self._latest_chip)
-        self._ckpt_row.changed.connect(self._refresh_latest_chip)
+        self._ckpt_row.changed.connect(self._on_ckpt_changed)
         self._ckpt_row.pick_requested.connect(self._open_pretrained)
         cfg.addWidget(self._ckpt_row)
 
@@ -1592,6 +1592,17 @@ class TrainingPage(QWidget):
                                      tooltip="training.optimizer. muon / adago need an 'optimizer:'\n"
                                              "section with muon_group / adam_group in the YAML.")
         st.addWidget(self._optim_row)
+        self._optim_warn = QLabel("")
+        self._optim_warn.setWordWrap(True)
+        self._optim_warn.setStyleSheet(
+            f"font-family:'Montserrat';font-size:9px;color:{theme_manager.theme.warning};"
+            "background:transparent;"
+        )
+        self._optim_warn.setVisible(False)
+        st.addWidget(self._optim_warn)
+        self._optim_row.combo.currentIndexChanged.connect(
+            lambda *_: self._refresh_gpu_warnings())
+        self._refresh_gpu_warnings()
         self._loss_row = _ChevronRow(
             "Loss", tooltip="Loss functions summed for training (--loss).\n"
                             "RoFormer / Conformer models use their internal loss unless\n"
@@ -1645,7 +1656,7 @@ class TrainingPage(QWidget):
         self._prog_card = _Card("Training Progress")
         self._prog_lbl = QLabel("0 / 0 (0.00%)")
         self._prog_lbl.setStyleSheet(
-            f"font-family:'Montserrat';font-size:10px;color:{t.text_sec};background:transparent;"
+            f"font-family:'Montserrat';font-size:12px;color:{t.text_sec};background:transparent;"
         )
         self._prog_card.add_title_widget(self._prog_lbl)
         self._bar = QProgressBar()
@@ -1661,7 +1672,7 @@ class TrainingPage(QWidget):
         self._stat_box = QLabel()
         self._stat_box.setTextFormat(Qt.RichText)
         self._stat_box.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self._stat_box.setStyleSheet(_mono_box_ss())
+        self._stat_box.setStyleSheet(_mono_box_ss() + "font-size:12px;")
         self._stat_box.setMinimumHeight(64)
         self._stat_box.setWordWrap(True)
         self._prog_card.add(self._stat_box)
@@ -1682,7 +1693,7 @@ class TrainingPage(QWidget):
         self._log.setMaximumBlockCount(self._LOG_HISTORY_MAX)
         self._log.setLineWrapMode(QPlainTextEdit.NoWrap)
         self._log.setStyleSheet(
-            "QPlainTextEdit{" + _mono_box_ss() + "font-size:9px;}"
+            "QPlainTextEdit{" + _mono_box_ss() + "font-size:12px;}"
             "QScrollBar:vertical{width:4px;background:transparent;margin:0;}"
             f"QScrollBar::handle:vertical{{background:{t.scrollbar_handle};border-radius:2px;min-height:30px;}}"
             "QScrollBar::add-line:vertical{height:0;}QScrollBar::sub-line:vertical{height:0;}"
@@ -1858,11 +1869,40 @@ class TrainingPage(QWidget):
         self._config_row.set_value(config_path)
         self._ckpt_row.set_value(checkpoint_path)
 
+    def _cuda_blockers(self):
+        """Reasons the current TRAINING selection can't run without CUDA.
+
+        Each GPU-only option surfaced in this tab (adamw8bit optimizer; add
+        8-bit model loading or VRAM caps here as they gain UI) is checked
+        live — the warning under the Optimizer row — and again when Start is
+        pressed, so a CPU-only runtime fails with a readable message before a
+        job spawns instead of mid-run.
+        """
+        o = getattr(self, "_run_opts", {})
+        has_cuda = any(not g.startswith("CPU") for g in list_gpus())
+        gpu_active = has_cuda and not o.get("force_cpu")
+        reasons = []
+        if self._optim_row.key() == "adamw8bit" and not gpu_active:
+            why = "CPU-only is selected" if o.get("force_cpu") \
+                else "no CUDA GPU is available"
+            reasons.append(
+                f"'adamw8bit' needs a CUDA GPU, but {why} — the run will be "
+                "blocked at start. Choose 'adamw' or 'adam', or enable a GPU "
+                "in GPUs / Workers / Seed."
+            )
+        return reasons
+
+    def _refresh_gpu_warnings(self):
+        reasons = self._cuda_blockers()
+        self._optim_warn.setText("\n".join(reasons))
+        self._optim_warn.setVisible(bool(reasons))
+
     def _open_run_options(self):
         dlg = _RunOptionsDialog(dict(self._run_opts), self)
         if run_blurred_dialog(dlg) == QDialog.Accepted:
             self._run_opts.update(dlg.values())
             self._refresh_run_text()
+            self._refresh_gpu_warnings()
 
     def _open_loss_dialog(self):
         dlg = _MultiSelectDialog(
@@ -1918,6 +1958,19 @@ class TrainingPage(QWidget):
                                     "No checkpoint found in the results folder yet.")
             return
         self._ckpt_row.set_value(newest)
+
+    def _on_ckpt_changed(self):
+        """Picking a checkpoint arms the resume-continuity run flags
+        (load optimizer/scheduler/epoch/best-metric), so a resume run
+        continues from the saved state instead of restarting at epoch 0.
+        Each flag is only consumed when the checkpoint actually carries that
+        piece, so state-only pre-trained checkpoints are unaffected; uncheck
+        any switch in Run Options to opt out for a specific run."""
+        if self._ckpt_row.value():
+            for key in ("load_optimizer", "load_scheduler",
+                        "load_epoch", "load_best_metric"):
+                self._run_opts[key] = True
+        self._refresh_latest_chip()
 
     def _refresh_latest_chip(self):
         newest = self._newest_ckpt()
@@ -2279,6 +2332,12 @@ class TrainingPage(QWidget):
             yaml.dump(cfg, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
         o = self._run_opts
+        blockers = self._cuda_blockers()
+        if blockers:
+            QMessageBox.warning(
+                self, "GPU requirements not met",
+                "This run can't start:\n\n• " + "\n• ".join(blockers))
+            return
         metrics = list(self._metrics)
         sched = self._sched_row.key() or metrics[0]
         if sched not in metrics:
@@ -2301,6 +2360,19 @@ class TrainingPage(QWidget):
         ckpt = self._ckpt_row.value()
         if ckpt:
             cmd += ["--start_check_point", ckpt]
+        # Fork architectures: when the fine-tune start comes from a pre-trained
+        # download whose repo ships an author backend file (bs_roformer.py /
+        # model.py next to the config), train from that architecture instead
+        # of the bundled code so the fork checkpoint loads cleanly.
+        _src_cfg = self._config_row.value()
+        _backend_dir = ""
+        if _src_cfg and os.path.isfile(_src_cfg):
+            for _name in ("bs_roformer.py", "model.py", "models.py"):
+                if os.path.isfile(os.path.join(os.path.dirname(_src_cfg), _name)):
+                    _backend_dir = os.path.dirname(_src_cfg)
+                    break
+        if _backend_dir:
+            cmd += ["--custom_backend", _backend_dir]
         flags = {
             "pin_memory": "--pin_memory", "pre_valid": "--pre_valid",
             "save_every_epoch": "--save_weights_every_epoch",

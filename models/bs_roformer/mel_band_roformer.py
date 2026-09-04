@@ -101,6 +101,8 @@ class Attention(Module):
             rotary_embed=None,
             flash=True,
             pope_embed=None,
+            wsa_window_len=None,
+            n_wsa_sinks=0,
     ):
         super().__init__()
         self.heads = heads
@@ -112,7 +114,26 @@ class Attention(Module):
         assert not (self.rotary_embed is not None and self.pope_embed is not None), \
             "cannot have both rotary and pope embeddings"
 
-        self.attend = Attend(flash=flash, dropout=dropout)
+        # Windowed sink attention (WSA): uses FlexAttention with a sliding
+        # window + global ``sink_tokens`` prefix (mbr_wsa-family checkpoints).
+        # Falls back to the standard Attend path when disabled (default).
+        self.wsa_window_len = wsa_window_len
+        self.n_wsa_sinks = n_wsa_sinks
+        if wsa_window_len is not None and n_wsa_sinks > 0:
+            from models.bs_roformer.flex_attention_utils import (
+                FlexAttention,
+                generate_sliding_window_with_sinks,
+            )
+            self.attend = FlexAttention(
+                mask_mod=generate_sliding_window_with_sinks(wsa_window_len, n_wsa_sinks),
+                dropout=dropout,
+                scale=self.scale,
+                # torch.compile is unreliable in the Windows/frozen build;
+                # eager flex_attention yields identical attention.
+                compile=False,
+            )
+        else:
+            self.attend = Attend(flash=flash, dropout=dropout)
 
         self.norm = RMSNorm(dim)
         self.to_qkv = nn.Linear(dim, dim_inner * 3, bias=False)
@@ -220,6 +241,8 @@ class Transformer(Module):
             pope_embed=None,
             flash_attn=True,
             linear_attn=False,
+            wsa_window_len=None,
+            n_wsa_sinks=0,
     ):
         super().__init__()
         self.layers = ModuleList([])
@@ -241,7 +264,9 @@ class Transformer(Module):
                     dropout=attn_dropout,
                     rotary_embed=rotary_embed,
                     pope_embed=pope_embed,
-                    flash=flash_attn
+                    flash=flash_attn,
+                    wsa_window_len=wsa_window_len,
+                    n_wsa_sinks=n_wsa_sinks,
                 )
 
             self.layers.append(ModuleList([
@@ -394,10 +419,14 @@ class MelBandRoformer(Module):
             use_torch_checkpoint=False,
             skip_connection=False,
             use_pope: bool = False,
+            num_sink_tokens=0,
+            window_size=10,
     ):
         super().__init__()
 
         self.stereo = stereo
+        self.num_sink_tokens = num_sink_tokens
+        self.window_size = window_size
         self.audio_channels = 2 if stereo else 1
         self.num_stems = num_stems
         self.use_torch_checkpoint = use_torch_checkpoint
@@ -434,6 +463,8 @@ class MelBandRoformer(Module):
                     depth=time_transformer_depth,
                     rotary_embed=time_rotary_embed,
                     pope_embed=time_pope_embed,
+                    wsa_window_len=window_size if num_sink_tokens > 0 else None,
+                    n_wsa_sinks=num_sink_tokens,
                     **transformer_kwargs
                 )
             )
@@ -517,6 +548,18 @@ class MelBandRoformer(Module):
 
             self.mask_estimators.append(mask_estimator)
 
+        # Windowed sink attention: learned sink tokens prepended on the time
+        # axis across all layers (mbr_wsa-family checkpoints). Shape follows
+        # the author's convention: (num_sink_tokens, num_bands, dim).
+        if num_sink_tokens > 0:
+            self.sink_tokens = nn.Parameter(
+                torch.randn(num_sink_tokens, num_bands, dim)
+            )
+        else:
+            self.register_buffer(
+                'sink_tokens', torch.empty(0), persistent=False
+            )
+
         # whether to zero out dc
 
         self.zero_dc = zero_dc
@@ -597,6 +640,17 @@ class MelBandRoformer(Module):
         else:
             x = self.band_split(x)
 
+        # Windowed sink attention: prepend learnable sink tokens on the time
+        # axis once, keep them across all transformer layers, then strip them
+        # before mask estimation (mbr_wsa-family checkpoints).
+        if self.num_sink_tokens > 0 and self.sink_tokens is not None:
+            sinks = repeat(
+                self.sink_tokens,
+                'n f d -> b n f d',
+                b=x.shape[0],
+            )
+            x = torch.cat([sinks, x], dim=1)
+
         # axial / hierarchical attention
 
         store = [None] * len(self.layers)
@@ -640,6 +694,9 @@ class MelBandRoformer(Module):
 
             if self.skip_connection:
                 store[i] = x
+
+        if self.num_sink_tokens > 0 and self.sink_tokens is not None:
+            x = x[:, self.num_sink_tokens:, :, :]
 
         if active_stem_ids is None:
             heads = self.mask_estimators

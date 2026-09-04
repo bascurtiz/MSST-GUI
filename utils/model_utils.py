@@ -4,6 +4,8 @@ __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 import argparse
 import json
 import os
+import shutil
+import zipfile
 from datetime import datetime
 import numpy as np
 import torch
@@ -13,6 +15,12 @@ from torch.optim import Adam, AdamW, SGD, RAdam, RMSprop
 from tqdm.auto import tqdm
 from typing import Dict, List, Tuple, Any, Union, Optional
 import torch.distributed as dist
+
+# Checkpoints trained with bitsandbytes optimizers (e.g. the scnet_huge_*
+# family) reference bitsandbytes classes in their pickle graph. The package
+# is not part of the runtime, and its objects are never needed for inference,
+# so install a stand-in finder before any torch.load runs.
+import utils.bnb_stub  # noqa: F401  (self-installs on import)
 
 def bigshifts_wrapper(
     config: ConfigDict,
@@ -104,10 +112,39 @@ def demix(
 
     mix = torch.tensor(mix, dtype=torch.float32)
 
+    if getattr(model, 'stereo', True) is False and mix.shape[0] > 1:
+        # Mono models (stereo: false — e.g. 16 kHz speech-denoising mel-band
+        # checkpoints) only accept a single channel. Any stereo input must be
+        # downmixed before the chunk loop, or the model's channel assert
+        # fires on the first forward. Engine callers upmix the mono results
+        # back to stereo afterwards.
+        mix = mix.mean(dim=0, keepdim=True)
+
     if model_type == 'mdxnet':
         # MDX-Net models are onnxruntime objects (not torch Modules); they
         # carry their own UVR-style demix() loop, so dispatch straight to it.
         return model.demix(mix, device, pbar)
+
+    if model_type == 'vr':
+        # VR (UVR5) models are self-contained: the wrapper does its own
+        # spectrogram windowing internally on the whole track (window_size /
+        # offset in config.inference), so the chunked loop below must not run
+        # (VR configs carry no chunk_size). Feed the full mix in one call:
+        # forward(x) -> (batch, 2, channels, samples) with [primary, secondary]
+        # stems in config instrument order.
+        # Key by the full config instrument list (not just the target): the
+        # write loop picks whichever stems are requested, so both outputs must
+        # be reachable. VR configs ship target_instrument: null anyway.
+        instruments = list(getattr(config.training, "instruments", []) or [])
+        with torch.inference_mode():
+            x = mix.to(device).unsqueeze(0)  # (1, channels, samples)
+            out = model(x)[0].cpu().numpy()  # (2, channels, samples)
+        names = instruments[:2] or ["Vocals", "Instrumental"]
+        ret = {}
+        for i, name in enumerate(names):
+            if i < out.shape[0]:
+                ret[name] = out[i].astype(np.float32)
+        return ret
 
     if model_type == 'htdemucs':
         mode = 'demucs'
@@ -138,7 +175,7 @@ def demix(
 
     batch_size = config.inference.batch_size
 
-    use_amp = getattr(config.training, 'use_amp', True)
+    use_amp = effective_use_amp(config)
 
     with torch.cuda.amp.autocast(enabled=use_amp):
         with torch.inference_mode():
@@ -200,15 +237,11 @@ def demix(
             if progress_bar:
                 progress_bar.close()
 
-            # Compute final estimated sources
-            estimated_sources = result / counter
-            estimated_sources = estimated_sources.cpu().numpy()
-            np.nan_to_num(estimated_sources, copy=False, nan=0.0)
-
-            # Remove padding for generic mode
-            if mode == "generic":
-                if length_init > 2 * border and border > 0:
-                    estimated_sources = estimated_sources[..., border:-border]
+            # Compute final estimated sources (in place, bounded transients —
+            # see _finalize_sources)
+            estimated_sources = _finalize_sources(
+                result, counter, border if mode == "generic" else 0
+            )
 
     # Return the result as a dictionary or a single array
     if mode == "demucs":
@@ -259,6 +292,38 @@ def initialize_model_and_device(model: torch.nn.Module, device_ids: List[int]) -
     return device, model
 
 
+def assert_cuda_available(feature: str, remedy: str) -> None:
+    """Fail with a clear message when a CUDA-only option is used without CUDA.
+
+    bitsandbytes' AdamW8bit, the training VRAM cap
+    (--set_per_process_memory_fraction) and other CUDA-only options die with
+    cryptic native errors on CPU-only runtimes. Centralizing the check keeps
+    every such path readable in the job log.
+    """
+    if not torch.cuda.is_available():
+        raise ValueError(
+            f"{feature} requires a CUDA GPU, but none is available in this "
+            f"runtime. {remedy}"
+        )
+
+
+def effective_use_amp(config: ConfigDict) -> bool:
+    """Whether mixed precision should be active for a run.
+
+    AMP (torch.cuda.amp autocast / GradScaler) needs CUDA; on a CPU-only
+    runtime it is turned off with a notice instead of failing deep inside
+    autocast or the gradient scaler.
+    """
+    use_amp = getattr(config.training, 'use_amp', True)
+    if use_amp and not torch.cuda.is_available():
+        should_print = not dist.is_initialized() or dist.get_rank() == 0
+        if should_print:
+            print("CUDA is not available - disabling mixed precision (AMP) "
+                  "for this run; it will use full float32 precision.")
+        return False
+    return use_amp
+
+
 def get_optimizer(config: ConfigDict, model: torch.nn.Module) -> torch.optim.Optimizer:
     """
     Create and configure an optimizer for training.
@@ -305,6 +370,10 @@ def get_optimizer(config: ConfigDict, model: torch.nn.Module) -> torch.optim.Opt
         # We recommend using lr=1.0 (default) for all networks.
         optimizer = Prodigy(model.parameters(), lr=config.training.lr, **optim_params)
     elif name_optimizer == 'adamw8bit':
+        assert_cuda_available(
+            "The 'adamw8bit' optimizer (bitsandbytes 8-bit AdamW)",
+            "Choose 'adamw' or 'adam' instead, or run training on a machine "
+            "with a GPU.")
         import bitsandbytes as bnb
         optimizer = bnb.optim.AdamW8bit(model.parameters(), lr=config.training.lr, **optim_params)
     elif name_optimizer == 'muon':
@@ -440,6 +509,33 @@ def apply_tta(
         waveforms_orig[el] /= len(track_proc_list) + 1
 
     return waveforms_orig
+
+
+def _finalize_sources(result: torch.Tensor, counter: torch.Tensor,
+                      border: int = 0) -> np.ndarray:
+    """Average accumulated chunk results into the final source array.
+
+    `result` and `counter` are full-track CPU float32 accumulators whose shape
+    is (num_instruments, channels, samples) — for a 4-stem model on a stereo
+    track that is hundreds of MB each. Everything here runs in place and with
+    bounded transients so long tracks on memory-constrained machines don't
+    spike: dividing in place avoids a second full-size copy, and the
+    non-finite cleanup walks the trailing axis in slices so numpy's temporary
+    NaN/Inf masks never exceed a few MB (the previous whole-array call could
+    need ~3 full bool masks at once and die with an _ArrayMemoryError right
+    at the end of an otherwise successful separation).
+    """
+    result /= counter
+    estimated_sources = result.numpy()
+    step = 1_048_576
+    for start in range(0, estimated_sources.shape[-1], step):
+        np.nan_to_num(
+            estimated_sources[..., start:start + step], copy=False, nan=0.0
+        )
+    # Remove reflect-padding from both edges (generic mode only)
+    if border and border > 0 and estimated_sources.shape[-1] > 2 * border:
+        estimated_sources = estimated_sources[..., border:-border]
+    return estimated_sources
 
 
 def _getWindowingArray(window_size: int, fade_size: int) -> torch.Tensor:
@@ -615,6 +711,72 @@ def get_lora(args, config, model):
     return model
 
 
+# Archives of 4 GiB or more are ZIP64. torch 2.11's C++ zip reader on
+# Windows crashes natively (access violation inside get_storage_from_record)
+# on ZIP64 archives written by older torch versions / community training
+# tools — the layout most >4 GB model checkpoints ship in. The mmap=True
+# loader reads those archives, but its lazily-mapped storages intermittently
+# fault during the state-dict copy (a Windows mmap lifetime issue), so mmap
+# is not reliable either. Python's zipfile reads and writes ZIP64 archives
+# of any size, and torch loads python-written archives fine, so large
+# checkpoints are rewritten once to a cached sibling and plain-loaded.
+_BIG_CHECKPOINT_BYTES = 2 ** 32  # 4 GiB — anything larger is a ZIP64 archive
+
+
+def ensure_readable_checkpoint(checkpoint_path: str) -> str:
+    """Return a checkpoint path that torch.load can read deterministically.
+
+    Files below 4 GiB are ordinary ZIP archives that load fine, so the
+    original path is returned untouched. For ZIP64 archives (>= 4 GiB) the
+    archive is rewritten once with Python's zipfile to
+    ``<name>.ckpt.plain`` — every member copied verbatim with its
+    compression preserved, no torch involved — and that path is returned.
+    The cached sibling carries a marker (source size + mtime) so a replaced
+    or re-downloaded checkpoint transparently triggers a rebuild.
+    """
+    try:
+        size = os.path.getsize(checkpoint_path)
+    except OSError:
+        return checkpoint_path
+    if size < _BIG_CHECKPOINT_BYTES:
+        return checkpoint_path
+    norm_path = checkpoint_path + '.plain'
+    marker = b'fb:%d:%d' % (int(size), int(os.path.getmtime(checkpoint_path)))
+    if os.path.exists(norm_path):
+        try:
+            with zipfile.ZipFile(norm_path) as zf:
+                if zf.comment == marker:
+                    return norm_path
+        except (zipfile.BadZipFile, OSError):
+            pass
+        try:
+            os.remove(norm_path)
+        except OSError:
+            pass
+    print(f'Checkpoint is a large ZIP64 archive ({size / 2**30:.1f} GiB); '
+          f'rewriting it for torch 2.11 once -> {norm_path}')
+    tmp_path = f'{norm_path}.tmp.{os.getpid()}'
+    try:
+        with zipfile.ZipFile(checkpoint_path, 'r') as zin, \
+                zipfile.ZipFile(tmp_path, 'w') as zout:
+            zout.comment = marker
+            for info in zin.infolist():
+                zi = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+                zi.compress_type = info.compress_type
+                zi.external_attr = info.external_attr
+                with zin.open(info) as src, zout.open(zi, 'w') as dst:
+                    shutil.copyfileobj(src, dst, 1 << 20)
+        os.replace(tmp_path, norm_path)
+    except BaseException:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+    return norm_path
+
+
 def load_start_checkpoint(args: argparse.Namespace,
                           model: torch.nn.Module,
                           old_model,
@@ -645,11 +807,26 @@ def load_start_checkpoint(args: argparse.Namespace,
         if not args.load_only_compatible_weights:
             load_not_compatible_weights(model, old_model, verbose=False)
         else:
-            model.load_state_dict(torch.load(args.start_check_point))
+            # Reuse the already-loaded checkpoint instead of re-loading the
+            # file: the entry point loaded it (plain, via
+            # ensure_readable_checkpoint for ZIP64 archives) and copies the
+            # weights out of it below.
+            src = old_model
+            if isinstance(src, dict):
+                for key in ('state', 'state_dict', 'model_state_dict'):
+                    if key in src:
+                        src = src[key]
+                        break
+            model.load_state_dict(src)
     else:
         device = 'cpu'
         if args.model_type in ['htdemucs', 'apollo']:
-            old_model = torch.load(args.start_check_point, map_location=device, weights_only=False)
+            # Route through the ZIP64 normalizer: torch 2.11's C++ reader
+            # crashes natively on >4 GB archives written by older torch
+            # (see ensure_readable_checkpoint).
+            old_model = torch.load(
+                ensure_readable_checkpoint(args.start_check_point),
+                map_location=device, weights_only=False)
             # Fix for htdemucs pretrained models
             if 'state' in old_model:
                 old_model = old_model['state']

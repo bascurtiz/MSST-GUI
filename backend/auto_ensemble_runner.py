@@ -12,13 +12,43 @@ import tempfile
 import subprocess
 import threading
 from datetime import datetime
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QObject, Signal
 
-from backend.paths import REPO_ROOT, get_python_exe
+from backend.runner import describe_exit_code  # noqa: E402
+
+from backend.paths import REPO_ROOT, APP_DIR, get_python_exe
 from backend.runner import ProcessRunner
 from backend.audio_names import format_output_filename, INFERENCE_FILENAME_TEMPLATE
+from backend.msst_catalog import (
+    engine_supported_type_list,
+    engine_unsupported_models,
+)
 
 TQDM_PATTERN = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+
+# Arch label → engine type fallback for manually registered models (zoo
+# installs carry the precise type in model_type). Kept next to
+# _get_model_type so the pre-flight check and the launch path can never
+# disagree on what type a model will run as.
+ARCH_TO_MODEL_TYPE = {
+    "MDX Architecture": "mdx23c",
+    "MDX23c Architecture": "mdx23c",
+    "MDX-Net Architecture": "mdxnet",
+    "VR Architecture": "vr",
+    "Demucs Architecture": "htdemucs",
+    "BS Roformer Architecture": "bs_roformer",
+    "Melband Roformer Architecture": "mel_band_roformer",
+    "Medley Vox Architecture": "medley_vox",
+    "SCNet Architecture": "scnet",
+    "Apollo Architecture": "apollo",
+    "Bandit Architecture": "bandit",
+    "Conformer Architecture": "conformer",
+    "DTTNet Architecture": "dttnet",
+    "BSMamba2 Architecture": "bs_mamba2",
+    "Swin Upernet Architecture": "swin_upernet",
+    "TorchSeg Architecture": "torchseg",
+    "VitLarge23 Architecture": "segm_models",
+}
 
 STEM_NAME_MAP = {
     "vocals": ["vocals", "vocal", "voice"],
@@ -44,7 +74,18 @@ def _strip_tqdm(line):
     return TQDM_PATTERN.sub('', line).strip()
 
 
-class AutoEnsembleRunner(QThread):
+# Module-level registry for ensemble runners (same rationale as
+# backend/runner.py's registry): a page can be torn down and rebuilt (theme
+# switch) or closed while an ensemble is running, and a QThread wrapper
+# destroyed while its thread is still winding down corrupts Qt's thread
+# state — surfacing later as a random native access violation on the main
+# thread. The runner is a plain QObject on a daemon thread, kept referenced
+# until the job finishes — no QThread object exists to leak or corrupt.
+_ACTIVE_ENSEMBLE_RUNNERS = set()
+_ENSEMBLE_RUNNERS_LOCK = threading.Lock()
+
+
+class AutoEnsembleRunner(QObject):
     stage_changed = Signal(str, int, int)
     model_progress = Signal(str, int)
     ensemble_progress = Signal(int)
@@ -54,7 +95,7 @@ class AutoEnsembleRunner(QThread):
     model_skipped = Signal(str, str)
 
     def __init__(self, models, input_path, target_output, ensemble_type, output_dir, parent=None):
-        super().__init__(parent)
+        super().__init__()
         self._models = models
         self._input_path = input_path
         self._target_output = target_output
@@ -65,11 +106,78 @@ class AutoEnsembleRunner(QThread):
         self._model_outputs = []
         self._skipped_models = []
         self._current_file = None
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    # ------------------------------------------------------------------
+    # Public API (mirrors the old QThread surface)
+    # ------------------------------------------------------------------
+
+    def start(self):
+        """Spawn the pipeline on a plain daemon thread (never a QThread)."""
+        if self._thread and self._thread.is_alive():
+            return
+        self._running = True
+        with _ENSEMBLE_RUNNERS_LOCK:
+            _ACTIVE_ENSEMBLE_RUNNERS.add(self)
+        self._thread = threading.Thread(
+            target=self._run_wrapped, name="auto-ensemble", daemon=True)
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread and self._thread.is_alive())
+
+    def _run_wrapped(self):
+        """Thread entry: runs the pipeline, then releases the registry hold."""
+        try:
+            try:
+                self.run()
+            except Exception as exc:  # noqa: BLE001 — never die silently
+                import traceback as _tb
+                self.log_line.emit(f"FATAL ERROR: {exc}")
+                self.log_line.emit(_tb.format_exc())
+                try:
+                    self.finished.emit(False, f"Error: {exc}", "")
+                except RuntimeError:
+                    pass
+        finally:
+            self._running = False
+            with _ENSEMBLE_RUNNERS_LOCK:
+                _ACTIVE_ENSEMBLE_RUNNERS.discard(self)
 
     def cancel(self):
         self._cancelled = True
 
+    def _preflight_unsupported(self):
+        """Return the selected models whose type has no engine branch (empty
+        = all runnable). The job aborts up front on a non-empty result —
+        instead of each model dying mid-run with a raw 'Unknown model type'
+        traceback — emitting a clear error before any subprocess is spawned."""
+        problems = engine_unsupported_models(self._models, ARCH_TO_MODEL_TYPE)
+        if not problems:
+            return []
+        for model, eff in problems:
+            name = model.get("name", "Unknown")
+            self.log_line.emit(
+                f"ERROR: model '{name}' cannot be run: model type '{eff}' "
+                "has no branch in this build's inference engine.")
+        self.log_line.emit(
+            "Supported model types: " + ", ".join(engine_supported_type_list())
+            + ".")
+        self.log_line.emit(
+            "Aborting the ensemble before any model ran: pick another "
+            "model, or update the app if it needs a newer engine.")
+        return problems
+
     def run(self):
+        unsupported = self._preflight_unsupported()
+        if unsupported:
+            self.finished.emit(
+                False,
+                f"Aborted: {len(unsupported)} model(s) cannot run in this build.",
+                "",
+            )
+            return
         self._temp_dir = tempfile.mkdtemp(prefix="msst_auto_ensemble_")
 
         if isinstance(self._input_path, list):
@@ -306,6 +414,14 @@ class AutoEnsembleRunner(QThread):
         # upstream inference.py nests "{file_name}/{instr}" by default; keep the
         # flat layout the stem discovery below walks for.
         cmd += ["--filename_template", INFERENCE_FILENAME_TEMPLATE]
+        # Fork architectures: load the model class from the author's
+        # backend file (models/custom/<module> under the writable APP_DIR)
+        # instead of the bundled code.
+        if model.get("custom_backend_enabled"):
+            bm = model.get("backend_module", "")
+            if bm:
+                cmd += ["--custom_backend",
+                        os.path.join(APP_DIR, "models", "custom", bm)]
 
         self.log_line.emit(f"Command: {' '.join(cmd)}")
         self.log_line.emit(f"Working directory: {REPO_ROOT}")
@@ -321,6 +437,7 @@ class AutoEnsembleRunner(QThread):
                 encoding="utf-8",
                 errors="replace",
                 cwd=REPO_ROOT,
+                env={**os.environ, "PYTHONUTF8": "1"},
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
@@ -355,7 +472,9 @@ class AutoEnsembleRunner(QThread):
                 self.log_line.emit(f"Inference completed successfully")
                 return model_output
             else:
-                self.log_line.emit(f"Inference failed with return code: {process.returncode}")
+                self.log_line.emit(
+                    f"Inference failed with return code: "
+                    f"{describe_exit_code(process.returncode)}")
                 if stderr_lines:
                     self.log_line.emit(f"Stderr output:")
                     for line in stderr_lines[-20:]:
@@ -368,21 +487,13 @@ class AutoEnsembleRunner(QThread):
             return None
 
     def _get_model_type(self, model):
-        arch = model.get("arch", "")
-        mapping = {
-            "MDX Architecture": "mdx23c",
-            "MDX23c Architecture": "mdx23c",
-            "MDX-Net Architecture": "mdxnet",
-            "VR Architecture": "vr",
-            "Demucs Architecture": "htdemucs",
-            "BS Roformer Architecture": "bs_roformer",
-            "Melband Roformer Architecture": "mel_band_roformer",
-            "Medley Vox Architecture": "medley_vox",
-            "SCNet Architecture": "scnet",
-            "Apollo Architecture": "apollo",
-            "Bandit Architecture": "bandit",
-        }
-        return mapping.get(arch, "bs_roformer")
+        # Precise engine type recorded at install time wins (e.g. 'scnet_tran',
+        # 'bandit_v2' — the arch label collapses variants); fall back to the
+        # arch map for manually registered models.
+        stored = model.get("model_type", "")
+        if stored:
+            return stored
+        return ARCH_TO_MODEL_TYPE.get(model.get("arch", ""), "bs_roformer")
 
     def _compute_complement(self, input_path, primary_path, output_path):
         import soundfile as sf

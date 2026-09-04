@@ -540,6 +540,23 @@ def _custom_badge_ss():
     )
 
 
+def _blocked_badge_ss():
+    """Stylesheet for the NOT-RUNNABLE badge on model cards whose type has
+    no branch in the inference engine — red error tint on a translucent
+    chip, mirroring the custom/type badge shapes."""
+    t = theme_manager.theme
+    c = QColor(t.error)
+    rgb = f"{c.red()},{c.green()},{c.blue()}"
+    text = c.darker(210).name() if theme_manager.mode == "light" else c.name()
+    return (
+        "font-family:'Montserrat';font-size:8px;font-weight:700;"
+        f"color:{text};"
+        f"background:rgba({rgb},26);"
+        f"border:1px solid rgba({rgb},60);"
+        "padding:1px 6px;border-radius:3px;letter-spacing:0.5px;"
+    )
+
+
 class FilePicker(QWidget):
     path_changed = Signal(str)
     def __init__(self, mode="file", filter="All (*.*)", placeholder="", drag_drop=False, parent=None):

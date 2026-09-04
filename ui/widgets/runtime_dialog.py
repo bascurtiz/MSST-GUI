@@ -12,7 +12,7 @@ import os
 import sys
 import threading
 
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import Qt, QObject, QTimer, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QPlainTextEdit,
     QProgressBar,
@@ -30,20 +30,60 @@ def runtime_usable() -> bool:
     return runtime_setup.runtime_ready()
 
 
-class _SetupThread(QThread):
+# Module-level registry for the runtime-setup worker (same rationale as
+# backend/runner.py's registry): the dialog can be closed (cancel / window X)
+# while the installer is still winding down, and a QThread wrapper destroyed
+# mid-run corrupts Qt's thread state — later surfacing as a random native
+# access violation. The worker is a plain QObject on a daemon thread, kept
+# referenced until the install finishes — no QThread object exists to leak
+# or corrupt.
+_ACTIVE_SETUP_WORKERS = set()
+_SETUP_WORKERS_LOCK = threading.Lock()
+
+
+class _SetupThread(QObject):
     log_line = Signal(str)
     progress = Signal(float)
     finished_ok = Signal(bool, str)
 
     def __init__(self, parent=None, top_up=False):
-        super().__init__(parent)
+        super().__init__()
         self._cancelled = False
         self._top_up = top_up
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    # ------------------------------------------------------------------
+    # Public API (mirrors the old QThread surface)
+    # ------------------------------------------------------------------
+
+    def start(self):
+        """Spawn the install on a plain daemon thread (never a QThread)."""
+        if self._thread and self._thread.is_alive():
+            return
+        self._running = True
+        with _SETUP_WORKERS_LOCK:
+            _ACTIVE_SETUP_WORKERS.add(self)
+        self._thread = threading.Thread(
+            target=self._run_wrapped, name="runtime-setup", daemon=True)
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread and self._thread.is_alive())
+
+    def _run_wrapped(self):
+        """Thread entry: runs the install, then releases the registry hold."""
+        try:
+            self._run()
+        finally:
+            self._running = False
+            with _SETUP_WORKERS_LOCK:
+                _ACTIVE_SETUP_WORKERS.discard(self)
 
     def cancel(self):
         self._cancelled = True
 
-    def run(self):
+    def _run(self):
         def log(msg):
             self.log_line.emit(str(msg))
 

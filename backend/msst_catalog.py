@@ -24,7 +24,7 @@ import ast
 import os
 import re
 
-from backend.paths import REPO_ROOT
+from backend.paths import REPO_ROOT, APP_DIR
 
 _SETTINGS = os.path.join(REPO_ROOT, "utils", "settings.py")
 _MODEL_UTILS = os.path.join(REPO_ROOT, "utils", "model_utils.py")
@@ -144,6 +144,181 @@ def model_types():
         func = _find_function(_parse(_SETTINGS), "get_model_from_config")
         return _compared_literals(func, "model_type")
     return _cached("model_types", build)
+
+
+# The engine's accepted set is not only get_model_from_config's branches:
+# inference.py handles 'mdxnet' (ONNX MDX-Net checkpoints) directly in
+# proc_folder, before get_model_from_config is ever called. Kept here so the
+# GUI can pre-validate a registered model's type against what the engine will
+# actually run (see ui/pages/inference_page.py._run_inner).
+_ONNX_SPECIAL_CASE = ("mdxnet",)
+
+
+def engine_model_types():
+    """Model-type values inference.py can actually run: every branch parsed
+    out of get_model_from_config plus the ONNX 'mdxnet' special case handled
+    directly in proc_folder.
+
+    If utils/settings.py cannot be read, model_types() is empty and this
+    returns only ['mdxnet'] — callers that want to *block* on an unsupported
+    type must treat a failed parse as "unknown, don't block" (the GUI checks
+    model_types() separately for that)."""
+    def build():
+        types = list(model_types())
+        for t in _ONNX_SPECIAL_CASE:
+            if t not in types:
+                types.append(t)
+        return types
+    return _cached("engine_model_types", build)
+
+
+# Fork side-cars live under the WRITABLE app-data root (APP_DIR) — in the
+# frozen app REPO_ROOT is _internal, which the installer wipes on every
+# update, so files stored there would vanish with the ckpt. APP_DIR equals
+# REPO_ROOT in a dev checkout.
+_CUSTOM_ROOT = APP_DIR
+
+
+# ── per-model pre-run validation (GUI + ensemble runners) ───────────────────
+# A registered model entry may carry a model_type the engine has no branch
+# for (a zoo model newer than the build, a drifted label such as 'dtt_net'
+# vs 'dttnet', or a hand-registered config). The helpers below resolve the
+# type each launch would *actually* build — mirroring inference.py and
+# get_model_from_config — and say whether it is runnable. They are pure and
+# Qt-free, so the inference page and both ensemble runners share one verdict.
+
+
+def resolve_engine_model_type(model_type: str, yaml_path: str) -> str:
+    """The model type the engine will actually build for a launch, mirroring
+    utils/settings.get_model_from_config end-to-end: a `training.model_type`
+    recorded in the yaml overrides the type passed on the command line, then
+    the variant sniffs refine coarse labels (bandit `kwargs:` layout -> 
+    bandit_v2; scnet `tran_*` model keys -> scnet_tran). Falls back to the
+    caller's type when there is no yaml or it can't be read."""
+    if not (yaml_path and os.path.isfile(yaml_path)):
+        return model_type
+    try:
+        import yaml
+        with open(yaml_path, "r", encoding="utf-8") as _f:
+            _cfg = yaml.load(_f, Loader=yaml.FullLoader) or {}
+        resolved = model_type
+        _tm = (_cfg.get("training") or {}).get("model_type")
+        if isinstance(_tm, str) and _tm.strip():
+            resolved = _tm.strip()
+        # Variant sniffs — same rules and order as the engine.
+        if resolved == "bandit" and "model" not in _cfg and "kwargs" in _cfg:
+            resolved = "bandit_v2"
+        elif resolved == "scnet":
+            _sm = _cfg.get("model") or {}
+            if isinstance(_sm, dict) and any(
+                    str(k).startswith("tran_") for k in _sm):
+                resolved = "scnet_tran"
+        return resolved
+    except Exception:
+        return model_type
+
+
+_CUSTOM_BACKEND_FILE_NAMES = ("bs_roformer.py", "model.py", "models.py")
+
+
+def has_custom_sidecar(model: dict, repo_root: str = _CUSTOM_ROOT) -> bool:
+    """True when the model entry ships an author side-car backend that the
+    engine will load instead of the built-in dispatch branches (fork
+    architectures such as pcunwa's HyperACE / BS-Roformer-Large-Inst).
+
+    Accepts both layouts the engine's _load_custom_backend supports:
+      * file-style:  models/custom/<backend_module>            (a .py file)
+      * folder-style: models/custom/<backend_module>/bs_roformer.py
+        (the manual / URL install flows put the ckpt, yaml and the author
+        file renamed to bs_roformer.py inside one folder)."""
+    if not (model or {}).get("custom_backend_enabled"):
+        return False
+    bm = (model or {}).get("backend_module") or ""
+    if not bm or os.path.isabs(bm) or ".." in bm.replace("\\", "/").split("/"):
+        return False
+    base = os.path.join(repo_root, "models", "custom", bm)
+    if os.path.isfile(base):
+        return True
+    if os.path.isdir(base):
+        return any(os.path.isfile(os.path.join(base, n))
+                   for n in _CUSTOM_BACKEND_FILE_NAMES)
+    return False
+
+
+# Upstream spells DTTNet both ways (Music-Source-Separation-Training uses
+# 'dtt_net' in places, the engine's dispatch branch is 'dttnet'); registries
+# must store the spelling the engine can actually build.
+_REGISTRY_TYPE_ALIASES = {"dtt_net": "dttnet"}
+
+
+def guess_registry_engine_type(yaml_path: str, ckpt_name: str = "") -> str:
+    """Best precise engine type for a registry entry being (re)registered:
+    1) config.training.model_type when the yaml declares it (spelling
+    normalized to what the engine can build), else
+    2) a name match against the engine branch keys (longest first).
+
+    Returns '' when neither source yields a confident match — callers then
+    fall back to their arch→type map."""
+    mt = ""
+    if yaml_path and os.path.isfile(yaml_path):
+        try:
+            import yaml
+            with open(yaml_path, "r", encoding="utf-8") as _f:
+                _cfg = yaml.load(_f, Loader=yaml.FullLoader) or {}
+            _tm = (_cfg.get("training") or {}).get("model_type")
+            if isinstance(_tm, str) and _tm.strip():
+                mt = _tm.strip()
+        except Exception:
+            mt = ""
+    if mt:
+        return _REGISTRY_TYPE_ALIASES.get(mt, mt)
+    for name in (yaml_path or "", ckpt_name or ""):
+        if not name:
+            continue
+        guess = guess_model_type_from_name(name)
+        if guess:
+            return guess
+    return ""
+
+
+def engine_effective_type(model: dict, arch_to_model_type: dict) -> str:
+    """The engine type a launch of this model entry will build: the stored
+    precise type (install-time) or the arch→type fallback, then the yaml
+    override + variant sniffs via resolve_engine_model_type. mdxnet is
+    special-cased in inference.py before the config is consulted, so its
+    yaml never overrides."""
+    model = model or {}
+    base = (model.get("model_type") or ""
+            or arch_to_model_type.get(model.get("arch", ""), "bs_roformer"))
+    if base == "mdxnet":
+        return "mdxnet"
+    return resolve_engine_model_type(base, model.get("yaml") or "")
+
+
+def engine_unsupported_models(models, arch_to_model_type: dict,
+                              repo_root: str = _CUSTOM_ROOT):
+    """Every model entry whose effective engine type has no dispatch branch.
+
+    Returns a list of ``(model, effective_type)`` tuples. Returns [] when the
+    engine source cannot be parsed (fail open: an unknown catalog must never
+    block a run). Custom side-car models are exempt — the engine loads their
+    class from the author's file."""
+    known = model_types()
+    if not known:
+        return []
+    problems = []
+    for model in models or []:
+        eff = engine_effective_type(model, arch_to_model_type)
+        if has_custom_sidecar(model, repo_root):
+            continue
+        if eff not in known and eff != "mdxnet":
+            problems.append((model, eff))
+    return problems
+
+
+def engine_supported_type_list() -> list:
+    """Sorted list of every model type the engine can run, for messages."""
+    return sorted(set(engine_model_types()))
 
 
 def model_display_names():

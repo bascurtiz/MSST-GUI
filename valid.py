@@ -16,10 +16,19 @@ from ml_collections import ConfigDict
 from typing import Tuple, Dict, List, Union, Any, Optional
 import torch.distributed as dist
 from pathlib import Path
+# Compiled layout: the bundled runtime may not put this script's folder on
+# sys.path (inference.py carries the same preamble). Make utils/ importable
+# regardless of how the process is launched.
+import os as _entry_os
+import sys as _entry_sys
+_entry_dir = _entry_os.path.dirname(_entry_os.path.abspath(__file__))
+if _entry_dir not in _entry_sys.path:
+    _entry_sys.path.insert(0, _entry_dir)
+
 from utils.settings import get_model_from_config, logging, write_results_in_file, parse_args_valid
 from utils.audio_utils import normalize_audio, denormalize_audio, read_audio_transposed, \
     draw_2_mel_spectrogram
-from utils.model_utils import demix, prefer_target_instrument, apply_tta, load_start_checkpoint
+from utils.model_utils import demix, prefer_target_instrument, apply_tta, load_start_checkpoint, ensure_readable_checkpoint
 from utils.metrics import get_metrics
 
 import warnings
@@ -843,8 +852,19 @@ def check_validation(dict_args):
     if 'model_type' in config.training:
         args.model_type = config.training.model_type
     if args.start_check_point:
-        checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
-        load_start_checkpoint(args, model, checkpoint, type_='valid')
+        # >=4 GiB checkpoints are ZIP64 archives torch 2.11's C++ reader
+        # crashes on natively when written by an older torch — rewrite once
+        # with python's zipfile and plain-load that (see
+        # ensure_readable_checkpoint).
+        checkpoint = torch.load(
+            ensure_readable_checkpoint(args.start_check_point),
+            weights_only=False, map_location='cpu')
+        try:
+            load_start_checkpoint(args, model, checkpoint, type_='valid')
+        finally:
+            # Free the source state dict before any later model.to(device)
+            # to keep peak RAM (and commit) low.
+            del checkpoint
     if args.lora_checkpoint_peft:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, args.lora_checkpoint_peft)

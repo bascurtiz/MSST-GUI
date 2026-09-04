@@ -3,12 +3,13 @@ import os
 import re
 import time
 import html
+import threading
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QSizePolicy, QMessageBox, QApplication, QStackedWidget,
     QScrollArea, QProgressBar, QTextEdit, QStyle, QMenu,
 )
-from PySide6.QtCore import Qt, QTimer, Property, QUrl, QPropertyAnimation, QEasingCurve, Signal, QByteArray, QRectF, QRect, QPoint, QThread
+from PySide6.QtCore import Qt, QObject, QTimer, Property, QUrl, QPropertyAnimation, QEasingCurve, Signal, QByteArray, QRectF, QRect, QPoint
 from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QPainterPath, QDesktopServices, QFont, QPixmap, QCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from ui.theme import theme_manager, FONT_FAMILY, FONT_STACK
@@ -18,13 +19,49 @@ from mutagen import File as _MutagenFile
 
 # ── helpers ──────────────────────────────────────────────────────
 
-class _FriendlyNamesThread(QThread):
+# Module-level registry for the console's friendly-names fetch worker (same
+# rationale as backend/runner.py's registry): the console page can be torn
+# down and rebuilt on a theme switch while the fetch is in flight, and a
+# QThread wrapper garbage-collected mid-run corrupts Qt's thread state —
+# surfacing later as a random native access violation. The worker is a plain
+# QObject on a daemon thread, kept referenced until it finishes.
+_ACTIVE_NAMES_WORKERS = set()
+_NAMES_WORKERS_LOCK = threading.Lock()
+
+
+class _FriendlyNamesThread(QObject):
     """Fetches the mvsepless zoo index once so console entries can show the
     same friendly model names as the MODEL LIBRARY (falls back to the ckpt
     filename minus its extension when the index is unavailable)."""
     done = Signal(list)
 
-    def run(self):
+    def __init__(self):
+        super().__init__()
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._running = True
+        with _NAMES_WORKERS_LOCK:
+            _ACTIVE_NAMES_WORKERS.add(self)
+        self._thread = threading.Thread(
+            target=self._run_wrapped, name="console-friendly-names", daemon=True)
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread and self._thread.is_alive())
+
+    def _run_wrapped(self):
+        try:
+            self._run()
+        finally:
+            self._running = False
+            with _NAMES_WORKERS_LOCK:
+                _ACTIVE_NAMES_WORKERS.discard(self)
+
+    def _run(self):
         try:
             from backend.model_manager import fetch_model_index
             self.done.emit(fetch_model_index())
@@ -47,6 +84,10 @@ def _error_rgba(alpha):
 # the distinct fallback palette below. A matching dark background is derived
 # from the same hue so the waveform track keeps its subtle color wash.
 _REST_COLOR = "#9A9FB3"
+# Multi-stem families without a core type-badge hue get their own fixed
+# colors (flutes teal-green, organs ochre).
+_FLUTES_COLOR = "#1D7E64"
+_ORGANS_COLOR = "#996E10"
 _STEM_COLORS = {
     "instrumental": "#60A5FA",
     "vocals": "#A855F7",
@@ -56,26 +97,93 @@ _STEM_COLORS = {
     "guitar": "#C1090B",
     "piano": "#485FAB",
     "strings": "#76C043",
+    "viola": MODEL_TYPE_COLORS["strings"],
+    "violin": MODEL_TYPE_COLORS["strings"],
+    "cello": MODEL_TYPE_COLORS["strings"],
+    "harp": MODEL_TYPE_COLORS["strings"],
+    "bowed strings": MODEL_TYPE_COLORS["strings"],
+    "double bass": MODEL_TYPE_COLORS["strings"],
+    "orchestral": MODEL_TYPE_COLORS["strings"],
+    "staccato": MODEL_TYPE_COLORS["strings"],
+    "string ensemble": MODEL_TYPE_COLORS["strings"],
+    "strings melody": MODEL_TYPE_COLORS["strings"],
     "wind": "#00B8D3",
+    "winds": MODEL_TYPE_COLORS["wind"],
+    "saxophone": MODEL_TYPE_COLORS["wind"],
+    "clarinet": MODEL_TYPE_COLORS["wind"],
+    "oboe": MODEL_TYPE_COLORS["wind"],
+    "bassoon": MODEL_TYPE_COLORS["wind"],
+    "french horn": MODEL_TYPE_COLORS["wind"],
+    "trombone": MODEL_TYPE_COLORS["wind"],
+    "trumpet": MODEL_TYPE_COLORS["wind"],
+    "tuba": MODEL_TYPE_COLORS["wind"],
+    "woodwind": MODEL_TYPE_COLORS["wind"],
+    "wind chimes": MODEL_TYPE_COLORS["wind"],
+    "brass": MODEL_TYPE_COLORS["wind"],
+    "accordion": MODEL_TYPE_COLORS["wind"],
+    "didgeridoo": MODEL_TYPE_COLORS["wind"],
+    "horn": MODEL_TYPE_COLORS["wind"],
+    "panpipe": MODEL_TYPE_COLORS["wind"],
+    "flutes": _FLUTES_COLOR,
+    "flute": _FLUTES_COLOR,
+    "duduk": _FLUTES_COLOR,
+    "harmonica": _FLUTES_COLOR,
+    "pan flute": _FLUTES_COLOR,
+    "penny whistle": _FLUTES_COLOR,
+    "recorder": _FLUTES_COLOR,
+    "shakuhachi": _FLUTES_COLOR,
+    "tin whistle": _FLUTES_COLOR,
+    "whistle": _FLUTES_COLOR,
     # Sub-instrument stems from multi-stem models (mega 53-stem etc.) take
     # the color of the family badge they belong to.
     "acoustic guitar": MODEL_TYPE_COLORS["guitar"],
     "electric guitar": MODEL_TYPE_COLORS["guitar"],
+    "banjo": MODEL_TYPE_COLORS["guitar"],
+    "ukulele": MODEL_TYPE_COLORS["guitar"],
+    "mandolin": MODEL_TYPE_COLORS["guitar"],
+    "dobro": MODEL_TYPE_COLORS["guitar"],
+    "sitar": MODEL_TYPE_COLORS["guitar"],
     "back vocal": MODEL_TYPE_COLORS["vocals"],
     "lead vocal": MODEL_TYPE_COLORS["vocals"],
+    "vocal": MODEL_TYPE_COLORS["vocals"],
     "vox": MODEL_TYPE_COLORS["vocals"],
     "congas": MODEL_TYPE_COLORS["drums"],
     "kick": MODEL_TYPE_COLORS["drums"],
     "snare": MODEL_TYPE_COLORS["drums"],
     "toms": MODEL_TYPE_COLORS["drums"],
-    "timpani": MODEL_TYPE_COLORS["drums"],
-    "percussion": MODEL_TYPE_COLORS["drums"],
+    "drum": MODEL_TYPE_COLORS["drums"],
+    "cymbals": MODEL_TYPE_COLORS["drums"],
+    "ride": MODEL_TYPE_COLORS["drums"],
+    "crash": MODEL_TYPE_COLORS["drums"],
+    "timpani": MODEL_TYPE_COLORS["percussion"],
+    "tambourine": MODEL_TYPE_COLORS["drums"],
+    "triangle": MODEL_TYPE_COLORS["drums"],
+    "hh": MODEL_TYPE_COLORS["drums"],
+    "percussion": MODEL_TYPE_COLORS["percussion"],
+    "glockenspiel": MODEL_TYPE_COLORS["percussion"],
+    "bells": MODEL_TYPE_COLORS["percussion"],
+    "marimba": MODEL_TYPE_COLORS["percussion"],
     "digital piano": MODEL_TYPE_COLORS["keys"],
+    "harpsichord": MODEL_TYPE_COLORS["keys"],
     "keys": MODEL_TYPE_COLORS["keys"],
+    "organs": _ORGANS_COLOR,
+    "b3": _ORGANS_COLOR,
+    "combo organ": _ORGANS_COLOR,
+    "drawbar": _ORGANS_COLOR,
+    "farfisa": _ORGANS_COLOR,
+    "hammond": _ORGANS_COLOR,
+    "organ": _ORGANS_COLOR,
+    "pipe organ": _ORGANS_COLOR,
     "synth": "#00DF95",
     "dry": "#9CA3AF",
     "wet": "#FFFFFF",
+    # Phantom-centre / mid-side stems get fixed hues of their own: "center"
+    # stays the phantom-centre lime, "wide" gets a distinct cyan so the two
+    # mid/side outputs never collide, and "similarity" (MDX23C phantom
+    # extraction target) is a dark violet.
     "center": MODEL_TYPE_COLORS["phantom centre"],
+    "wide": "#22D3EE",
+    "similarity": "#6D28D9",
     "effects": "#FFFFFF",
     # "Rest" is the leftover-of-the-leftover stem; fixed slate so it never
     # lands on a fallback hue that could collide with "Other"'s green.
@@ -137,6 +245,14 @@ _STEM_ALIASES = {
     "speech": "vocals",
     "voices": "vocals",
     "music": "instrumental",
+    "instrument": "instrumental",
+    # Short/partial labels some karaoke configs use for the backing track
+    # (e.g. BS PolarFormer Karaoke's "Back_instrum") are the instrumental
+    # complement — same light blue as Instrumental / Instrument.
+    "inst": "instrumental",
+    "instrum": "instrumental",
+    "back instrum": "instrumental",
+    "backing instrum": "instrumental",
     "sfx": "effects",
     "sound effects": "effects",
 }
@@ -182,6 +298,15 @@ def _stem_override_for_model(card, label):
                 break
     ov = _MODEL_TYPE_OVERRIDES.get(mt)
     if not ov:
+        return None
+    # Stems with identity colors of their own must not be repainted by the
+    # model type's badge hue: phantom-centre / mid-side stems (center lime,
+    # wide cyan, similarity dark violet) and the organs family (ochre
+    # #996E10 — a "keys"-type organ model keeps its organ stem ochre, not
+    # keys blue).
+    if _normalize_stem(label) in ("center", "wide", "similarity", "difference",
+                                  "organ", "organs", "b3", "combo organ",
+                                  "drawbar", "farfisa", "hammond", "pipe organ"):
         return None
     target = (getattr(card, "_target_stem", "") or "").strip()
     if target and _normalize_stem(label) == _normalize_stem(target):
@@ -665,6 +790,38 @@ def _fmt_time(ms):
     return f"{m:02d}:{s:02d}"
 
 
+def _read_audio_envelope(path, bins=400):
+    """Decode `path` into an Audacity-style peak envelope + its true peak.
+
+    Returns (envelope, peak): `envelope` holds, per bin, the maximum
+    |sample| in that bin (a windowed max, so a sparse near-silent file is
+    never misrepresented by aliased single-sample picks), normalized to a
+    peak of 1.0; `peak` is the file's real peak amplitude in [0, 1].  Both
+    are None when the file cannot be decoded.
+    """
+    try:
+        import numpy as np
+        import soundfile as sf
+        data, _ = sf.read(path)
+        if data.ndim > 1:
+            data = data.mean(axis=1)
+        mag = np.abs(np.asarray(data, dtype=np.float64))
+        n = len(mag)
+        if n < 2:
+            return None, None
+        if n <= bins:
+            env = mag
+        else:
+            starts = (np.arange(bins, dtype=np.int64) * n) // bins
+            env = np.maximum.reduceat(mag, starts)
+        peak = float(env.max())
+        if peak > 0.0:
+            env = env / peak
+        return env, peak
+    except Exception:
+        return None, None
+
+
 class _WaveformTrack(QWidget):
     play_toggled = Signal(object, bool)
 
@@ -846,7 +1003,17 @@ class _WaveformTrack(QWidget):
             self._time_bubble_text = _fmt_time(int(ratio * self._duration_ms)) + " / " + _fmt_time(self._duration_ms)
             self.update()
 
-    def load_audio(self, path):
+    def load_audio(self, path, samples=None):
+        """Load the waveform displayed for `path`.
+
+        `samples` (if given) is the ready-to-paint amplitude envelope as
+        computed by the owning _WaveformContainer — already scaled against
+        the *loudest* file of the output set, so a near-silent stem is drawn
+        as the near-flat line it really is.  When it is None (single-track
+        use, or a file the set scan could not decode) the file is read here
+        (windowed-max envelope, normalized to its own peak) — the standalone
+        fallback.
+        """
         self._path = path
         # Ensure every track has a player (and thus a loaded duration) even
         # before it is ever played, so its playhead can follow the shared
@@ -854,23 +1021,12 @@ class _WaveformTrack(QWidget):
         self._ensure_player()
         if self._player is not None:
             self._player.setSource(QUrl.fromLocalFile(self._path))
-        try:
-            import soundfile as sf
-            import numpy as np
-            data, sr = sf.read(path)
-            if data.ndim > 1:
-                data = data.mean(axis=1)
-            data = data.astype(np.float64)
-            step = max(1, len(data) // 400)
-            data = data[::step]
-            peak = np.max(np.abs(data)) or 1.0
-            data = data / peak
-            self._samples = data
-            self._playback_progress = 0.0
-            self.update()
-        except Exception:
-            self._samples = None
-            self.update()
+        if samples is None:
+            env, _ = _read_audio_envelope(path)
+            samples = env
+        self._samples = samples
+        self._playback_progress = 0.0
+        self.update()
 
     def set_progress(self, ratio, time_text=""):
         self._playback_progress = max(0.0, min(1.0, ratio))
@@ -1066,12 +1222,28 @@ class _WaveformContainer(QFrame):
             return (m.group(1).strip().capitalize() if m else name_no_ext)
         return sorted(tracks, key=lambda p: _stem_display_rank(_label(p)))
 
+    @staticmethod
+    def _read_envelope(path, bins=400):
+        """Decode `path` into an Audacity-style peak envelope + its true peak.
+        (Shared implementation lives at module level for the solo fallback.)"""
+        return _read_audio_envelope(path, bins=bins)
+
     def load_tracks(self, card_ref):
         self._card = card_ref
         self._shared_pos_ms = 0
         tracks = self._sorted_paths(card_ref._output_paths)
+
+        # One shared amplitude reference for the whole output set: decode
+        # each file once and scale every track against the *loudest* one.
+        # A near-silent stem (an sfx file that is basically empty) then
+        # draws as the flat line it really is, instead of being blown up to
+        # full height by per-track peak normalization — which made quiet
+        # stems look as busy as the real ones (cf. Audacity's view).
+        decoded = [self._read_envelope(p) for p in tracks]
+        loudest = max((pk for _, pk in decoded if pk), default=0.0)
+
         old_count = len(self._tracks)
-        for i, path in enumerate(tracks):
+        for i, (path, (env, peak)) in enumerate(zip(tracks, decoded)):
             basename = os.path.basename(path)
             name_no_ext, _ = os.path.splitext(basename)
             m = re.search(r'\(([^)]+)\)$', name_no_ext)
@@ -1079,16 +1251,20 @@ class _WaveformContainer(QFrame):
             ov = _stem_override_for_model(card_ref, label)
             line_c = ov or _stem_color(label)
             bg_c = _stem_bg_color(label, ov)
+            if env is not None and loudest > 0.0:
+                samples = env * (peak / loudest)
+            else:
+                samples = None if env is None else env * 0.0
             if i < old_count:
                 track = self._tracks[i]
-                track.load_audio(path)
+                track.load_audio(path, samples=samples)
                 track._label = label
                 track._color = line_c
                 track._bg_color = bg_c
                 track.setVisible(True)
             else:
                 track = _WaveformTrack(label, line_c, bg_c, self)
-                track.load_audio(path)
+                track.load_audio(path, samples=samples)
                 track.play_toggled.connect(self._on_track_toggle)
                 self._tracks.append(track)
                 self._track_layout.addWidget(track)
@@ -2572,7 +2748,27 @@ class ConsolePage(QWidget):
         card._activity_seq = self._next_card_seq()
         self._song_cards[key] = card
         self._output_list.add_card(card)
+        self._finalize_superseded_same_song(card)
         return card
+
+    def _finalize_superseded_same_song(self, new_card):
+        """A fresh card for a song means a new job started on the same input.
+        Runs are strictly sequential per song, so any *older* card for that
+        song that is still Loading/Processing was left over by a job that
+        ended without a completion line (failed/errored/stopped run). Such
+        cards used to linger as the "active" card and steal the new job's
+        stem exports — and even the new job's "Completed:" mark — mixing
+        stems across models. Mark them failed so they can never be selected
+        or matched again."""
+        nk = _norm(new_card._song_name)
+        for c in list(self._song_cards.values()):
+            if c is new_card or c._is_complete or c._failed:
+                continue
+            if _norm(c._song_name) != nk:
+                continue
+            if c._status_lbl.text() not in ("Processing...", "Loading..."):
+                continue
+            c.mark_failed()
 
     def _next_card_seq(self):
         self._card_seq += 1
@@ -2588,12 +2784,32 @@ class ConsolePage(QWidget):
                 return c
         return None
 
+    def _newer_same_song_incomplete(self, card):
+        """An incomplete card for the same song created more recently than
+        `card` (a re-run duplicate), or None. Only the newest card per song
+        may act as the active card; older duplicates are leftovers of runs
+        that already ended, and picking them mixed stems across models."""
+        nk = _norm(card._song_name)
+        for c in self._song_cards.values():
+            if c is card or c._is_complete or c._failed:
+                continue
+            if _norm(c._song_name) != nk:
+                continue
+            if c._activity_seq > card._activity_seq:
+                return c
+        return None
+
     def _ensure_active_card(self):
         """Enforce that _current_song points to the alphabetically first
-        incomplete card.  MSST processes files in alphabetical order."""
+        incomplete card.  MSST processes files in alphabetical order; among
+        re-run duplicates of the same song only the newest is eligible (older
+        ones are leftovers of runs that already ended)."""
         best = None
         for key, card in self._song_cards.items():
-            if key and not card._is_complete and card._status_lbl.text() != "Complete":
+            if (key and not card._is_complete and not card._failed
+                    and card._status_lbl.text() != "Complete"):
+                if self._newer_same_song_incomplete(card) is not None:
+                    continue
                 if best is None or key < best:
                     best = key
         if best is None:
@@ -2664,6 +2880,13 @@ class ConsolePage(QWidget):
                 reuse = (card is not None and not card._is_complete
                          and not card._failed
                          and card._status_lbl.text() != "Complete")
+                if reuse and card._output_paths:
+                    # Reusing a leftover card: a fresh "Processing:" line
+                    # means a fresh job, and the reused card is the leftover
+                    # of a previous run that ended without completion. Stale
+                    # stems from that old job must not mix with the new one's.
+                    card.reset_progress()
+                    card.mark_loading()
                 if not reuse:
                     # New song — add a card. A re-run of an already-finished
                     # or failed song (e.g. a different model on the same
@@ -2772,7 +2995,8 @@ class ConsolePage(QWidget):
             if status == "Queued":
                 continue
             if status == "Processing..." or getattr(c, "_loading", False):
-                return c
+                if self._newer_same_song_incomplete(c) is None:
+                    return c
         return None
 
     def _attach_export(self, active_card, export):
@@ -2793,6 +3017,18 @@ class ConsolePage(QWidget):
         m = re.search(r'\((.+)\)$', name_no_ext)
         stemless = re.sub(r'\s*\([^)]*\)\s*$', '', name_no_ext).strip() if m else name_no_ext
         nstem = _norm(stemless)
+
+        # The file's own folder is the strongest signal: each run writes into
+        # its own per-checkpoint subfolder, and the card that was told about
+        # that folder is the only correct destination. This keeps late
+        # "Wrote file:" lines (e.g. re-reported scans of a previous run)
+        # from ever landing on a different model's card of the same song.
+        d = os.path.dirname(export)
+        if d:
+            for c in self._song_cards.values():
+                cd = getattr(c, "_output_dir", None)
+                if cd and os.path.normpath(cd).lower() == os.path.normpath(d).lower():
+                    return c
 
         # 0) A re-run creates a second card for the same song; its exports
         #    must land on the in-progress card, not the previous run's

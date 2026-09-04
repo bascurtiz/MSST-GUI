@@ -17,7 +17,7 @@ import threading
 from collections import Counter
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QRect, QSize, QEvent, QUrl
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QRect, QSize, QEvent, QUrl
 from PySide6.QtGui import QFont, QFontMetrics, QDesktopServices
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushButton,
@@ -88,31 +88,71 @@ def _pill_btn_ss(accent: bool = False):
 
 # ── Fetch thread ─────────────────────────────────────────────────────────────
 
-class _FetchThread(QThread):
+# Module-level registry: keeps every running worker referenced for as long as
+# it runs, whatever happens to the dialog. A background task whose wrapper is
+# garbage-collected mid-run (or whose QThread is destroyed while running)
+# corrupts Qt's thread state and later surfaces as a random native access
+# violation when a new thread is created. Workers are plain Python threads
+# emitting Qt signals (queued delivery) — no QThread object to leak or corrupt.
+_ACTIVE_WORKERS = set()
+
+
+class _FetchWorker(QObject):
     loaded = Signal(list)
     failed = Signal(str)
+    done = Signal()
 
-    def run(self):
+    def __init__(self):
+        super().__init__()
+        self._running = False
+
+    def start(self):
+        self._running = True
+        _ACTIVE_WORKERS.add(self)
+        threading.Thread(target=self._run, name="pretrained-fetch", daemon=True).start()
+
+    def isRunning(self) -> bool:
+        return self._running
+
+    def _run(self):
         try:
             self.loaded.emit(catalog.fetch_catalog())
         except Exception as exc:
             self.failed.emit(str(exc))
+        finally:
+            self._running = False
+            self.done.emit()
 
 
-# ── Install thread ───────────────────────────────────────────────────────────
+# ── Install worker ──────────────────────────────────────────────────────────
 
-class _InstallThread(QThread):
-    progress = Signal(str, int, int)   # filename, done, total
+class _InstallWorker(QObject):
+    # float, not int: byte counts for models >2 GiB overflow a 32-bit C int
+    # during shiboken conversion and crash the app on the main thread.
+    progress = Signal(str, float, float)   # filename, done, total
     status = Signal(str)
     speed = Signal(float)
     finished_signal = Signal(bool, str)
+    done = Signal()
 
     def __init__(self, model):
         super().__init__()
         self._model = model
         self._cancelled = False
+        self._running = False
 
-    def run(self):
+    def start(self):
+        self._running = True
+        _ACTIVE_WORKERS.add(self)
+        threading.Thread(target=self._run, name="pretrained-install", daemon=True).start()
+
+    def isRunning(self) -> bool:
+        return self._running
+
+    def cancel(self):
+        self._cancelled = True
+
+    def _run(self):
         try:
             ok, msg = catalog.install_model(
                 self._model,
@@ -124,6 +164,9 @@ class _InstallThread(QThread):
             self.finished_signal.emit(ok, msg)
         except Exception as exc:
             self.finished_signal.emit(False, str(exc))
+        finally:
+            self._running = False
+            self.done.emit()
 
 
 # ── Row ──────────────────────────────────────────────────────────────────────
@@ -541,7 +584,7 @@ class PretrainedModelsDialog(QDialog):
         super().__init__(parent)
         self._models: list = []
         self._rows: dict = {}       # id(model) -> _ModelRow
-        self._fetch_thread: Optional[QThread] = None
+        self._fetch_thread: Optional[_FetchWorker] = None
         self._install_threads: list = []
         self._arch_keys = None      # arch chips currently shown (rebuild guard)
         self.setWindowTitle("Pre-trained Models")
@@ -666,15 +709,14 @@ class PretrainedModelsDialog(QDialog):
         self._status_lbl.setText("Loading pre-trained catalog…")
         self._models = []
         self._populate([])
-        thread = _FetchThread(self)
+        thread = _FetchWorker()
         self._fetch_thread = thread
         thread.loaded.connect(self._on_loaded)
         thread.failed.connect(self._on_fetch_failed)
-        # Do NOT deleteLater the thread: the Python attribute still points at it
-        # after `finished`, so a later _refresh() would dereference a dead C++
-        # object. Instead clear the ref on finish; the dialog owns the thread
-        # and reaps it on close.
-        thread.finished.connect(lambda: self._on_fetch_finished(thread))
+        # Keep the dialog's ref as long as the fetch is in flight; the worker
+        # registry additionally protects it if the dialog closes mid-fetch.
+        thread.done.connect(lambda: self._on_fetch_finished(thread))
+        thread.done.connect(lambda: _ACTIVE_WORKERS.discard(thread))
         thread.start()
 
     def _on_fetch_finished(self, thread):
@@ -789,11 +831,11 @@ class PretrainedModelsDialog(QDialog):
         if row is None:
             return
         row.set_installing()
-        thread = _InstallThread(model)
+        thread = _InstallWorker(model)
         thread.progress.connect(lambda n, c, t, r=row: r.set_progress(c, t))
         thread.status.connect(lambda s, r=row: r.set_status(s))
         thread.finished_signal.connect(lambda ok, msg, r=row, m=model: self._on_install_done(m, r, ok, msg))
-        thread.finished.connect(thread.deleteLater)
+        thread.done.connect(lambda t=thread: _ACTIVE_WORKERS.discard(t))
         # keep a reference so it isn't garbage-collected mid-download
         self._install_threads.append(thread)
         thread.start()

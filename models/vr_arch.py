@@ -23,6 +23,20 @@ from models.vr import v6_spec_utils
 # VR 5.1 models use the CascadedNet network from nets_new.
 VR_51_ARCH_SIZES = (56817, 218409)
 
+
+def _resample_band(wave, orig_sr, target_sr, res_type):
+    """Resample a band, tolerating a runtime without the `samplerate` backend.
+
+    Delegates to spec_utils.resample_audio, which falls back to the
+    scipy-backed `polyphase` resampler when a `sinc_*` res_type can't find
+    the optional `samplerate` package (shared with the upsampling legs in
+    cmb_spectrogram_to_wave, so the whole VR pipeline survives a missing
+    backend).
+    """
+    return spec_utils.resample_audio(
+        wave, orig_sr=orig_sr, target_sr=target_sr, res_type=res_type
+    )
+
 # Non-accompaniment stems get the aggression value inverted, matching
 # audio-separator's CommonSeparator.NON_ACCOM_STEMS.
 NON_ACCOM_STEMS = (
@@ -176,7 +190,7 @@ class VRNet(nn.Module):
                     X_wave[d], bp["hl"], bp["n_fft"], mp, band=d, is_v51_model=self.is_vr_51
                 )
             else:  # lower bands: resample down from the band above
-                X_wave[d] = librosa.resample(
+                X_wave[d] = _resample_band(
                     X_wave[d + 1],
                     orig_sr=mp["band"][d + 1]["sr"],
                     target_sr=bp["sr"],

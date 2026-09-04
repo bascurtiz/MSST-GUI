@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore", category=UserWarning, message="TypedStorage is
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils.model_utils import load_start_checkpoint, demix, apply_tta
+from utils.model_utils import load_start_checkpoint, demix, apply_tta, ensure_readable_checkpoint
 from utils.settings import get_model_from_config
 RATE: int = 44100  # Sampling rate (44.1 kHz)
 FORMAT: int = pyaudio.paFloat32  # Audio format
@@ -95,7 +95,9 @@ def load_model(args: argparse.Namespace, device: str) -> Tuple[nn.Module, Any]:
     model, config = get_model_from_config(args.model_type, args.config_path)
 
     if args.start_check_point:
-        checkpoint = torch.load(args.start_check_point, weights_only=False, map_location='cpu')
+        checkpoint = torch.load(
+            ensure_readable_checkpoint(args.start_check_point),
+            weights_only=False, map_location='cpu')
         load_start_checkpoint(args, model, checkpoint, type_='inference')
 
     if isinstance(args.device_ids, list) and len(args.device_ids) > 1 and not args.force_cpu:
