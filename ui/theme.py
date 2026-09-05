@@ -56,6 +56,7 @@ class _DarkTheme:
     input_hover = "#2C323B"
     scrollbar_bg = "rgba(255,255,255,0.04)"
     scrollbar_handle = "rgba(255,255,255,0.18)"
+    scrollbar_hover = "rgba(255,255,255,0.45)"
     tooltip_bg = "#232831"
     tooltip_text = "#E8EDF3"
     tooltip_border = "rgba(255,255,255,0.14)"
@@ -119,6 +120,7 @@ class _LightTheme:
     input_hover = "#FFFFFF"
     scrollbar_bg = "rgba(0,0,0,0.05)"
     scrollbar_handle = "rgba(0,0,0,0.20)"
+    scrollbar_hover = "rgba(0,0,0,0.45)"
     # Tooltips and menus keep the dark appearance in both themes (white text
     # on a dark surface), matching mvsep.com's always-dark look.
     tooltip_bg = "#232831"
@@ -187,7 +189,7 @@ def build_stylesheet(theme) -> str:
         "bg", "bg_deep", "surface", "surface_alt", "card", "header_bg",
         "text", "text_sec", "text_dim", "text_muted", "text_label",
         "border", "border_visible", "border_dim", "input_bg", "input_hover",
-        "scrollbar_bg", "scrollbar_handle", "tooltip_bg", "tooltip_text",
+        "scrollbar_bg", "scrollbar_handle", "scrollbar_hover", "tooltip_bg", "tooltip_text",
         "tooltip_border", "menu_bg", "menu_text", "menu_hover", "menu_sep",
         "menu_border", "menu_disabled", "console_bg", "console_text", "disabled_bg",
         "disabled_text", "accent", "accent_hover", "accent_soft",

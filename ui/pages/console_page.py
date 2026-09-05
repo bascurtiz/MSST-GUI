@@ -418,6 +418,25 @@ def _norm(s):
     return s.strip()
 
 
+def _stem_label(path, song_base=None):
+    """Stem label from an output filename. Prefers the "(<stem>)" suffix;
+    falls back to the trailing "<stem>" after the song base so mvsep
+    quality-checker names ("<song minus _mixture>_<stem>") get proper chips
+    instead of the whole filename."""
+    name_no_ext, _ = os.path.splitext(os.path.basename(path))
+    m = re.search(r'\(([^)]+)\)$', name_no_ext)
+    if m:
+        return m.group(1).strip().capitalize()
+    if song_base:
+        base = song_base
+        if base.lower().endswith("_mixture"):
+            base = base[:-len("_mixture")]
+        low = name_no_ext.lower()
+        if low.startswith(base.lower() + "_") and len(low) > len(base) + 1:
+            return name_no_ext[len(base) + 1:].strip().capitalize()
+    return name_no_ext
+
+
 def _extract_name(text):
     m = _RE_PROCESS.search(text)
     if m:
@@ -1246,14 +1265,12 @@ class _WaveformContainer(QFrame):
             t.apply_sync(ms)
 
     @staticmethod
-    def _sorted_paths(tracks):
+    def _sorted_paths(tracks, song_base=None):
         """Return output paths sorted into the canonical stem display order
         (vocals, extra stems, other, drums, bass), stable within a rank."""
-        def _label(p):
-            name_no_ext, _ = os.path.splitext(os.path.basename(p))
-            m = re.search(r'\(([^)]+)\)$', name_no_ext)
-            return (m.group(1).strip().capitalize() if m else name_no_ext)
-        return sorted(tracks, key=lambda p: _stem_display_rank(_label(p)))
+        return sorted(tracks,
+                      key=lambda p: _stem_display_rank(
+                          _stem_label(p, song_base=song_base)))
 
     @staticmethod
     def _read_envelope(path, bins=400):
@@ -1264,7 +1281,9 @@ class _WaveformContainer(QFrame):
     def load_tracks(self, card_ref):
         self._card = card_ref
         self._shared_pos_ms = 0
-        tracks = self._sorted_paths(card_ref._output_paths)
+        tracks = self._sorted_paths(card_ref._output_paths,
+                                    song_base=getattr(card_ref,
+                                                      "_song_name", None))
 
         # One shared amplitude reference for the whole output set: decode
         # each file once and scale every track against the *loudest* one.
@@ -1277,10 +1296,8 @@ class _WaveformContainer(QFrame):
 
         old_count = len(self._tracks)
         for i, (path, (env, peak)) in enumerate(zip(tracks, decoded)):
-            basename = os.path.basename(path)
-            name_no_ext, _ = os.path.splitext(basename)
-            m = re.search(r'\(([^)]+)\)$', name_no_ext)
-            label = m.group(1).strip().capitalize() if m else name_no_ext
+            label = _stem_label(path, song_base=getattr(card_ref,
+                                                        "_song_name", None))
             ov = _stem_override_for_model(card_ref, label)
             line_c = ov or _stem_color(label)
             bg_c = _stem_bg_color(label, ov)
@@ -1305,13 +1322,13 @@ class _WaveformContainer(QFrame):
             self._tracks[i].setVisible(False)
 
     def refresh_tracks(self, card_ref):
-        tracks = self._sorted_paths(card_ref._output_paths)
+        tracks = self._sorted_paths(card_ref._output_paths,
+                                    song_base=getattr(card_ref,
+                                                      "_song_name", None))
         old_count = len(self._tracks)
         for i, path in enumerate(tracks):
-            basename = os.path.basename(path)
-            name_no_ext, _ = os.path.splitext(basename)
-            m = re.search(r'\(([^)]+)\)$', name_no_ext)
-            label = m.group(1).strip().capitalize() if m else name_no_ext
+            label = _stem_label(path, song_base=getattr(card_ref,
+                                                        "_song_name", None))
             ov = _stem_override_for_model(card_ref, label)
             line_c = ov or _stem_color(label)
             bg_c = _stem_bg_color(label, ov)
@@ -1606,7 +1623,14 @@ class _TaskCard(QFrame):
         self._output_lbl.setVisible(bool(self._raw_output))
 
     def set_output_dir(self, path):
-        if path and os.path.isdir(path):
+        # Store the raw path even while the folder does not exist yet — the
+        # engine creates it shortly after the run starts (the first stem
+        # lands a few seconds in). Requiring isdir() here would leave every
+        # card without a folder for the whole run, so "Open folder" silently
+        # did nothing until the end-of-run stem scan set the dir again.
+        # _open_folder_path() re-checks isdir() when the user actually
+        # clicks, so nothing opens before the folder really exists.
+        if path:
             self._output_dir = path
 
     def set_status(self, text):
@@ -1616,7 +1640,11 @@ class _TaskCard(QFrame):
         self._progress = 0
         self._output_files = []
         self._output_paths = []
-        self._output_dir = None
+        # NOTE: _output_dir is intentionally NOT cleared here — it is the
+        # run's output folder, set when the card was created, and "Open
+        # folder" must work mid-run. Wiping it here (activation paths call
+        # reset_progress right after creation) left every card without a
+        # folder until the end-of-run stem scan set it again.
         self._start_time = time.time()
         self._is_complete = False
         self._failed = False
@@ -1822,6 +1850,8 @@ class _OutputListPanel(QWidget):
         super().__init__(parent)
         self._cards = {}
         self._selected_card = None
+        self._auto_follow = False  # job running: keep the detail on the top card
+        self._manual_pick = False  # user clicked a card: pause following
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -1835,6 +1865,7 @@ class _OutputListPanel(QWidget):
             QScrollBar:vertical{{width:3px;background:transparent;margin:0;}}
             QScrollBar::handle:vertical{{background:{theme_manager.theme.scrollbar_handle};
             border-radius:1px;min-height:20px;}}
+            QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_hover};}}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical{{height:0;}}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical{{background:transparent;}}
         """)
@@ -1852,6 +1883,25 @@ class _OutputListPanel(QWidget):
         scroll.setWidget(self._container)
         root.addWidget(scroll, 1)
         self._scroll = scroll
+
+    def scroll_to_card(self, card):
+        """Keep `card` in view — scrolls only when it is off-screen, so a
+        folder batch follows the currently-busy song without yanking the
+        list away from a card the user is already looking at."""
+        if card is None:
+            return
+        self._scroll.ensureWidgetVisible(card)
+        # After a reorder the moved rows' geometry is not final yet — Qt
+        # still reports where the card *used* to be, so the synchronous
+        # scroll above can chase a stale position (observed as the list
+        # scrolling the wrong way when a song completes). Re-scroll on the
+        # next event-loop pass, once the layout has settled.
+        def _rescroll(w=card):
+            try:
+                self._scroll.ensureWidgetVisible(w)
+            except RuntimeError:
+                pass  # card was deleted between scheduling and firing
+        QTimer.singleShot(0, _rescroll)
 
     def _make_dot_widget(self, card):
         dot = QWidget()
@@ -1913,8 +1963,16 @@ class _OutputListPanel(QWidget):
             self.cardSelected.emit(card)
 
     def _on_card_selected(self, card):
+        # A direct click means the user wants THIS card in the detail view:
+        # stop following the top card until the next song activates (a new
+        # "Processing:" line), so manual inspection is never yanked away.
+        self._manual_pick = True
         self._select_card(card)
         self.cardSelected.emit(card)
+
+    def reset_follow(self):
+        """Called when a new job starts: resume auto-following the top card."""
+        self._manual_pick = False
 
     def _select_card(self, card):
         if self._selected_card:
@@ -1922,6 +1980,17 @@ class _OutputListPanel(QWidget):
         self._selected_card = card
         if card:
             card.set_selected(True)
+
+    def auto_select_top(self, top_card):
+        """While a job runs and the user hasn't clicked a specific card,
+        keep the detail view on the newest processed/completed card (the
+        top of the list after _sort_card_order)."""
+        if not self._auto_follow or self._manual_pick:
+            return
+        if top_card is None or top_card is self._selected_card:
+            return
+        self._select_card(top_card)
+        self.cardSelected.emit(top_card)
 
     def get_card(self, name):
         return self._cards.get(name)
@@ -2449,6 +2518,9 @@ class ConsolePage(QWidget):
         never marks a card FAILED before the job has actually ended."""
         self._job_active = bool(active)
         self._btn_stop.setEnabled(self._job_active)
+        self._output_list._auto_follow = bool(active)
+        if active:
+            self._output_list.reset_follow()
 
     def _on_friendly_names(self, models):
         """Zoo index arrived: cache ckpt -> friendly name and refresh the
@@ -2873,8 +2945,22 @@ class ConsolePage(QWidget):
         card._activity_seq = self._next_card_seq()
         self._current_song = best
         self._followed_song = best
+        # New song activated: the user's manual pick is superseded — resume
+        # following the top card in the detail view.
+        self._output_list.reset_follow()
         # Raise the newly-activated card to the top of the list.
         self._sort_card_order()
+        self._follow_active_card()
+
+    def _follow_active_card(self):
+        """Scroll the output list so the currently-busy song stays in view
+        (no-op when it is already visible — the user can inspect earlier
+        cards without the list yanking away)."""
+        card = (self._song_cards.get(self._followed_song)
+                if self._followed_song else None)
+        if card is None:
+            card = self._active_card()
+        self._output_list.scroll_to_card(card)
 
     def _parse_and_update(self, text):
         m_dir = _RE_OUTPUT_DIR.search(text)
@@ -2883,6 +2969,12 @@ class ConsolePage(QWidget):
             if d:
                 self._pending_output_dir = d
                 self._output_dir = d
+                # The engine announces the output folder before creating it;
+                # cards created earlier (or whose dir was wiped by a reuse
+                # reset) must still be able to open it mid-run.
+                for card in self._song_cards.values():
+                    if not getattr(card, "_output_dir", None):
+                        card.set_output_dir(d)
 
         m_q = _RE_QUEUED.search(text)
         if m_q:
@@ -2928,6 +3020,7 @@ class ConsolePage(QWidget):
                     # of a previous run that ended without completion. Stale
                     # stems from that old job must not mix with the new one's.
                     card.reset_progress()
+                    card.set_output_dir(self._output_dir)
                     card.mark_loading()
                 if not reuse:
                     # New song — add a card. A re-run of an already-finished
@@ -2948,11 +3041,34 @@ class ConsolePage(QWidget):
                                         display=self._model_display_for(self._current_model))
                     if self._output_dir:
                         card.set_output_dir(self._output_dir)
-                    self._current_song = card._key
-                    self._followed_song = card._key
-                    self._reconcile_unmatched()
-                    self._sort_card_order()
-                    self._ensure_active_card()
+                # A fresh "Processing:" line naming a DIFFERENT song means
+                # the engine finished the previously-active song and moved
+                # on: mark the old card complete and hand the active slot to
+                # the new song, so its own progress bar and exports advance
+                # card-by-card through the batch instead of all landing on
+                # the first card.
+                prev = (self._song_cards.get(self._current_song)
+                        if self._current_song else None)
+                if (prev is not None and prev is not card
+                        and not prev._is_complete and not prev._failed):
+                    prev.mark_complete()
+                    if getattr(self._detail_view, "_card", None) is prev:
+                        self._detail_view.show_card(prev)
+                    card.reset_progress()
+                    card.mark_active()
+                    card._activity_seq = self._next_card_seq()
+                self._current_song = card._key
+                self._followed_song = card._key
+                # Engine moved to the next song: resume auto-follow so the
+                # detail view lands on the new top card.
+                self._output_list.reset_follow()
+                self._reconcile_unmatched()
+                self._sort_card_order()
+                self._ensure_active_card()
+                # _ensure_active_card early-returns when the right card is
+                # already tracked, so follow the busy song here explicitly
+                # (scrolls only when it is off-screen).
+                self._follow_active_card()
 
         # Handle "Completed: <name>" — marks the specific card that finished.
         completed_name = _extract_completed_name(text)
@@ -2973,6 +3089,13 @@ class ConsolePage(QWidget):
                     if not c._is_complete and c._song_name.lower() in completed_lower:
                         card = c
                         break
+            # Generic completion ("Completed: processing" — the GUI emits it
+            # once the whole run finished): close out whichever card is still
+            # actively processing. The export-driven advancement no longer
+            # marks cards during end-of-run stem bursts, so this is what
+            # completes the final song.
+            if card is None:
+                card = self._active_card()
             if card and not card._is_complete:
                 card.mark_complete()
                 if self._current_song == key or self._current_song == getattr(card, '_key', None):
@@ -3059,27 +3182,51 @@ class ConsolePage(QWidget):
         m = re.search(r'\((.+)\)$', name_no_ext)
         stemless = re.sub(r'\s*\([^)]*\)\s*$', '', name_no_ext).strip() if m else name_no_ext
         nstem = _norm(stemless)
-
-        # The file's own folder is the strongest signal: each run writes into
-        # its own per-checkpoint subfolder, and the card that was told about
-        # that folder is the only correct destination. This keeps late
-        # "Wrote file:" lines (e.g. re-reported scans of a previous run)
-        # from ever landing on a different model's card of the same song.
         d = os.path.dirname(export)
-        if d:
+
+        # 0) Same song name is unambiguous in a folder batch (one card per
+        #    song, all sharing the output folder). For re-run duplicates the
+        #    export's folder pins the right card when it uniquely matches one
+        #    of them — this keeps late "Wrote file:" lines (e.g. re-reported
+        #    scans of a previous run) off a different model's card while never
+        #    letting the shared batch folder hijack every export onto the
+        #    first card.
+        name_cards = [c for c in self._song_cards.values()
+                      if c._song_name and _norm(c._song_name) == nstem]
+        if len(name_cards) == 1:
+            return name_cards[0]
+        if len(name_cards) > 1:
+            if d:
+                dir_cands = [c for c in name_cards
+                             if getattr(c, "_output_dir", None)
+                             and os.path.normpath(c._output_dir).lower()
+                             == os.path.normpath(d).lower()]
+                if len(dir_cands) == 1:
+                    return dir_cands[0]
+            # Same song, same folder (or folder unknown yet): the in-progress
+            # card wins over the previous run's finished one.
+            for c in name_cards:
+                if not c._is_complete and not c._failed:
+                    return c
+            return name_cards[0]
+
+        # 0b) mvsep quality-checker naming: "<song minus _mixture>_<stem>" —
+        #     the filename's leading part matches the card's input name once
+        #     the card name's trailing "_mixture" is dropped (the underscore
+        #     separator guards against song_001 matching song_0010...).
+        if not name_cards:
+            low = stemless.lower()
             for c in self._song_cards.values():
-                cd = getattr(c, "_output_dir", None)
-                if cd and os.path.normpath(cd).lower() == os.path.normpath(d).lower():
+                if not c._song_name:
+                    continue
+                base = c._song_name.lower()
+                if base.endswith("_mixture"):
+                    base = base[:-len("_mixture")]
+                if base and low.startswith(base + "_") \
+                        and len(low) > len(base) + 1:
                     return c
 
-        # 0) A re-run creates a second card for the same song; its exports
-        #    must land on the in-progress card, not the previous run's
-        #    finished one. Only when the active card IS this exact song.
-        active = self._active_card()
-        if (active is not None and not active._is_complete
-                and _norm(active._song_name) == nstem):
-            return active
-        # 1) exact normalized stem (most reliable)
+        # 1) exact normalized key (handles sanitized display names)
         if nstem in self._song_cards:
             return self._song_cards[nstem]
         # 2) output's parent directory often equals the song name
@@ -3103,18 +3250,36 @@ class ConsolePage(QWidget):
             return best[1]
         # 4) last resort: the actively-processing card (never a queued one)
         if allow_active:
-            return self._active_card() or active_card
+            return self._active_card()
         return None
 
     def _assign_export(self, target, export):
-        # Activate queued cards when their first export arrives (the true
-        # signal that MSST has started processing this song).
+        # Advance only when the target was still QUEUED — i.e. its first
+        # export just arrived, which (export-driven runs) is the signal that
+        # the engine moved on from the previous song: close out the active
+        # card and hand the slot to this one.
+        #
+        # IMPORTANT: do NOT close out on exports for already-known songs.
+        # The mid-run stem reporter re-scans the output folder on a timer, so
+        # stems for *older* songs keep arriving while a newer song is still
+        # being processed — closing out then would mark the currently-
+        # running card Complete while its files do not even exist yet.
         was_queued = target._status_lbl.text() == "Queued"
         if was_queued:
+            cur = (self._song_cards.get(self._current_song)
+                   if self._current_song else None)
+            if (cur is not None and cur is not target and not cur._is_complete
+                    and not cur._failed):
+                cur.mark_complete()
+                if getattr(self._detail_view, "_card", None) is cur:
+                    self._detail_view.show_card(cur)
             target.reset_progress()
             target.mark_active()
             self._current_song = target._key
             self._followed_song = target._key
+            self._output_list.reset_follow()
+            self._sort_card_order()
+            self._follow_active_card()
         if target.add_output(export) and self._detail_view._card is target:
             self._detail_view._refresh_waveform()
 
@@ -3133,17 +3298,24 @@ class ConsolePage(QWidget):
 
 
     def _sort_card_order(self):
-        """Order cards by recency: the most recently created/activated entry
-        sits on top, previous entries follow below it. Active (loading/
-        processing) cards always lead so the running job stays visible, and
-        the rest are ordered newest-first."""
-        def _rank(c):
-            active = (not c._is_complete and not c._failed
-                      and c._status_lbl.text() in ("Loading...", "Processing..."))
-            # reverse-sorted: active cards (higher bucket) lead the list.
-            return (1 if active else 0, getattr(c, "_activity_seq", 0))
-        cards = sorted(self._song_cards.values(), key=_rank, reverse=True)
+        """Most recently processed/completed song on top, so the user always
+        sees the latest progress at the top of the list; songs that are
+        still queued stay below in natural (alphabetical) order."""
+        def rank(c):
+            active = (c._is_complete or c._failed
+                      or c._status_lbl.text() in ("Processing...", "Loading..."))
+            if active:
+                # Highest activity sequence first: the card the engine is
+                # on right now, then completed songs most-recent-first.
+                return (0, -getattr(c, "_activity_seq", 0))
+            return (1, _norm(c._song_name))
+        cards = sorted(self._song_cards.values(), key=rank)
         self._output_list.reorder(cards)
+        # Keep the detail view on the newest processed/completed card (the
+        # top of the list) while a job runs — so the waveforms/status the
+        # user sees always match the topmost, most up-to-date entry. No-op
+        # when idle or when the user clicked a specific card.
+        self._output_list.auto_select_top(cards[0] if cards else None)
 
     def get_full_log(self):
         return self._log_edit.get_full_text()

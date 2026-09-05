@@ -1447,7 +1447,7 @@ class TrainingPage(QWidget):
             "QScrollBar:vertical{width:4px;background:transparent;margin:0;}"
             f"QScrollBar::handle:vertical{{background:{t.scrollbar_handle};"
             "border-radius:2px;min-height:30px;}"
-            f"QScrollBar::handle:vertical:hover{{background:{t.border_dim};}}"
+            f"QScrollBar::handle:vertical:hover{{background:{t.scrollbar_hover};}}"
             "QScrollBar::add-line:vertical{height:0;}"
             "QScrollBar::sub-line:vertical{height:0;}"
             "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}"

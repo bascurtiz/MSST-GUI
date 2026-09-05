@@ -733,7 +733,7 @@ class AutoEnsemblePage(QWidget):
             "QScrollBar:vertical{width:4px;background:transparent;margin:0;}"
             f"QScrollBar::handle:vertical{{background:{theme_manager.theme.scrollbar_handle};"
             f"border-radius:2px;min-height:30px;}}"
-            f"QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_handle};}}"
+            f"QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_hover};}}"
             "QScrollBar::add-line:vertical{height:0;}"
             "QScrollBar::sub-line:vertical{height:0;}"
             "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}"
@@ -787,7 +787,8 @@ class AutoEnsemblePage(QWidget):
         stem_scroll.setWidgetResizable(True)
         stem_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}"
                                   "QScrollBar:vertical{width:4px;background:transparent;}"
-                                  f"QScrollBar::handle:vertical{{background:{theme_manager.theme.scrollbar_handle};border-radius:2px;}}")
+                                  f"QScrollBar::handle:vertical{{background:{theme_manager.theme.scrollbar_handle};border-radius:2px;}}"
+                                  f"QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_hover};}}")
         stem_scroll.setMaximumHeight(240)
         stem_content = QWidget()
         stem_content.setStyleSheet("background:transparent;")
@@ -908,14 +909,14 @@ class AutoEnsemblePage(QWidget):
             f"QScrollBar:vertical{{width:4px;background:transparent;margin:0;}}"
             f"QScrollBar::handle:vertical{{background:{theme_manager.theme.scrollbar_handle};"
             "border-radius:2px;min-height:30px;}"
-            f"QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_handle};}}"
+            f"QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_hover};}}"
             "QScrollBar::add-line:vertical{height:0;}"
             "QScrollBar::sub-line:vertical{height:0;}"
             "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}"
             f"QScrollBar:horizontal{{height:4px;background:transparent;margin:0;}}"
             f"QScrollBar::handle:horizontal{{background:{theme_manager.theme.scrollbar_handle};"
             "border-radius:2px;min-width:30px;}"
-            f"QScrollBar::handle:horizontal:hover{{background:{theme_manager.theme.scrollbar_handle};}}"
+            f"QScrollBar::handle:horizontal:hover{{background:{theme_manager.theme.scrollbar_hover};}}"
             "QScrollBar::add-line:horizontal{width:0;}"
             "QScrollBar::sub-line:horizontal{width:0;}"
             "QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal{background:transparent;}"

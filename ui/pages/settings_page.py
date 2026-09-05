@@ -1196,7 +1196,7 @@ class _FolderManagerWidget(QWidget):
             QScrollBar:vertical{{width:4px;background:transparent;margin:0;}}
             QScrollBar::handle:vertical{{background:{theme_manager.theme.scrollbar_handle};
             border-radius:2px;min-height:30px;}}
-            QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.border_dim};}}
+            QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_hover};}}
             QScrollBar::add-line:vertical{{height:0;}}
             QScrollBar::sub-line:vertical{{height:0;}}
             QScrollBar::add-page:vertical,
@@ -2198,7 +2198,7 @@ class SettingsPage(QWidget):
             QScrollBar:vertical{{width:4px;background:transparent;margin:0;}}
             QScrollBar::handle:vertical{{background:{theme_manager.theme.scrollbar_handle};
             border-radius:2px;min-height:30px;}}
-            QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.border_dim};}}
+            QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_hover};}}
             QScrollBar::add-line:vertical{{height:0;}}
             QScrollBar::sub-line:vertical{{height:0;}}
             QScrollBar::add-page:vertical,

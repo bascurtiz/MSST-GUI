@@ -8,10 +8,11 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
-    QDialogButtonBox, QMenu, QMessageBox,
+    QDialogButtonBox, QMenu, QMessageBox, QCheckBox,
 )
 from PySide6.QtGui import QCursor
 from PySide6.QtCore import (Qt, Signal, Property, QObject, QEasingCurve, QSize,
+                           QTimer,
                             QPoint, QRectF, QPointF, QPropertyAnimation,
                             QVariantAnimation, QEvent, QUrl, QTimer)
 from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
@@ -20,7 +21,10 @@ from PySide6.QtGui import QFont, QPainter, QPen, QColor, QDesktopServices
 from backend.runner import ProcessRunner, describe_exit_code
 from backend.model_manager import fetch_model_index
 from backend.paths import REPO_ROOT, APP_DIR, get_python_exe
-from backend.audio_names import INFERENCE_FILENAME_TEMPLATE
+from backend.audio_names import (
+    INFERENCE_FILENAME_TEMPLATE,
+    SDR_FILENAME_TEMPLATE,
+)
 from backend.gpu_utils import list_gpus, device_ids_from_selection
 from backend import settings as settings_store
 from backend import msst_catalog as model_catalog
@@ -45,6 +49,65 @@ from ui.widgets.common import (
     _type_badge_ss, _custom_badge_ss, _blocked_badge_ss,
     _type_badge_color, _type_title,
 )
+
+# mvsep quality-checker datasets (SDR-test mode): display name, stem
+# suffix map (config instrument name -> expected output suffix; "*" is a
+# catch-all for every stem, e.g. Super Resolution's single "_restored"),
+# and whether the "_instrum" stem must be derived as mix minus vocals
+# (--extract_instrumental) rather than taken from the model's own stems.
+SDR_DATASETS = [
+    ("Multisong",
+     {"vocals": "vocals", "other": "instrum", "instrumental": "instrum",
+      "instrument": "instrum", "accompaniment": "instrum"}, False),
+    ("Synthetic",
+     {"vocals": "vocals", "other": "instrum", "instrumental": "instrum",
+      "instrument": "instrum", "accompaniment": "instrum"}, False),
+    ("Guitar", {"guitar": "guitar", "other": "other"}, False),
+    ("Piano", {"piano": "piano", "other": "other"}, False),
+    ("Medley Vox", {"vocals1": "vocals1", "vocals2": "vocals2"}, False),
+    ("Strings", {"strings": "strings", "other": "other"}, False),
+    ("Wind", {"wind": "wind", "other": "other"}, False),
+    ("DNR v3",
+     {"speech": "speech", "music": "music", "sfx": "sfx",
+      "effects": "sfx", "noise": "sfx", "fx": "sfx"}, False),
+    ("Super Resolution", {"*": "restored"}, False),
+    ("Lead/Back Vocals",
+     {"lead": "lead", "back": "back", "instrum": "instrum",
+      "instrumental": "instrum", "instrument": "instrum",
+      "back-instrum": "back-instrum", "back_instrum": "back-instrum",
+      "backinstrumental": "back-instrum"}, False),
+    ("Drums",
+     {"kick": "kick", "snare": "snare", "toms": "toms", "hh": "hh",
+      "hi-hat": "hh", "hihat": "hh", "cymbals": "cymbals",
+      "cym": "cymbals", "hh-cymbals": "hh-cymbals",
+      "hh_cymbals": "hh-cymbals"}, False),
+    ("Male/Female Vocals",
+     {"male": "male", "female": "female", "man": "male",
+      "woman": "female"}, False),
+    ("Phantom Center",
+     {"center": "center", "wide": "wide", "phantom": "center"}, False),
+    ("Synth Vocals 2026",
+     {"vocals": "vocals", "other": "instrum", "instrumental": "instrum",
+      "instrument": "instrum", "accompaniment": "instrum"}, False),
+    ("MUSDB18",
+     {"vocals": "vocals", "bass": "bass", "drums": "drums",
+      "other": "other", "instrumental": "instrum"}, True),
+]
+
+
+def _sdr_dataset(name):
+    """(stem_map, needs_instrum) for a dataset display name, or (None, False)
+    when unknown."""
+    for ds_name, stem_map, needs_instrum in SDR_DATASETS:
+        if ds_name == name:
+            return stem_map, needs_instrum
+    return None, False
+
+
+def _sdr_map_text(stem_map):
+    """Serialize a stem suffix map for the engine's --stem_suffix_map."""
+    return ",".join(f"{k}={v}" for k, v in stem_map.items())
+
 
 AUDIO_FILTER = ("Audio files (*.wav *.flac *.mp3 *.ogg *.aiff *.m4a *.opus *.wv);;"
                 "All files (*.*)")
@@ -848,6 +911,85 @@ class _ComboRow(QFrame):
         super().mousePressEvent(e)
 
 
+def _sdr_check_ss():
+    """Square checkbox indicator: accent fill when checked, accent border on
+    hover — matches the multi-select checkboxes in the model library."""
+    t = theme_manager.theme
+    return (
+        f"QCheckBox{{background:transparent;spacing:6px;}}"
+        f"QCheckBox::indicator{{width:16px;height:16px;"
+        f"border:1px solid {t.border_visible};border-radius:4px;"
+        f"background:transparent;}}"
+        f"QCheckBox::indicator:hover{{border-color:{theme_manager.accent};}}"
+        f"QCheckBox::indicator:checked{{background:{theme_manager.accent};"
+        f"border-color:{theme_manager.accent};}}"
+    )
+
+
+class _SdrTestRow(QFrame):
+    """CONFIGURATION row under DEVICE: a Quality Checker Test checkbox plus
+    a dataset dropdown that appears only while enabled. When on, outputs are
+    written with mvsep quality-checker naming for the selected dataset (the
+    input's trailing "_mixture" is dropped and each stem is suffixed per
+    the dataset's expected names)."""
+
+    def __init__(self, tooltip=""):
+        super().__init__()
+        self.setObjectName("cfgRow")
+        self.setFixedHeight(ROW_H)
+        self.setStyleSheet(_row_ss())
+
+        hl = QHBoxLayout(self)
+        hl.setContentsMargins(12, 0, 14, 0)
+        hl.setSpacing(0)
+
+        # The label is longer than the other rows' (QUALITY / DEVICE...), so
+        # it sizes naturally instead of the shared 80px column; the tooltip
+        # rides on the controls.
+        lb = QLabel("Quality Checker Test")
+        lb.setStyleSheet(_lbl_ss())
+        lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        hl.addWidget(lb)
+        if tooltip:
+            self.setToolTip(tooltip)
+
+        hl.addSpacing(10)
+        self.check = QCheckBox()
+        self.check.setStyleSheet(_sdr_check_ss())
+        self.check.setCursor(Qt.PointingHandCursor)
+        self.check.setToolTip(tooltip)
+        # Keep the indicator at its natural (left) position — an empty-text
+        # QCheckBox with spare layout space expands and Qt centers the
+        # indicator instead.
+        self.check.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        # The checkbox is the last widget in the row, so it always sits in
+        # the same right-hand column as the "..." / ">" icons of the rows
+        # above — enabling the dropdown slides it in to the LEFT of the
+        # checkbox instead of pushing the checkbox around.
+        hl.addSpacing(8)
+        self.combo = _ComboBox()
+        self.combo.addItems([d[0] for d in SDR_DATASETS])
+        self.combo.setStyleSheet(_combo_ss())
+        self.combo.setCursor(Qt.PointingHandCursor)
+        self.combo.setToolTip(tooltip)
+        hl.addWidget(self.combo, 1)
+
+        self._arrow = _ExpandArrow()
+        hl.addWidget(self._arrow)
+        hl.addSpacing(8)
+        hl.addWidget(self.check)
+        self.combo.popupOpened.connect(lambda: self._arrow.set_down(True))
+        self.combo.popupClosed.connect(lambda: self._arrow.set_down(False))
+
+        self.check.toggled.connect(self._sync_visibility)
+        self._sync_visibility(self.check.isChecked())
+
+    def _sync_visibility(self, checked):
+        self.combo.setVisible(bool(checked))
+        self._arrow.setVisible(bool(checked))
+
+
 # ── Stem Selection Dialog ───────────────────────────────────────────────────
 
 class _StemTitleBar(QWidget):
@@ -962,6 +1104,7 @@ class _StemSelectionDialog(QDialog):
             "QScrollBar::handle:vertical{"
             f"background:{theme_manager.theme.scrollbar_handle};"
             "border-radius:2px;min-height:30px;}"
+            f"QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_hover};}}"
             "QScrollBar::add-line:vertical{height:0;}"
             "QScrollBar::sub-line:vertical{height:0;}"
         )
@@ -2378,6 +2521,16 @@ class InferencePage(QWidget):
             self._device_combo.setCurrentIndex(1)
         cfg.addWidget(self._dev_row)
 
+        self._sdr_row = _SdrTestRow(
+            tooltip="Quality Checker Test: write outputs with mvsep\n"
+                    "quality-checker naming. The trailing '_mixture' is\n"
+                    "dropped from the input name and each stem is suffixed\n"
+                    "as the selected dataset expects (e.g. song_X_mixture ->\n"
+                    "song_X_speech, song_X_instrum).")
+        self._sdr_check = self._sdr_row.check
+        self._sdr_combo = self._sdr_row.combo
+        cfg.addWidget(self._sdr_row)
+
         ll.addLayout(cfg)
 
         ll.addSpacing(36)
@@ -2489,7 +2642,7 @@ class InferencePage(QWidget):
             "QScrollBar:vertical{width:4px;background:transparent;margin:0;}"
             f"QScrollBar::handle:vertical{{background:{t.scrollbar_handle};"
             "border-radius:2px;min-height:30px;}"
-            f"QScrollBar::handle:vertical:hover{{background:{t.border_dim};}}"
+            f"QScrollBar::handle:vertical:hover{{background:{t.scrollbar_hover};}}"
             "QScrollBar::add-line:vertical{height:0;}"
             "QScrollBar::sub-line:vertical{height:0;}"
             "QScrollBar::add-page:vertical,"
@@ -3180,6 +3333,8 @@ class InferencePage(QWidget):
             "stems":         self._output_stems_row.get_selected_stems(),
             "save_rest":     self._output_stems_row.get_save_rest(),
             "stems_by_model": dict(self._stems_by_model),
+            "sdr_test": bool(self._sdr_check.isChecked()),
+            "sdr_dataset": self._sdr_combo.currentText(),
             "multi_select": {
                 "armed": bool(self._multi_mode),
                 "batch": self._batch_checked_names(),
@@ -3218,6 +3373,12 @@ class InferencePage(QWidget):
         if not isinstance(dev, str): dev = ""
         idx = self._device_combo.findText(dev)
         if idx >= 0: self._device_combo.setCurrentIndex(idx)
+        sdr_test = d.get("sdr_test", False)
+        self._sdr_check.setChecked(bool(sdr_test))
+        sdr_ds = d.get("sdr_dataset", "")
+        if isinstance(sdr_ds, str) and sdr_ds:
+            idx = self._sdr_combo.findText(sdr_ds)
+            if idx >= 0: self._sdr_combo.setCurrentIndex(idx)
         sbm = d.get("stems_by_model", None)
         if isinstance(sbm, dict):
             clean = {}
@@ -3502,6 +3663,22 @@ class InferencePage(QWidget):
         # Flat "<song> (<stem>)" files instead of upstream's per-song folders.
         cmd += ["--filename_template", INFERENCE_FILENAME_TEMPLATE]
 
+        # Quality Checker Test mode: write outputs with mvsep quality-checker
+        # naming for the selected dataset — "<song minus _mixture>_<suffix>".
+        if getattr(self, "_sdr_check", None) is not None \
+                and self._sdr_check.isChecked():
+            stem_map, needs_instrum = _sdr_dataset(self._sdr_combo.currentText())
+            cmd += ["--filename_template", SDR_FILENAME_TEMPLATE,
+                    "--strip_mixture"]
+            map_text = _sdr_map_text(stem_map) if stem_map else ""
+            if map_text:
+                cmd += ["--stem_suffix_map", map_text]
+            if needs_instrum:
+                # "_instrum" for MUSDB18 = mix minus vocals (the model's own
+                # "other" stem stays "_other").
+                if "--extract_instrumental" not in cmd:
+                    cmd.append("--extract_instrumental")
+
         if use_tta: cmd.append("--use_tta")
         # Fork architectures ship their own backend .py (downloaded to
         # models/custom/<module> at install time, under the writable APP_DIR);
@@ -3555,6 +3732,17 @@ class InferencePage(QWidget):
                 self.log_output.emit(f"Queued: {os.path.basename(f)}")
 
         self._run_started = time.time()
+        # Report written stems while the run is still going (every few
+        # seconds), not only at the end, so completed cards pick up their
+        # waveforms as the batch progresses. Re-scans are idempotent —
+        # already-reported paths are skipped, and the console's card
+        # dedupes by basename anyway.
+        self._reported_files = set()
+        if getattr(self, "_report_timer", None) is None:
+            self._report_timer = QTimer(self)
+            self._report_timer.setInterval(2500)
+            self._report_timer.timeout.connect(self._report_written_files)
+        self._report_timer.start()
         self._runner = ProcessRunner(cmd, cwd=REPO_ROOT)
         self._runner.log_line.connect(self.log_output.emit)
         self._runner.finished.connect(self._on_finished)
@@ -3588,6 +3776,9 @@ class InferencePage(QWidget):
                     except OSError:
                         pass
         for p in sorted(found, key=os.path.getmtime):
+            if p in self._reported_files:
+                continue
+            self._reported_files.add(p)
             self.log_output.emit(f"Wrote file: {p}")
 
     # ── Batch smoke test: run every installed model on the same input ─────
@@ -3748,11 +3939,15 @@ class InferencePage(QWidget):
         # would clear the console's job state mid-run.
         if getattr(self, "_batch_testing", False):
             self._batch_cancel = True
+        if getattr(self, "_report_timer", None) is not None:
+            self._report_timer.stop()
         if self._runner:
             self._runner.stop()
             self.process_running.emit(False)
 
     def _on_finished(self, code):
+        if getattr(self, "_report_timer", None) is not None:
+            self._report_timer.stop()
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
         if code == 0:

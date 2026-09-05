@@ -244,6 +244,12 @@ def parse_args_inference(dict_args: Union[Dict, None]) -> argparse.Namespace:
                              "without app code changes.")
     parser.add_argument("--filename_template", type=str, default='{file_name}/{instr}',
                         help="Output filename template, without extension, using '/' for subdirectories. Default: '{file_name}/{instr}'")
+    parser.add_argument("--strip_mixture", action='store_true',
+                        help="Strip a trailing '_mixture' from the input file name in the output "
+                             "filename (mvsep quality-checker naming)")
+    parser.add_argument("--stem_suffix_map", type=str, default='',
+                        help="Comma-separated config_stem=output_suffix pairs renaming the stems in the "
+                             "output filenames (mvsep quality-checker naming); '*=suffix' is a catch-all")
     parser.add_argument("--lora_checkpoint_loralib", type=str, default='', help="Initial checkpoint to LoRA weights")
     if dict_args is not None:
         args = parser.parse_args([])

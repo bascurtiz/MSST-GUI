@@ -41,6 +41,9 @@ datas += walk_datas(os.path.join(ROOT, "resources"), "resources")            # a
 datas += walk_datas(os.path.join(ROOT, "configs"), "configs")                # all: model yamls
 datas += walk_datas(os.path.join(ROOT, "utils"), "utils", CODE_EXTS)
 datas += walk_datas(os.path.join(ROOT, "models"), "models", CODE_EXTS)       # code only — never checkpoints
+# engine-side helpers imported by inference.py (runs from data files, not the PYZ)
+datas.append((os.path.join(ROOT, "backend", "__init__.py"), "backend"))
+datas.append((os.path.join(ROOT, "backend", "audio_names.py"), "backend"))
 datas += walk_datas(os.path.join(ROOT, "build", "runtime_pristine"),
                     "runtime_pristine")                                      # all: embedded python
 

@@ -23,6 +23,12 @@ from utils.model_utils import (
     prefer_target_instrument, apply_tta, load_start_checkpoint,
     ensure_readable_checkpoint)
 from utils.stem_planning import complement_stem_name
+from backend.audio_names import (
+    strip_mixture_name,
+    parse_stem_suffix_map,
+    stem_suffix_for,
+    resample_to_native,
+)
 
 import warnings
 
@@ -79,12 +85,40 @@ def run_folder(
     else:
         detailed_pbar = True
 
+    # mvsep quality-checker naming: dataset-specific stem renames, parsed once
+    # (e.g. "other=instrum,effects=sfx,*=restored") from --stem_suffix_map.
+    _stem_suffix_map = parse_stem_suffix_map(getattr(args, "stem_suffix_map", ""))
+
     for path in mixture_paths:
         # Get relative path from input folder
         relative_path: str = os.path.relpath(path, args.input_folder)
         # Extract directory and file name
         dir_name: str = os.path.dirname(relative_path)
         file_name: str = os.path.splitext(os.path.basename(path))[0]
+        # mvsep quality-checker naming: drop the trailing "_mixture" from the
+        # input name so outputs read "<song>_<stem>" (--strip_mixture).
+        if getattr(args, "strip_mixture", False):
+            file_name = strip_mixture_name(file_name)
+        # Announce the file (basename with extension) before processing so
+        # the GUI console can advance its per-song cards — the chunk/batch
+        # progress bars carry no file identity, so without this every file's
+        # progress lands on the first card during a folder run.
+        print(f"Processing: {os.path.basename(path)}")
+
+        # mvsep quality-checker mode (--strip_mixture): probe the input's
+        # native rate, frame count and channel layout so stems can be written
+        # exactly like the reference mixture. The checker compares uploaded
+        # stems against the mixture frame-for-frame at its native rate, and a
+        # model-rate stem (e.g. 44.1 kHz) forces a server-side resample that
+        # can come out one sample longer and be rejected — a mono mixture
+        # duplicated to stereo fails its shape assert the same way.
+        qc_native = None
+        if getattr(args, "strip_mixture", False):
+            try:
+                with sf.SoundFile(path) as _sf:
+                    qc_native = (_sf.samplerate, _sf.frames, _sf.channels)
+            except Exception:
+                qc_native = None
 
         try:
             mix, sr = librosa.load(path, sr=sample_rate, mono=False)
@@ -171,12 +205,33 @@ def run_folder(
                 instruments.append(complement_name)
 
         for instr in instruments:
+            # mvsep quality-checker naming: rename the stem to the dataset's
+            # expected suffix (e.g. the config's "effects" -> "sfx" for DNR v3)
+            # via the GUI-passed --stem_suffix_map.
+            out_instr = stem_suffix_for(instr, _stem_suffix_map)
             estimates = waveforms_orig[instr]
 
             # Denormalize output audio if normalization was applied
             if "normalize" in config.inference:
                 if config.inference["normalize"] is True:
                     estimates = denormalize_audio(estimates, norm_params)
+
+            # mvsep quality-checker mode: write the stem at the input
+            # mixture's native sample rate, exact frame count and channel
+            # layout so the checker needs no server-side conversion (which
+            # can add a sample and fail its shape comparison). No-op when
+            # everything already matches.
+            sr_out = sr
+            if qc_native is not None:
+                native_sr, native_len, native_ch = qc_native
+                if (native_sr != sr or estimates.shape[-1] != native_len
+                        or estimates.shape[0] != native_ch):
+                    estimates = resample_to_native(
+                        estimates, sr, native_sr, native_len, native_ch)
+                    sr_out = native_sr
+                    print(f"Note: quality-checker stem '{instr}' written at "
+                          f"input rate {native_sr} Hz ({native_len} samples, "
+                          f"{native_ch} ch) to match the mixture.")
 
             peak: float = float(np.abs(estimates).max())
             codec, norm_scale = output_codec(args.pcm_type, peak)
@@ -191,7 +246,7 @@ def run_folder(
             # Generate output directory structure using relative paths
             dirnames, fname = format_filename(
                 args.filename_template,
-                instr=instr,
+                instr=out_instr,
                 start_time=int(start_time),
                 file_name=file_name,
                 dir_name=dir_name,
@@ -206,12 +261,12 @@ def run_folder(
             os.makedirs(output_dir, exist_ok=True)
 
             output_path: str = os.path.join(output_dir, f"{fname}.{codec}")
-            sf.write(output_path, estimates.T, sr, subtype=subtype)
+            sf.write(output_path, estimates.T, sr_out, subtype=subtype)
 
             # Draw and save spectrogram if enabled
             if args.draw_spectro > 0:
                 output_img_path = os.path.join(output_dir, f"{fname}.jpg")
-                draw_spectrogram(estimates.T, sr, args.draw_spectro, output_img_path)
+                draw_spectrogram(estimates.T, sr_out, args.draw_spectro, output_img_path)
                 print("Wrote file:", output_img_path)
 
     print(f"Elapsed time: {time.time() - start_time:.2f} seconds.")
