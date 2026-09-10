@@ -482,6 +482,9 @@ class _StyledToolTip(QLabel):
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint)
+        # main.py hides untitled top-level MSST windows — tag this so the
+        # startup filter leaves the custom tooltip alone when it is shown.
+        self.setObjectName("styledToolTip")
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.hide()

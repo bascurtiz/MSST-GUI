@@ -310,14 +310,44 @@ def _qt_message_handler(mode, _context, message):
 qInstallMessageHandler(_qt_message_handler)
 # ---------------------------------------------------------------------------
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import Qt, QObject, QEvent, QTimer
 from PySide6.QtGui import QIcon
 
 import backend.settings as settings_store
 import backend.runtime_setup  # noqa: F401  (sets PYTHONNOUSERSITE early when frozen)
 from ui.main_window import MainWindow
 from ui.theme import theme_manager, apply_palette
+
+
+class _SuppressUntitledWindows(QObject):
+    """Hide transient native windows Qt creates with the app-name title.
+
+    Some Windows/Qt combinations briefly expose an untitled helper widget as
+    a small captioned ``MSST`` window while the splash and pages are being
+    constructed. Real dialogs set their own title; the named splash is the
+    only intentional exception.
+    """
+
+    _APP_TITLES = {"MSST", "MSST GUI"}
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Show and isinstance(obj, QWidget):
+            # An untitled top-level QWidget receives the application name as
+            # its native caption on Windows (usually "MSST"), even though
+            # QWidget.windowTitle() is empty. Treat that as the transient
+            # helper-window case too; explicitly named app windows remain.
+            if obj.isWindow() and obj.parentWidget() is None and (
+                    not obj.windowTitle().strip()
+                    or obj.windowTitle().strip() in self._APP_TITLES):
+                if obj.objectName() not in {
+                        "startupSplash", "mainWindow", "styledToolTip"}:
+                    QTimer.singleShot(0, obj.hide)
+                    return True
+        return False
+
+
+_STARTUP_WINDOW_FILTER = None
 
 
 def main():
@@ -333,6 +363,9 @@ def main():
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
+    global _STARTUP_WINDOW_FILTER
+    _STARTUP_WINDOW_FILTER = _SuppressUntitledWindows(app)
+    app.installEventFilter(_STARTUP_WINDOW_FILTER)
     # Worker-thread crashes must never touch widgets; the fatal-dialog
     # bridge lives here on the main thread and marshals queued dialog
     # requests onto this thread's event loop (see _marshal_fatal_dialog).

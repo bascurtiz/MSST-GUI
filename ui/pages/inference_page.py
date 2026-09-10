@@ -5,7 +5,7 @@ Premium cinematic dark UI — 2 column layout.
 import os, sys, time, threading
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
     QDialogButtonBox, QMenu, QMessageBox, QCheckBox,
@@ -24,6 +24,14 @@ from backend.paths import REPO_ROOT, APP_DIR, get_python_exe
 from backend.audio_names import (
     INFERENCE_FILENAME_TEMPLATE,
     SDR_FILENAME_TEMPLATE,
+)
+from backend.mvsep_scores import (
+    METRIC_LABELS as MVSEP_METRIC_LABELS,
+    METRICS as MVSEP_METRICS,
+    get_scores_store,
+    mean_metric,
+    metric_line,
+    sdr_line,
 )
 from backend.gpu_utils import list_gpus, device_ids_from_selection
 from backend import settings as settings_store
@@ -57,41 +65,81 @@ from ui.widgets.common import (
 # (--extract_instrumental) rather than taken from the model's own stems.
 SDR_DATASETS = [
     ("Multisong",
-     {"vocals": "vocals", "other": "instrum", "instrumental": "instrum",
-      "instrument": "instrum", "accompaniment": "instrum"}, False),
+     {"vocals": "vocals", "voice": "vocals", "voices": "vocals",
+      "vocal": "vocals", "vox": "vocals", "other": "instrum", "instrumental": "instrum",
+      "instrument": "instrum", "instr": "instrum", "inst": "instrum",
+      "accompaniment": "instrum", "accomp": "instrum"}, False),
     ("Synthetic",
-     {"vocals": "vocals", "other": "instrum", "instrumental": "instrum",
-      "instrument": "instrum", "accompaniment": "instrum"}, False),
-    ("Guitar", {"guitar": "guitar", "other": "other"}, False),
-    ("Piano", {"piano": "piano", "other": "other"}, False),
-    ("Medley Vox", {"vocals1": "vocals1", "vocals2": "vocals2"}, False),
-    ("Strings", {"strings": "strings", "other": "other"}, False),
-    ("Wind", {"wind": "wind", "other": "other"}, False),
+     {"vocals": "vocals", "voice": "vocals", "voices": "vocals",
+      "vocal": "vocals", "vox": "vocals", "other": "instrum", "instrumental": "instrum",
+      "instrument": "instrum", "instr": "instrum", "inst": "instrum",
+      "accompaniment": "instrum", "accomp": "instrum"}, False),
+    ("Guitar",
+     {"guitar": "guitar", "guitars": "guitar", "other": "other",
+      "instrumental": "other", "instrument": "other", "instr": "other",
+      "inst": "other", "accompaniment": "other", "accomp": "other"}, False),
+    ("Piano",
+     {"piano": "piano", "pianos": "piano", "other": "other",
+      "instrumental": "other", "instrument": "other", "instr": "other",
+      "inst": "other", "accompaniment": "other", "accomp": "other"}, False),
+    ("Medley Vox",
+     {"vocals1": "vocals1", "vocals2": "vocals2", "vocal1": "vocals1",
+      "vocal2": "vocals2", "voice1": "vocals1", "voice2": "vocals2"}, False),
+    ("Strings",
+     {"strings": "strings", "string": "strings", "other": "other",
+      "instrumental": "other", "instrument": "other", "instr": "other",
+      "inst": "other", "accompaniment": "other", "accomp": "other"}, False),
+    ("Wind",
+     {"wind": "wind", "brass": "wind", "woodwind": "wind",
+      "other": "other", "instrumental": "other", "instrument": "other",
+      "instr": "other", "inst": "other", "accompaniment": "other",
+      "accomp": "other"}, False),
     ("DNR v3",
      {"speech": "speech", "music": "music", "sfx": "sfx",
       "effects": "sfx", "noise": "sfx", "fx": "sfx"}, False),
     ("Super Resolution", {"*": "restored"}, False),
     ("Lead/Back Vocals",
-     {"lead": "lead", "back": "back", "instrum": "instrum",
-      "instrumental": "instrum", "instrument": "instrum",
+     {"lead": "lead", "leadvocal": "lead", "leadvocals": "lead",
+      "lead_vocal": "lead", "lead_vocals": "lead", "back": "back",
+      "backvocal": "back", "backvocals": "back", "back_vocal": "back",
+      "back_vocals": "back", "backing": "back", "instrum": "instrum",
+      "instrumental": "instrum", "instrument": "instrum", "instr": "instrum",
+      "inst": "instrum", "accompaniment": "instrum", "accomp": "instrum",
       "back-instrum": "back-instrum", "back_instrum": "back-instrum",
-      "backinstrumental": "back-instrum"}, False),
+      "backinstrumental": "back-instrum", "back-instrumental": "back-instrum",
+      "back_instrumental": "back-instrum", "backinst": "back-instrum",
+      "back_instr": "back-instrum"}, False),
     ("Drums",
-     {"kick": "kick", "snare": "snare", "toms": "toms", "hh": "hh",
-      "hi-hat": "hh", "hihat": "hh", "cymbals": "cymbals",
-      "cym": "cymbals", "hh-cymbals": "hh-cymbals",
-      "hh_cymbals": "hh-cymbals"}, False),
+     {"kick": "kick", "snare": "snare", "toms": "toms", "tom": "toms",
+      "hh": "hh", "hi-hat": "hh", "hihat": "hh", "hi_hat": "hh",
+      "hi-hats": "hh", "hihats": "hh", "hat": "hh", "cymbals": "cymbals",
+      "cym": "cymbals", "cymbal": "cymbals", "ride": "cymbals",
+      "crash": "cymbals", "overhead": "cymbals", "overheads": "cymbals",
+      "oh": "cymbals", "hh-cymbals": "hh-cymbals", "hh_cymbals": "hh-cymbals",
+      "hh-cymbal": "hh-cymbals", "hh_cymbal": "hh-cymbals"}, False),
     ("Male/Female Vocals",
-     {"male": "male", "female": "female", "man": "male",
-      "woman": "female"}, False),
+     {"male": "male", "female": "female", "man": "male", "men": "male",
+      "woman": "female", "women": "female", "malevocal": "male",
+      "malevocals": "male", "male_vocal": "male", "male_vocals": "male",
+      "malevoice": "male", "male_voice": "male", "femalevocal": "female",
+      "femalevocals": "female", "female_vocal": "female",
+      "female_vocals": "female", "femalevoice": "female",
+      "female_voice": "female"}, False),
     ("Phantom Center",
-     {"center": "center", "wide": "wide", "phantom": "center"}, False),
+     {"center": "center", "centre": "center", "mid": "center",
+      "middle": "center", "phantom": "center", "wide": "wide",
+      "side": "wide", "sides": "wide"}, False),
     ("Synth Vocals 2026",
-     {"vocals": "vocals", "other": "instrum", "instrumental": "instrum",
-      "instrument": "instrum", "accompaniment": "instrum"}, False),
+     {"vocals": "vocals", "voice": "vocals", "voices": "vocals",
+      "vocal": "vocals", "vox": "vocals", "other": "instrum", "instrumental": "instrum",
+      "instrument": "instrum", "instr": "instrum", "inst": "instrum",
+      "accompaniment": "instrum", "accomp": "instrum"}, False),
     ("MUSDB18",
-     {"vocals": "vocals", "bass": "bass", "drums": "drums",
-      "other": "other", "instrumental": "instrum"}, True),
+     {"vocals": "vocals", "voice": "vocals", "voices": "vocals",
+      "vocal": "vocals", "bass": "bass", "drums": "drums",
+      "drum": "drums", "other": "other", "instrumental": "instrum",
+      "instrument": "instrum", "instr": "instrum", "inst": "instrum",
+      "accompaniment": "instrum", "accomp": "instrum"}, True),
 ]
 
 
@@ -190,6 +238,63 @@ def _arch_dot_token(arch_name):
     word = arch_name.lower().split()[0]
     return {"mdx-net": "mdx"}.get(word, word)
 
+
+def _expand_ckpt_keys(raw):
+    """Yield lowercase CSV/cache lookup variants (with and without .ckpt)."""
+    key = (raw or "").strip().lower()
+    if not key:
+        return
+    yield key
+    if key.endswith(".ckpt"):
+        stem = key[:-5]
+        if stem:
+            yield stem
+    else:
+        yield key + ".ckpt"
+
+
+def _score_lookup_keys(model, friendly_names=None):
+    """Return possible score-store keys for a registered model.
+
+    The CSV/cache uses the checkpoint filename, but older settings can use a
+    friendly display name in ``name``. Keep both identities so score cards do
+    not silently disappear after upgrading or after the zoo replaces a label.
+    When ``friendly_names`` is provided (ckpt basename -> zoo full name),
+    reverse-map display / friendly ``name`` values back to the CSV key too.
+    """
+    if isinstance(model, dict):
+        name = model.get("name", "")
+        ckpt = model.get("ckpt", "")
+        display = model.get("display", "")
+    else:
+        name = getattr(model, "name", "")
+        ckpt = getattr(model, "ckpt", "")
+        display = getattr(model, "display", "")
+    keys = []
+    for value in (os.path.basename(ckpt or ""), os.path.basename(name or "")):
+        for variant in _expand_ckpt_keys(value):
+            if variant not in keys:
+                keys.append(variant)
+    if friendly_names:
+        for label in (display, name):
+            if not label:
+                continue
+            for ck, full in friendly_names.items():
+                if full == label:
+                    for variant in _expand_ckpt_keys(ck):
+                        if variant not in keys:
+                            keys.append(variant)
+    return tuple(keys)
+
+
+def _score_keys_for_item(item, friendly_names=None):
+    """Score-store lookup keys for a library row."""
+    return _score_lookup_keys(
+        {"name": item._name, "ckpt": item._ckpt,
+         "display": getattr(item, "_display", "")},
+        friendly_names,
+    )
+
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 def _sec_hdr(text):
@@ -236,6 +341,14 @@ class _SearchIcon(QWidget):
         p.end()
 
 
+# Shared header control dimensions. Keeping these in one place prevents the
+# Model Library and Model Manager headers from drifting apart as controls are
+# added or translated.
+SEARCH_FIELD_WIDTH = 155
+SORT_COMBO_WIDTH = 115
+SORT_METRIC_FONT_PX = 11  # matches _combo_ss() / sort-dropdown label size
+
+
 # ── Search Bar ─────────────────────────────────────────────────────────────────
 
 class _SearchBar(QFrame):
@@ -273,7 +386,9 @@ class _SearchBar(QFrame):
     def sizeHint(self):
         # No layout anymore (children are overlaid on the input), so the
         # frame would otherwise collapse to zero width in its parent layout.
-        return QSize(155, 32)
+        # The shared width leaves enough room for the complete folder
+        # placeholder while keeping both page headers balanced.
+        return QSize(SEARCH_FIELD_WIDTH, 32)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -375,12 +490,124 @@ class _ComboBox(QComboBox):
     popupClosed = Signal()
 
     def showPopup(self):
+        # Qt sizes the popup to the combo's *current* width unless the combo
+        # uses AdjustToContents; under AdjustToMinimumContentsLengthWithIcon
+        # (our compact _SortCombo pill) the longest option gets elided. When
+        # the owning pill asks for it, widen the popup view to the longest
+        # item before opening so every option shows in full.
+        if getattr(self, "fit_popup_to_items", False):
+            self._fit_popup_to_longest()
         super().showPopup()
         self.popupOpened.emit()
+
+    def _fit_popup_to_longest(self):
+        fm = self.fontMetrics()
+        w = 0
+        for i in range(self.count()):
+            w = max(w, fm.horizontalAdvance(self.itemText(i)))
+        if w > 0:
+            # items carry 12px horizontal padding each side; add a small
+            # scrollbar/rounding allowance so nothing mid-elides.
+            self.view().setMinimumWidth(int(w) + 26)
 
     def hidePopup(self):
         super().hidePopup()
         self.popupClosed.emit()
+
+
+class _SortCombo(QFrame):
+    """Pill-shaped sort dropdown for the Model Library / Model Manager
+    headers. Mirrors the search field's rounded-rect container but draws a
+    blue accent border, packing a borderless combo and a chevron into one
+    pill. Exposes the small slice of the QComboBox API the sort handlers
+    use (addItem / currentText / findText / setCurrentIndex / …)."""
+    currentTextChanged = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        h = max(32, SORT_COMBO_WIDTH // 4)
+        self.setFixedSize(SORT_COMBO_WIDTH, h)
+        self._hovered = False
+        self.setCursor(Qt.PointingHandCursor)
+
+        self.combo = _ComboBox(self)
+        self.combo.fit_popup_to_items = True
+        self.combo.setStyleSheet(_combo_ss())
+        # Fit the *current* item rather than reserving the widest metric
+        # label, so the pill stays compact next to the search field. The
+        # popup is widened to its longest entry separately (showPopup hook).
+        self.combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.combo.setMinimumContentsLength(4)
+        self.combo.currentTextChanged.connect(self.currentTextChanged)
+
+        self._arrow = _ExpandArrow(self)
+        self._arrow.clicked.connect(self.combo.showPopup)
+        self.combo.popupOpened.connect(lambda: self._arrow.set_down(True))
+        self.combo.popupClosed.connect(lambda: self._arrow.set_down(False))
+
+        hl = QHBoxLayout(self)
+        hl.setContentsMargins(10, 0, 3, 0)
+        hl.setSpacing(0)
+        hl.addWidget(self.combo, 1)
+        hl.addWidget(self._arrow)
+
+    # ── small QComboBox facade ────────────────────────────────────────
+    def addItem(self, *args, **kwargs):
+        self.combo.addItem(*args, **kwargs)
+
+    def currentText(self):
+        return self.combo.currentText()
+
+    def currentIndex(self):
+        return self.combo.currentIndex()
+
+    def setCurrentIndex(self, index):
+        self.combo.setCurrentIndex(index)
+
+    def findText(self, text):
+        idx = self.combo.findText(text)
+        if idx < 0 and text:
+            # Older saves stored the uppercase label ("BLEEDLESS"); the
+            # metric options are lowercase now — fall back to a
+            # case-insensitive exact match.
+            idx = self.combo.findText(text, Qt.MatchFlag.MatchFixedString)
+        if idx < 0 and text:
+            wanted = text.casefold()
+            for i in range(self.combo.count()):
+                if self.combo.itemText(i).casefold() == wanted:
+                    return i
+        return idx
+
+    def showPopup(self):
+        self.combo.showPopup()
+
+    # ── look ──────────────────────────────────────────────────────────
+    def enterEvent(self, e):
+        self._hovered = True
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        t = theme_manager.theme
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(t.surface))
+        p.drawRoundedRect(r, 8.0, 8.0)
+        col = QColor(theme_manager.accent)
+        if self._hovered:
+            col = col.lighter(115)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(col, 1.0))
+        p.drawRoundedRect(r, 8.0, 8.0)
+        p.end()
 
 
 # ── Animated icon button ────────────────────────────────────────────────────────
@@ -571,18 +798,19 @@ class _InfoDot(QWidget):
     the U+24D8 character depends on font fallback and looks off. Turns
     accent blue on hover so it reads as interactive.
 
-    W (14) and SLOT_W (the x where the dot lands inside _lbl_with_info's
-    80px label column) are shared constants: the TRAINING page reuses them
+    W (14) and SLOT_W (the reserved width beside the label text for the
+    aligned ⓘ column) are shared constants: the TRAINING page reuses them
     so its ⓘ dots align on the same column logic.
     """
 
     W = 14
-    SLOT_W = 19
+    SLOT_W = 19  # training-page label column; inference CONFIG uses CONFIG_DOT_SLOT
 
     def __init__(self, tooltip):
         super().__init__()
         self._hovered = False
         self.setToolTip(tooltip)
+        self.setAttribute(Qt.WA_AlwaysShowToolTips)
         self.setCursor(Qt.PointingHandCursor)
         self.setFixedSize(14, 14)
 
@@ -627,29 +855,28 @@ def _info_dot(tooltip):
 
 def _label_with_info(label, tooltip=""):
     """The row's small-caps label, optionally followed by the ⓘ dot when a
-    tooltip is given (the 80px label column is shared between them)."""
+    tooltip is given (the CONFIG_LABEL_W column is shared between them)."""
     if not tooltip:
         lb = QLabel(label.upper())
         lb.setStyleSheet(_lbl_ss())
-        lb.setFixedWidth(80)
+        lb.setFixedWidth(CONFIG_LABEL_W)
         lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         return lb
     wrap = QWidget()
     wrap.setStyleSheet("background:transparent;")
+    wrap.setFixedWidth(CONFIG_LABEL_W)
     hl = QHBoxLayout(wrap)
     hl.setContentsMargins(0, 0, 0, 0)
-    hl.setSpacing(4)
+    hl.setSpacing(5)
     lb = QLabel(label.upper())
     lb.setStyleSheet(_lbl_ss())
-    # Fixed dot slot: all rows line their ⓘ up at the same x (right after
-    # the widest label, QUALITY/DEVICE), with the value column unchanged at
-    # the 80px mark.
-    lb.setFixedWidth(58)
+    # Fixed dot slot: label text gets the left budget (fits BIG SHIFTS),
+    # every ⓘ lands at the same x in the column.
+    lb.setFixedWidth(CONFIG_LABEL_W - CONFIG_DOT_SLOT)
     lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-    hl.addWidget(lb)
-    hl.addWidget(_info_dot(tooltip))
-    hl.addStretch()
-    wrap.setFixedWidth(80)
+    hl.addWidget(lb, 0, Qt.AlignVCenter)
+    hl.addSpacing(CONFIG_DOT_SLOT - _InfoDot.W - hl.spacing())
+    hl.addWidget(_info_dot(tooltip), 0, Qt.AlignVCenter)
     return wrap
 
 def _combo_ss():
@@ -669,6 +896,10 @@ def _combo_ss():
         f"QComboBox QAbstractItemView::item:hover{{background:{theme_manager._accent_soft};color:{t.text};}}"
     )
 ROW_H = 46
+# CONFIGURATION column: label + ⓘ (widest label is BIG SHIFTS ≈ 69px).
+CONFIG_LABEL_W = 100
+CONFIG_DOT_SLOT = 24   # gap + 14px glyph; keeps every ⓘ on one vertical line
+CONFIG_VALUE_GAP = 14  # air between the ⓘ column and the value / combo
 
 
 def _test_all_ss():
@@ -725,6 +956,7 @@ class _BrowseRow(QFrame):
             hl.addSpacing(6)
 
         hl.addWidget(_label_with_info(label, tooltip))
+        hl.addSpacing(CONFIG_VALUE_GAP)
 
         self._edit = QLineEdit()
         self._edit.setReadOnly(True)
@@ -895,6 +1127,7 @@ class _ComboRow(QFrame):
             hl.addSpacing(6)
 
         hl.addWidget(_label_with_info(label, tooltip))
+        hl.addSpacing(CONFIG_VALUE_GAP)
 
         self.combo = _ComboBox()
         self.combo.addItems(items)
@@ -1318,6 +1551,7 @@ class _OutputStemsRow(QFrame):
             hl.addSpacing(6)
 
         hl.addWidget(_label_with_info(label, tooltip))
+        hl.addSpacing(CONFIG_VALUE_GAP)
 
         self._summary = QLabel("Select stems\u2026")
         self._summary.setStyleSheet(
@@ -1587,17 +1821,309 @@ class _NamesFetchThread(QObject):
                 _NAMES_FETCHERS.discard(self)
 
 
+class _TwoToneMetric(QWidget):
+    """Two-tone metric line, e.g. 'SDR vocals: 5.02 | bass: 7.45 | drums: 7.75'.
+
+    Stem labels and separators are painted in the dim text color while the
+    numeric values use the primary text color, so the scores stand out (white
+    digits in the dark theme). Custom-painted (not rich text) so the line can
+    still elide in the middle, like the long filename rows in the Model
+    Manager do.
+    """
+
+    def __init__(self, text="", pixel=9, weight=600, left=36, right=8,
+                 elide_middle=False, parent=None):
+        super().__init__(parent)
+        self._text = text or ""
+        self._l, self._r = left, right
+        self._elide_middle = elide_middle
+        font = QFont("Montserrat")
+        font.setPixelSize(pixel)
+        font.setWeight(QFont.Weight(weight))
+        self.setFont(font)
+
+    def text(self):
+        return self._text
+
+    def setText(self, text):
+        text = text or ""
+        if text != self._text:
+            self._text = text
+            self.update()
+
+    def clear(self):
+        self.setText("")
+
+    def _fm(self):
+        from PySide6.QtGui import QFontMetrics
+        return QFontMetrics(self.font())
+
+    def sizeHint(self):
+        fm = self._fm()
+        return QSize(self._l + self._r + fm.horizontalAdvance(self._text) + 1,
+                     fm.height() + 2)
+
+    def minimumSizeHint(self):
+        return QSize(0, self._fm().height() + 2)
+
+    def paintEvent(self, event):
+        t = theme_manager.theme
+        dim = _qcolor(t.text_dim)
+        bright = _qcolor(t.text)
+        fm = self._fm()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setFont(self.font())
+        text = self._text
+        if not text:
+            p.end()
+            return
+        if self._elide_middle:
+            avail = self.width() - self._l - self._r
+            if avail > 0 and fm.horizontalAdvance(text) > avail:
+                text = fm.elidedText(text, Qt.ElideMiddle, avail)
+        y = (self.height() - fm.height()) // 2 + fm.ascent()
+        x = float(self._l)
+        pen_dim = QPen(dim)
+        pen_val = QPen(bright)
+        prev, i, n = 0, 0, len(text)
+        # Runs of digits (incl. the decimal separator) get the bright pen;
+        # everything else stays dim.
+        while i < n:
+            if not text[i].isdigit():
+                i += 1
+                continue
+            j = i
+            while j < n and (text[j].isdigit() or
+                             (text[j] == "." and j + 1 < n and text[j + 1].isdigit())):
+                j += 1
+            if i > prev:
+                p.setPen(pen_dim)
+                seg = text[prev:i]
+                p.drawText(int(x), y, seg)
+                x += fm.horizontalAdvance(seg)
+            p.setPen(pen_val)
+            seg = text[i:j]
+            p.drawText(int(x), y, seg)
+            x += fm.horizontalAdvance(seg)
+            prev = j
+            i = j
+        if prev < n:
+            p.setPen(pen_dim)
+            p.drawText(int(x), y, text[prev:n])
+        p.end()
+
+
+class _MetricColumns(QWidget):
+    """Two-row quality display used by the Model Library rows and the Model
+    Manager cards. The metric name sits on the left with one column per
+    stem next to it, the stem label above its value:
+
+        SDR      music:      sfx:      speech:
+                 8.28        9.45      10.74
+
+    Stem labels and the metric name use the dim text color; values use the
+    primary text color (white digits in the dark theme), like the old
+    single-line two-tone metric.
+    """
+
+    _STEM_GAP = 28  # horizontal space between stem columns
+
+    def __init__(self, pixel=9, weight=600, left=36, right=8,
+                 metric_pixel=None, parent=None):
+        super().__init__(parent)
+        self._font = QFont("Montserrat")
+        self._font.setPixelSize(pixel)
+        self._font.setWeight(QFont.Weight(weight))
+        self.setFont(self._font)
+        self._metric_font = QFont("Montserrat")
+        self._metric_font.setPixelSize(
+            metric_pixel if metric_pixel is not None else pixel)
+        self._metric_font.setWeight(QFont.Weight(weight))
+        self._grid = QGridLayout(self)
+        self._grid.setContentsMargins(left, 0, right, 0)
+        self._grid.setHorizontalSpacing(self._STEM_GAP)
+        self._grid.setVerticalSpacing(2)
+        # Empty stretch row: the two content rows keep their natural height
+        # and any leftover vertical space (e.g. the library row's extra
+        # score-block height) lands below the values, not between the lines.
+        self._grid.setRowStretch(2, 1)
+        self._metric_lbl = QLabel("")
+        self._metric_lbl.setFont(self._metric_font)
+        # Span both content rows, vertically centered: the metric name sits
+        # between the stem labels (above) and the values (below), like a
+        # row header. AlignLeft/AlignVCenter keep the badge compact.
+        self._grid.addWidget(self._metric_lbl, 0, 0, 2, 1,
+                             Qt.AlignLeft | Qt.AlignVCenter)
+        self._labels = []
+        self._values = []
+        self._has = False
+        self.reapply_theme()
+
+    def set_scores(self, scores, metric="sdr"):
+        """Populate from a mvsep scores dict: the metric name on the left
+        and one column per stem (label above value)."""
+        for w in self._labels + self._values:
+            self._grid.removeWidget(w)
+            w.deleteLater()
+        self._labels, self._values = [], []
+        self._has = False
+        if not scores:
+            self._metric_lbl.setText("")
+            return
+        label = MVSEP_METRIC_LABELS.get(metric, metric.upper())
+        # Non-capital, matching the lowercase sort-dropdown options.
+        self._metric_lbl.setText(label.lower())
+        for i, stem in enumerate(scores.get("stems", [])):
+            val = scores.get("metrics", {}).get(stem, {}).get(metric)
+            if not isinstance(val, (int, float)):
+                continue
+            # Match the registered-model metadata chips: uppercase-style
+            # tracking/weight, but keep the stem names themselves in the
+            # model's original case and omit the trailing colon.
+            l = QLabel(str(stem).upper())
+            l.setFont(self._font)
+            self._grid.addWidget(l, 0, i + 1)
+            self._labels.append(l)
+            v = QLabel(f"{val:.2f}")
+            v.setFont(self._font)
+            self._grid.addWidget(v, 1, i + 1)
+            self._values.append(v)
+        self._has = bool(self._labels)
+        self.reapply_theme()
+        self._sync_layout_height()
+
+    def _sync_layout_height(self):
+        if self._has:
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+            h = max(28, self._grid.sizeHint().height())
+            self.setFixedHeight(h)
+        else:
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(0)
+            self.setFixedHeight(0)
+
+    def has_content(self):
+        return self._has
+
+    def sizeHint(self):
+        if not self._has:
+            return QSize(0, 0)
+        hint = self._grid.sizeHint()
+        return QSize(hint.width(), max(28, hint.height()))
+
+    def reapply_theme(self):
+        t = theme_manager.theme
+        dim = t.text_dim
+        bright = t.text
+        # border:none on the stem labels/values: QLabel inherits QFrame, so
+        # a parent card's QFrame{border:1px solid …} would otherwise paint a
+        # rounded outline around them (visible in the Model Manager cards).
+        # The metric name is the opposite: a deliberate rounded badge
+        # outline (like a chip) around the white lowercase name, and the
+        # stem labels stay dim.
+        mp = self._metric_font.pixelSize()
+        self._metric_lbl.setStyleSheet(
+            f"font-family:'Montserrat';font-size:{mp}px;font-weight:600;"
+            f"color:{bright};background:transparent;"
+            f"border:1px solid {theme_manager.accent};border-radius:5px;"
+            "padding:1px 7px;")
+        for l in self._labels:
+            l.setStyleSheet(
+                f"font-family:'Montserrat';font-size:9px;font-weight:700;"
+                f"letter-spacing:1px;color:{dim};background:transparent;border:none;")
+        for v in self._values:
+            v.setStyleSheet(
+                f"font-family:'Montserrat';font-size:11px;font-weight:600;"
+                f"color:{bright};background:transparent;border:none;")
+
+
 class _ModelItem(QFrame):
     selected = Signal(str, str, str, str, str, str, bool)
     unchecked = Signal(str, str)
     settings_requested = Signal(str, str, str, str)
 
+    _NAME_ROW_H = 38
+    _SCORE_ROW_MIN_H = 32  # minimum height for the two-line per-stem block
+    _DIVIDER_H = 1
+
+    def _bootstrap_scores_from_store(self):
+        """Load cached mvsep scores directly on the row — do not rely on the
+        page-level sync finishing before the arch card is expanded."""
+        if self._scores:
+            return
+        store = get_scores_store()
+        for variant in _expand_ckpt_keys(os.path.basename(self._ckpt or self._name)):
+            hit = store.get(variant)
+            if hit:
+                self._scores = hit
+                break
+            if not self._scores_url:
+                url = store.entry_url(variant)
+                if url:
+                    self._scores_url = url
+
+    def _score_block_height(self):
+        if not self._scores:
+            return 0
+        if self._scores_lbl.has_content():
+            return max(self._SCORE_ROW_MIN_H, self._scores_lbl.sizeHint().height())
+        if self._scores_line.text():
+            return max(self._SCORE_ROW_MIN_H, self._scores_line.sizeHint().height())
+        return 0
+
+    def _total_height(self):
+        return self._NAME_ROW_H + self._score_block_height() + self._DIVIDER_H
+
+    def _sync_scores_block_height(self):
+        if self._scores and self._scores_lbl.has_content():
+            sh = max(self._SCORE_ROW_MIN_H, self._scores_lbl.sizeHint().height())
+            self._scores_lbl.setMinimumHeight(sh)
+            self._scores_lbl.setMaximumHeight(sh)
+            self._scores_lbl.setSizePolicy(
+                QSizePolicy.Preferred, QSizePolicy.Fixed)
+            self._scores_line.setVisible(False)
+            self._scores_line.setFixedHeight(0)
+        elif self._scores and self._scores_line.text():
+            sh = max(self._SCORE_ROW_MIN_H, self._scores_line.sizeHint().height())
+            self._scores_line.setMinimumHeight(sh)
+            self._scores_line.setMaximumHeight(sh)
+            self._scores_line.setSizePolicy(
+                QSizePolicy.Preferred, QSizePolicy.Fixed)
+            self._scores_lbl.setVisible(False)
+            self._scores_lbl.setFixedHeight(0)
+        else:
+            self._scores_lbl.setMinimumHeight(0)
+            self._scores_lbl.setMaximumHeight(0)
+            self._scores_lbl.setFixedHeight(0)
+            self._scores_line.setMinimumHeight(0)
+            self._scores_line.setMaximumHeight(0)
+            self._scores_line.setFixedHeight(0)
+
+    def _refresh_parent_card_height(self):
+        """Scores can land after a card was measured — reflow the arch card."""
+        w = self.parentWidget()
+        while w is not None:
+            if w.__class__.__name__ == "_ArchCard":
+                w._schedule_expanded_height_refresh()
+                return
+            w = w.parentWidget()
+
+    def _update_row_height(self):
+        self._sync_scores_block_height()
+        h = self._total_height()
+        self.setFixedHeight(h)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.updateGeometry()
+
     def sizeHint(self):
-        return QSize(0, 38)
+        return QSize(0, self._total_height())
 
     def __init__(self, name, ckpt="", yaml_path="", arch="", model_type="",
                  engine_type="", backend_module="", custom_backend_enabled=False,
-                 display="", runnable=True, blocked_reason="", parent=None):
+                 display="", runnable=True, blocked_reason="", parent=None,
+                 scores=None, scores_url=""):
         super().__init__(parent)
         self._name = name
         self._ckpt = ckpt
@@ -1611,7 +2137,9 @@ class _ModelItem(QFrame):
         self._is_selected = False
         self._multi = False
         self._search_hidden = False
-        self.setFixedHeight(38)
+        self._scores = scores
+        self._score_metric = "sdr"
+        self._scores_url = scores_url
         self.setStyleSheet("QFrame{background:transparent;border:none;}")
         self.setCursor(Qt.PointingHandCursor)
 
@@ -1619,9 +2147,12 @@ class _ModelItem(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        row = QWidget()
-        row.setStyleSheet("background:transparent;")
+        self._name_row = QWidget()
+        self._name_row.setFixedHeight(self._NAME_ROW_H)
+        self._name_row.setStyleSheet("background:transparent;")
+        row = self._name_row
         hl = QHBoxLayout(row)
+        self._name_hl = hl
         hl.setContentsMargins(12, 0, 8, 0)
         hl.setSpacing(6)
 
@@ -1634,7 +2165,7 @@ class _ModelItem(QFrame):
         self._lbl.setObjectName("modelItemLabel")
         if self._display != name:
             self._lbl.setToolTip(name)
-        # The label must be allowed to shrink (and elide) below its full
+        # The name must still be free to shrink (and elide) below its full
         # text width: rows whose name is a long ckpt filename and/or carry
         # extra badges (CUSTOM + type) would otherwise push the fixed
         # right-side cluster — the ··· menu — past the card's visible
@@ -1647,7 +2178,27 @@ class _ModelItem(QFrame):
             "font-weight:600;letter-spacing:0.5px;"
             f"color:{theme_manager.theme.text_sec};background:transparent;"
         )
-        hl.addWidget(self._lbl, 1)
+        # Cap the label at its own text width (mirroring the arch-card
+        # titles): name + link chip then hug the card's left edge and the
+        # leftover row space goes to the middle stretch, keeping the badges
+        # and ··· menu flush right.
+        self._lbl.ensurePolished()
+        _lbl_cap = int(self._lbl.fontMetrics().horizontalAdvance(self._display)) + 8
+        self._lbl.setMaximumWidth(_lbl_cap)
+        hl.addWidget(self._lbl, 100)
+
+        # Link to the model's mvsep Quality Checker entry (when the CSV lists
+        # one) — sits right after the name, like the arch cards' info chips.
+        self._link = None
+        if scores_url:
+            self._link = _LinkBadge(f"Open \u201c{self._display}\u201d on mvsep Quality Checker")
+            self._link.clicked.connect(
+                lambda u=scores_url: QDesktopServices.openUrl(QUrl(u)))
+            hl.addWidget(self._link)
+
+        # Push the trailing badges / ··· menu to the right edge so the
+        # name+link group stays left-aligned, like the arch card titles.
+        hl.addStretch(1)
 
         if custom_backend_enabled and backend_module:
             ctag = QLabel("CUSTOM")
@@ -1687,13 +2238,92 @@ class _ModelItem(QFrame):
         self._dots.clicked.connect(self._on_dots_clicked)
         hl.addWidget(self._dots)
 
-        outer.addWidget(row, 1)
+        outer.addWidget(row)
+
+        self._bootstrap_scores_from_store()
+        if not scores_url and self._scores_url:
+            scores_url = self._scores_url
+        if not scores and self._scores:
+            scores = self._scores
+
+        # Per-stem quality line (SDR by default), shown when mvsep scores are
+        # available. Indented to align under the model name: metric name on
+        # the left, one column per stem with the label above its value.
+        self._scores_lbl = _MetricColumns(
+            pixel=9, metric_pixel=SORT_METRIC_FONT_PX, left=36, right=8)
+        self._scores_line = _TwoToneMetric(
+            pixel=SORT_METRIC_FONT_PX, left=36, right=8)
+        self._scores_line.setVisible(False)
+        self._scores_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        if scores:
+            self._apply_scores_display(scores, "sdr")
+        else:
+            self._scores_lbl.setVisible(False)
+        # Fixed-height metric block under the name row (no stretch — stretch
+        # inside a setFixedHeight parent can collapse the block to 0px).
+        self._scores_lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        outer.addWidget(self._scores_lbl, 0, Qt.AlignLeft)
+        outer.addWidget(self._scores_line, 0, Qt.AlignLeft)
 
         self._divider = QFrame()
         self._divider.setFixedHeight(1)
         self._divider.setStyleSheet(
             f"background:{theme_manager.theme.border};border:none;")
         outer.addWidget(self._divider)
+        self._update_row_height()
+
+    def _apply_scores_display(self, scores, metric):
+        """Show per-stem metrics under the name — column layout when it
+        lays out cleanly, otherwise the painted single-line fallback."""
+        metric = metric if metric in MVSEP_METRICS else "sdr"
+        self._scores_lbl.set_scores(scores, metric)
+        line = metric_line(scores, metric)
+        self._scores_line.setText(line)
+        if self._scores_lbl.has_content():
+            self._scores_lbl.setVisible(True)
+            self._scores_line.setVisible(False)
+        elif line:
+            self._scores_lbl.setVisible(False)
+            self._scores_line.setVisible(True)
+        else:
+            self._scores_lbl.setVisible(False)
+            self._scores_line.setVisible(False)
+
+    def set_metric(self, metric):
+        """Display the metric selected in the Model Library sort control."""
+        # The Name sort still shows the normal default SDR line; every
+        # quality sort shows its own metric.
+        metric = metric if metric in MVSEP_METRICS else "sdr"
+        self._score_metric = metric
+        if self._scores:
+            self._apply_scores_display(self._scores, metric)
+            self._update_row_height()
+            self._refresh_parent_card_height()
+
+    def set_scores(self, scores):
+        """Attach mvsep scores after the fact (background fetch finished).
+        Grows the row by the score-line height so the card list reflows."""
+        self._scores = scores or None
+        if self._scores:
+            self._apply_scores_display(self._scores, self._score_metric)
+        else:
+            self._scores_lbl.setVisible(False)
+            self._scores_line.setVisible(False)
+            self._scores_line.clear()
+        self._update_row_height()
+        self._refresh_parent_card_height()
+
+    def ensure_scores_link(self, url):
+        """Add the mvsep link chip when scores arrive after row construction."""
+        if not url or self._link is not None:
+            return
+        self._scores_url = url
+        self._link = _LinkBadge(
+            f"Open \u201c{self._display}\u201d on mvsep Quality Checker")
+        self._link.clicked.connect(
+            lambda u=url: QDesktopServices.openUrl(QUrl(u)))
+        # After circle + label (indices 0, 1), before the stretch.
+        self._name_hl.insertWidget(2, self._link)
 
     def _elide_label(self):
         """Clip the label to its allotted width (it is free to shrink because
@@ -1721,6 +2351,11 @@ class _ModelItem(QFrame):
             return
         self._display = text
         self._lbl.setToolTip(self._name if text != self._name else "")
+        self._lbl.ensurePolished()
+        cap = int(self._lbl.fontMetrics().horizontalAdvance(self._display)) + 8
+        self._lbl.setMaximumWidth(cap)
+        self._lbl.updateGeometry()
+        self.updateGeometry()
         self._elide_label()
 
     def _on_circle_toggled(self, checked):
@@ -1878,6 +2513,7 @@ class _LinkBadge(QWidget):
         super().__init__(parent)
         self._hovered = False
         self.setFixedSize(16, 16)
+        self.setAttribute(Qt.WA_AlwaysShowToolTips)
         self.setCursor(Qt.PointingHandCursor)
         if tooltip:
             self.setToolTip(tooltip)
@@ -1940,6 +2576,7 @@ class _ArchCard(QFrame):
     model_selected = Signal(str, str, str, str, str, str, bool)
     model_unchecked = Signal(str, str)
     ckpt_settings_requested = Signal(str, str, str, str)
+    expanded_changed = Signal(bool)
 
     def __init__(self, arch_name, parent=None, dot_color=None,
                  title_display=None, info_url=None):
@@ -2082,6 +2719,17 @@ class _ArchCard(QFrame):
 
         self._cached_height = 0
         self._saved_expanded = None
+        self._height_refresh_pending = False
+
+    def _schedule_expanded_height_refresh(self):
+        if self._height_refresh_pending:
+            return
+        self._height_refresh_pending = True
+        QTimer.singleShot(0, self._flush_expanded_height_refresh)
+
+    def _flush_expanded_height_refresh(self):
+        self._height_refresh_pending = False
+        self._update_expanded_height()
 
     def _get_anim_height(self):
         return self.height()
@@ -2114,17 +2762,24 @@ class _ArchCard(QFrame):
         for i in range(self._list_vl.count()):
             w = self._list_vl.itemAt(i).widget()
             if isinstance(w, _ModelItem) and w.isVisibleTo(self._content):
-                h += w.sizeHint().height()
+                w._update_row_height()
+                w.adjustSize()
+                h += max(w.sizeHint().height(), w.height())
         m = self._list_vl.contentsMargins()
         self._cached_height = h + m.top() + m.bottom()
 
     def _on_anim_finished(self):
         if self._expanded:
+            self._content.setVisible(True)
             self.setMinimumHeight(0)
             self.setMaximumHeight(16777215)
             self._content.setMinimumHeight(0)
             self._content.setMaximumHeight(16777215)
             self._content.adjustSize()
+            self._update_expanded_height()
+            sync = getattr(self, "_score_sync", None)
+            if callable(sync):
+                sync()
         else:
             self._content.setVisible(False)
             self._content.setMaximumHeight(0)
@@ -2138,6 +2793,7 @@ class _ArchCard(QFrame):
     def _toggle_expand(self, animated=True):
         self._stop_anim()
         self._expanded = not self._expanded
+        self.expanded_changed.emit(self._expanded)
 
         if self._expanded:
             self._rebuild_cache()
@@ -2145,7 +2801,10 @@ class _ArchCard(QFrame):
             if target_h <= 0:
                 self._toggle_btn.set_angle(90.0)
                 return
-            self._content.setMaximumHeight(target_h)
+            self._content.setMinimumHeight(target_h)
+            # Do not cap the max — scores can land after the first measure and
+            # rows grow taller; a hard max clipped the metric block away.
+            self._content.setMaximumHeight(16777215)
             self._content.setVisible(True)
             start_h = self.height()
             if animated:
@@ -2182,8 +2841,14 @@ class _ArchCard(QFrame):
         if not self._expanded:
             return
         self._rebuild_cache()
-        self.setFixedHeight(42 + self._cached_height)
-        self._content.setMaximumHeight(self._cached_height)
+        want = 42 + self._cached_height
+        if self._height_anim.state() == QPropertyAnimation.Running:
+            self._height_anim.setEndValue(float(want))
+        else:
+            self.setFixedHeight(want)
+        self._content.setMinimumHeight(self._cached_height)
+        self._content.setMaximumHeight(16777215)
+        self._content.adjustSize()
 
     def _deselect_all_models(self):
         for i in range(self._list_vl.count()):
@@ -2193,7 +2858,7 @@ class _ArchCard(QFrame):
 
     def add_model(self, name, ckpt="", yaml_path="", arch="", model_type="",
                   engine_type="", backend_module="", custom_backend_enabled=False,
-                  display=""):
+                  display="", scores=None, scores_url=""):
         if name in self._items:
             return
         if not self._has_models:
@@ -2213,7 +2878,12 @@ class _ArchCard(QFrame):
                           "has no branch in the inference engine." if blocked else "")
         item = _ModelItem(name, ckpt, yaml_path, arch, model_type, engine_type,
                           backend_module, custom_backend_enabled, display=display,
-                          runnable=runnable, blocked_reason=blocked_reason)
+                          runnable=runnable, blocked_reason=blocked_reason,
+                          scores=scores, scores_url=scores_url)
+        # Rows may be created after the sort dropdown was restored. Apply the
+        # active metric immediately instead of leaving the constructor's SDR
+        # default visible until the next score-fetch event.
+        item.set_metric(getattr(self, "_library_sort_metric", "name"))
         item.selected.connect(lambda n, ck, y, a, et, bm, cb:
                               self.model_selected.emit(n, ck, y, a, et, bm, cb))
         item.unchecked.connect(lambda n, a: self.model_unchecked.emit(n, a))
@@ -2233,6 +2903,23 @@ class _ArchCard(QFrame):
         if not self._items:
             self._has_models = False
             self._empty_lbl.setVisible(True)
+        self._update_expanded_height()
+
+    def sort_models(self, key):
+        """Re-order the model rows by `key(item)` in place. Only the _ModelItem
+        rows move; the hidden 'No models registered' label keeps its slot."""
+        positions = [i for i in range(self._list_vl.count())
+                     if isinstance(self._list_vl.itemAt(i).widget(), _ModelItem)]
+        if len(positions) < 2:
+            return
+        items = [self._list_vl.itemAt(i).widget() for i in positions]
+        items.sort(key=key)
+        for i in reversed(positions):
+            self._list_vl.takeAt(i)
+        at = positions[0]
+        for w in items:
+            self._list_vl.insertWidget(at, w)
+            at += 1
         self._update_expanded_height()
 
     def deselect_all_models(self):
@@ -2294,9 +2981,9 @@ class _ArchCard(QFrame):
 # ── Sort toggle ───────────────────────────────────────────────────────────
 
 class _SortToggle(QWidget):
-    """Compact architecture/target sort switch for the Model Library header:
-    two small labels around a painted pill switch. `changed` emits True when
-    the user switches to "sort by target", False for architecture."""
+    """Compact architecture/target switch for the Model Library header: two
+    small labels around a painted pill switch. `changed` emits True when the
+    user switches to target grouping, False for architecture."""
     changed = Signal(bool)
 
     def __init__(self, parent=None):
@@ -2305,8 +2992,8 @@ class _SortToggle(QWidget):
         hl = QHBoxLayout(self)
         hl.setContentsMargins(0, 0, 0, 0)
         hl.setSpacing(5)
-        self._arch_lbl = QLabel("sort by architecture")
-        self._target_lbl = QLabel("sort by target")
+        self._arch_lbl = QLabel("Architecture")
+        self._target_lbl = QLabel("Target")
         for lbl in (self._arch_lbl, self._target_lbl):
             lbl.setStyleSheet(
                 "font-family:'Montserrat';font-size:8px;font-weight:600;"
@@ -2377,7 +3064,9 @@ class _MiniSwitch(QWidget):
         if self._on:
             track = QColor(theme_manager.accent)
         else:
-            track = QColor("#101318" if theme_manager.mode == "dark" else "#C4CAD2")
+            # Off track: a mid-gray in both themes (the old near-black in
+            # dark mode vanished against the page background).
+            track = QColor("#4A525F" if theme_manager.mode == "dark" else "#C4CAD2")
         p.setPen(Qt.NoPen)
         p.setBrush(track)
         p.drawRoundedRect(self.rect(), 8, 8)
@@ -2422,6 +3111,27 @@ class InferencePage(QWidget):
         self._loaded_stems_by_model = {}  # stems loaded from settings, applied per-model
         self._mvsepless_archs = None  # archs listed in the mvsepless zoo (index fetch)
         self._library_finalized = False  # trailing stretch added to _model_layout?
+        # mvsep quality-checker scores: fetched in the background, rows light
+        # up per model as data lands (see _on_scores_ready).
+        self._scores_store = get_scores_store()
+        self._scores_store.scores_ready.connect(self._on_scores_ready)
+        self._scores_store.entries_updated.connect(self._on_entries_updated)
+        self._scores_store.start()
+        self._sort_metric = "name"  # or one of the mvsep metrics (high→low)
+        # Coalesce re-sorts while scores stream in during the initial crawl
+        # (one re-sort per event-loop pass instead of per model).
+        self._sort_pending = False
+        self._sort_timer = QTimer(self)
+        self._sort_timer.setSingleShot(True)
+        self._sort_timer.setInterval(120)
+        self._sort_timer.timeout.connect(self._flush_metric_sort)
+        # A score fetch can finish between page construction and the settings
+        # page's model_registered signals. Retry unresolved rows briefly so a
+        # result that landed before a row existed is still attached.
+        self._score_retry_timer = QTimer(self)
+        self._score_retry_timer.setSingleShot(True)
+        self._score_retry_timer.setInterval(500)
+        self._score_retry_timer.timeout.connect(self._retry_unattached_scores)
         # Coalesced library re-render: model_registered arrives ~60x during a
         # cold settings load; rendering per signal made startup and theme
         # switches take ~5s. One flush per event-loop pass instead.
@@ -2431,9 +3141,77 @@ class InferencePage(QWidget):
         self._vis_timer.setInterval(0)
         self._vis_timer.timeout.connect(self._flush_library_visibility)
         self._build_ui()
+        self._restore_library_sort()
         self._names_thread = _NamesFetchThread()
         self._names_thread.done.connect(self._on_friendly_names)
         self._names_thread.start()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._sync_library_scores()
+        QTimer.singleShot(0, self._refresh_expanded_card_heights)
+        QTimer.singleShot(300, self._deferred_library_score_refresh)
+
+    def _deferred_library_score_refresh(self):
+        """Second pass after layout/paint — catches scores that attach while
+        arch cards were mid-expand or still at their pre-score height."""
+        self._sync_library_scores()
+        self._refresh_expanded_card_heights()
+
+    def _sync_library_scores(self):
+        """Re-attach cached mvsep scores (e.g. after visiting Model Manager)."""
+        self._scores_store.refresh_from_disk()
+        self._attach_cached_scores()
+        self._retry_unattached_scores()
+
+    def _request_scores_for_item(self, item):
+        for key in _score_keys_for_item(item, self._friendly_names):
+            self._scores_store.request(key)
+
+    def _resolve_score_url(self, keys):
+        return next((self._scores_store.entry_url(k) for k in keys
+                     if self._scores_store.entry_url(k)), "")
+
+    def _apply_score_to_item(self, item):
+        """Attach cached scores + mvsep link to one library row, if available."""
+        item._bootstrap_scores_from_store()
+        keys = _score_keys_for_item(item, self._friendly_names)
+        score = next((self._scores_store.get(k) for k in keys
+                      if self._scores_store.get(k)), None)
+        if score is None:
+            for key in keys:
+                self._scores_store.request(key)
+            return False
+        item.set_scores(score)
+        url = self._resolve_score_url(keys)
+        if url:
+            item.ensure_scores_link(url)
+        item.set_metric(self._sort_metric)
+        item.adjustSize()
+        return True
+
+    def _apply_score_to_name(self, name):
+        """Attach scores to every row (arch + target grouping) for one model."""
+        touched = set()
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem) and w._name == name:
+                    if self._apply_score_to_item(w):
+                        touched.add(card)
+        for card in touched:
+            card._update_expanded_height()
+        self._refresh_expanded_card_heights()
+
+    def _refresh_expanded_card_heights(self):
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            if card._expanded:
+                card._update_expanded_height()
+
+    def _on_card_expanded(self, expanded):
+        if expanded:
+            self._sync_library_scores()
+            self._refresh_expanded_card_heights()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -2510,6 +3288,13 @@ class InferencePage(QWidget):
                     "Cleaner stems, but roughly doubles the time.")
         self._tta_combo = self._tta_row.combo
         cfg.addWidget(self._tta_row)
+
+        self._bigshifts_row = _ComboRow(
+            None, "Big Shifts", ["Disabled", "2", "4", "8"],
+            tooltip="Average several circularly shifted passes.\n"
+                    "This can reduce boundary artifacts, but increases runtime.")
+        self._bigshifts_combo = self._bigshifts_row.combo
+        cfg.addWidget(self._bigshifts_row)
 
         self._dev_row = _ComboRow(
             None, "Device", list_gpus(),
@@ -2595,7 +3380,6 @@ class InferencePage(QWidget):
         hdr_row.setContentsMargins(0, 0, 14, 0)
         hdr_row.setSpacing(10)
         hdr_row.addWidget(_sec_hdr("Model Library"))
-        hdr_row.addStretch()
 
         self._sort_toggle = _SortToggle()
         self._sort_toggle.changed.connect(self._on_sort_changed)
@@ -2625,13 +3409,47 @@ class InferencePage(QWidget):
         hdr_row.addWidget(self._sel_all_row)
         hdr_row.addSpacing(10)
 
+        # Quality sort — "sort by" label + metric dropdown pill, on the
+        # header row between the grouping toggle and the search box. Name
+        # (default) or one of the mvsep metrics, always high→low inside
+        # each architecture / target group.
+        sort_ctrl = QWidget()
+        sort_ctrl.setStyleSheet("background:transparent;")
+        sort_cl = QHBoxLayout(sort_ctrl)
+        sort_cl.setContentsMargins(0, 0, 0, 0)
+        sort_cl.setSpacing(6)
+        self._sort_lbl = QLabel("sort by")
+        self._sort_lbl.setStyleSheet(
+            "font-family:'Montserrat';font-size:9px;font-weight:600;"
+            f"color:{theme_manager.theme.text_muted};background:transparent;")
+        sort_cl.addWidget(self._sort_lbl)
+        self._metric_sort = _SortCombo()
+        self._metric_sort.addItem("name")
+        self._metric_sort.setFixedWidth(SORT_COMBO_WIDTH)
+        for _m in MVSEP_METRICS:
+            # lowercase options: less width next to the search field
+            self._metric_sort.addItem(MVSEP_METRIC_LABELS[_m].lower())
+        self._metric_sort.currentTextChanged.connect(self._on_metric_sort_changed)
+        sort_cl.addWidget(self._metric_sort)
+        hdr_row.addWidget(sort_ctrl)
+        hdr_row.addSpacing(10)
+
+        # The cluster hugs the MODEL LIBRARY heading (toggle, Select all,
+        # sort). The search field still absorbs shrinking on narrow windows
+        # but stops at a comfortable width, leaving the free space on the
+        # panel's right instead of a full-width field — same layout whether
+        # Select all is hidden or shown.
         self._search_bar = _SearchBar("Search models\u2026")
         self._search_bar.textChanged.connect(self._filter_models)
-        self._search_bar.setMaximumWidth(155)
-        hdr_row.addWidget(self._search_bar)
+        # Match the wider folder search so the two page headers feel
+        # consistent, while leaving the surrounding controls breathing room.
+        # Keep the inference search field at the shared default width; the
+        # same value is used by Settings' "Search in folders…" field.
+        self._search_bar.setFixedWidth(SEARCH_FIELD_WIDTH)
+        hdr_row.addWidget(self._search_bar, 1)
 
         rl.addLayout(hdr_row)
-        rl.addSpacing(12)
+        rl.addSpacing(10)
 
         # Model cards scroll area
         scroll = QScrollArea()
@@ -2770,6 +3588,7 @@ class InferencePage(QWidget):
                     f"background:{theme_manager._accent_soft};}}"
                 )
                 item._divider.setStyleSheet(f"background:{t.border};border:none;")
+                item._scores_lbl.reapply_theme()
                 if item._is_selected:
                     item.setStyleSheet(f"QFrame{{background:{t.border};border:none;}}")
                     item._lbl.setStyleSheet(
@@ -2830,9 +3649,12 @@ class InferencePage(QWidget):
         """Build a library card for an architecture. Also used at runtime for
         archs the user registers that aren't part of the static ARCH_TYPES."""
         card = _ArchCard(arch)
+        card._library_sort_metric = self._sort_metric
+        card._score_sync = self._sync_library_scores
         card.model_selected.connect(self._on_model_selected)
         card.model_unchecked.connect(self._on_model_unchecked)
         card.ckpt_settings_requested.connect(self._on_ckpt_settings_requested)
+        card.expanded_changed.connect(self._on_card_expanded)
         self._arch_cards[arch] = card
         if self._library_finalized:
             # Insert before the trailing stretch so dynamically added archs
@@ -2852,9 +3674,12 @@ class InferencePage(QWidget):
             title_display=_type_title(type_key),
             info_url="",
         )
+        card._library_sort_metric = self._sort_metric
+        card._score_sync = self._sync_library_scores
         card.model_selected.connect(self._on_model_selected)
         card.model_unchecked.connect(self._on_model_unchecked)
         card.ckpt_settings_requested.connect(self._on_ckpt_settings_requested)
+        card.expanded_changed.connect(self._on_card_expanded)
         self._target_cards[type_key] = card
         if self._library_finalized:
             self._model_layout.insertWidget(max(self._model_layout.count() - 1, 0), card)
@@ -2922,6 +3747,113 @@ class InferencePage(QWidget):
         # grouping's are hidden. Search matching applies to both.
         self._apply_library_visibility()
 
+    # ── mvsep scores & quality sort ───────────────────────────────────
+
+    def _restore_library_sort(self):
+        """Re-apply the persisted quality sort (Name by default)."""
+        data = settings_store.load()
+        saved = data.get("library_sort", "name")
+        if not isinstance(saved, str):
+            saved = "name"
+        idx = self._metric_sort.findText(saved)
+        if idx >= 0:
+            self._metric_sort.setCurrentIndex(idx)  # fires _on_metric_sort_changed
+
+    def _sort_key_fn(self, w):
+        """Sort key for a model row: name alphabetical, or the chosen metric
+        high→low (models without scores always sink below scored ones)."""
+        if self._sort_metric == "name":
+            return (0, (w._display or w._name).lower())
+        mean = mean_metric(w._scores, self._sort_metric)
+        if mean is None:
+            return (1, 0.0)
+        return (0, -mean)
+
+    def _apply_metric_sort(self):
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            card.sort_models(self._sort_key_fn)
+
+    def _on_metric_sort_changed(self, text):
+        text = (text or "").strip()
+        if text.casefold() == "name":
+            self._sort_metric = "name"
+        else:
+            low = text.lower()
+            self._sort_metric = next(
+                (m for m, lbl in MVSEP_METRIC_LABELS.items()
+                 if lbl.lower() == low),
+                "name")
+        try:
+            data = settings_store.load()
+            data["library_sort"] = text
+            settings_store.save(data)
+        except Exception:
+            pass
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            card._library_sort_metric = self._sort_metric
+            for i in range(card._list_vl.count()):
+                item = card._list_vl.itemAt(i).widget()
+                if isinstance(item, _ModelItem):
+                    item.set_metric(self._sort_metric)
+        self._apply_metric_sort()
+        self._refresh_expanded_card_heights()
+
+    def _on_entries_updated(self):
+        """Google Sheet URL list changed — re-request scores for visible rows."""
+        self._sync_library_scores()
+
+    def _on_scores_ready(self, filename):
+        """Scores for one checkpoint landed in the background — refresh every
+        row showing it (a model appears in both the arch and target grouping)
+        and re-apply the active metric sort."""
+        basename = (filename or "").lower()
+        sc = self._scores_store.get(basename)
+        touched = set()
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                w = card._list_vl.itemAt(i).widget()
+                if isinstance(w, _ModelItem):
+                    if basename not in _score_keys_for_item(w, self._friendly_names):
+                        continue
+                    if sc is None:
+                        continue
+                    self._apply_score_to_item(w)
+                    touched.add(card)
+        for card in touched:
+            card._update_expanded_height()
+        self._refresh_expanded_card_heights()
+        if self._sort_metric != "name":
+            for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+                for i in range(card._list_vl.count()):
+                    item = card._list_vl.itemAt(i).widget()
+                    if isinstance(item, _ModelItem):
+                        item.set_metric(self._sort_metric)
+            if not self._sort_pending:
+                self._sort_pending = True
+                self._sort_timer.start()
+
+    def _flush_metric_sort(self):
+        self._sort_pending = False
+        self._apply_metric_sort()
+
+    def _retry_unattached_scores(self):
+        """Attach cache results that arrived before model rows were created."""
+        waiting = False
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                item = card._list_vl.itemAt(i).widget()
+                if not isinstance(item, _ModelItem) or item._scores:
+                    continue
+                keys = _score_keys_for_item(item, self._friendly_names)
+                if self._apply_score_to_item(item):
+                    card._update_expanded_height()
+                elif any(self._scores_store.entry_url(key) for key in keys):
+                    waiting = True
+        if waiting:
+            self._score_retry_timer.start()
+        elif self._sort_metric != "name":
+            self._apply_metric_sort()
+
     # ── Slots ─────────────────────────────────────────────────────────
 
     def on_model_registered(self, model: dict):
@@ -2931,6 +3863,19 @@ class InferencePage(QWidget):
             self._create_arch_card(arch)
         name = model["name"]
         display = self._friendly_names.get(os.path.basename(name).lower(), "")
+        # Score entries are keyed by the checkpoint filename. Older settings
+        # files used the display/name field as the model identity, while newer
+        # registrations keep the actual checkpoint path separately; resolve
+        # both so the library is populated consistently across upgrades.
+        score_keys = _score_lookup_keys(model, self._friendly_names)
+        for score_key in score_keys:
+            self._scores_store.request(score_key)
+        sc = next((self._scores_store.get(key) for key in score_keys
+                   if self._scores_store.get(key)), None)
+        url = next((self._scores_store.entry_url(key) for key in score_keys
+                    if self._scores_store.entry_url(key)), "")
+        if sc is None and url:
+            self._score_retry_timer.start()
         if arch in self._arch_cards:
             card = self._arch_cards[arch]
             # Re-registration (e.g. a type reconciliation) refreshes the item
@@ -2943,7 +3888,7 @@ class InferencePage(QWidget):
                 model.get("model_type", ""),
                 model.get("backend_module", ""),
                 model.get("custom_backend_enabled", False),
-                display=display)
+                display=display, scores=sc, scores_url=url)
         # Mirror into the by-target grouping (a re-registration re-homes the
         # model across categories if its type changed).
         type_key = model.get("type", "") or ""
@@ -2957,7 +3902,8 @@ class InferencePage(QWidget):
                 model.get("model_type", ""),
                 model.get("backend_module", ""),
                 model.get("custom_backend_enabled", False),
-                display=display)
+                display=display, scores=sc, scores_url=url)
+        self._apply_score_to_name(name)
         self._schedule_library_visibility()
 
     def _schedule_library_visibility(self):
@@ -2967,9 +3913,40 @@ class InferencePage(QWidget):
         self._vis_pending = True
         self._vis_timer.start()
 
+    def _attach_cached_scores(self):
+        """Synchronize rows with scores already present in the store.
+
+        The score worker can finish between page construction and the
+        ``model_registered`` fan-out (and a fresh cache entry deliberately
+        emits no signal). A final cache pass makes the Model Library
+        deterministic in both cases instead of relying on signal timing.
+        """
+        touched = set()
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                item = card._list_vl.itemAt(i).widget()
+                if not isinstance(item, _ModelItem):
+                    continue
+                if self._apply_score_to_item(item):
+                    touched.add(card)
+        for card in touched:
+            card._update_expanded_height()
+        self._refresh_expanded_card_heights()
+
     def _flush_library_visibility(self):
         self._vis_pending = False
         self._apply_library_visibility()
+        self._attach_cached_scores()
+        # Models register in settings order; re-apply an active quality sort
+        # so newly added rows land in their scored position (coalesced: this
+        # runs once per event-loop pass during startup registration).
+        for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
+            for i in range(card._list_vl.count()):
+                item = card._list_vl.itemAt(i).widget()
+                if isinstance(item, _ModelItem):
+                    item.set_metric(self._sort_metric)
+        if self._sort_metric != "name":
+            self._apply_metric_sort()
         # Startup only: the rows are all registered by now (model_registered
         # is delivered synchronously), so a persisted multi-select batch can
         # be re-applied exactly once.
@@ -3036,6 +4013,8 @@ class InferencePage(QWidget):
                 if isinstance(w, _ModelItem):
                     w.set_display(self._friendly_names.get(
                         os.path.basename(w._name.lower()), ""))
+                    self._request_scores_for_item(w)
+        self._sync_library_scores()
         # Re-apply an active search so rows now match by their new label
         try:
             txt = self._search_bar.text()
@@ -3329,6 +4308,7 @@ class InferencePage(QWidget):
                              if isinstance(self._output_row.value(), str) else "",
             "output_format": self._fmt_combo.currentText(),
             "tta":           self._tta_combo.currentText(),
+            "bigshifts":     self._bigshifts_combo.currentText(),
             "device":        self._device_combo.currentText(),
             "stems":         self._output_stems_row.get_selected_stems(),
             "save_rest":     self._output_stems_row.get_save_rest(),
@@ -3369,6 +4349,12 @@ class InferencePage(QWidget):
         if not isinstance(tta, str): tta = "Disabled"
         idx = self._tta_combo.findText(tta)
         if idx >= 0: self._tta_combo.setCurrentIndex(idx)
+        bigshifts = d.get("bigshifts", "Disabled")
+        if isinstance(bigshifts, int):
+            bigshifts = "Disabled" if bigshifts <= 1 else str(bigshifts)
+        if not isinstance(bigshifts, str): bigshifts = "Disabled"
+        idx = self._bigshifts_combo.findText(bigshifts)
+        if idx >= 0: self._bigshifts_combo.setCurrentIndex(idx)
         dev = d.get("device", "")
         if not isinstance(dev, str): dev = ""
         idx = self._device_combo.findText(dev)
@@ -3553,6 +4539,11 @@ class InferencePage(QWidget):
         device_ids = device_ids_from_selection(self._device_combo.currentText())
         force_cpu  = device_ids is None
         use_tta    = self._tta_combo.currentText() == "Enabled"
+        bigshifts_text = self._bigshifts_combo.currentText()
+        try:
+            bigshifts = max(1, int(bigshifts_text)) if bigshifts_text != "Disabled" else 1
+        except (TypeError, ValueError):
+            bigshifts = 1
 
         # Apply per-ckpt settings and stem selection to YAML
         self._tmp_yaml = None
@@ -3680,6 +4671,8 @@ class InferencePage(QWidget):
                     cmd.append("--extract_instrumental")
 
         if use_tta: cmd.append("--use_tta")
+        if bigshifts > 1:
+            cmd += ["--bigshifts", str(bigshifts)]
         # Fork architectures ship their own backend .py (downloaded to
         # models/custom/<module> at install time, under the writable APP_DIR);
         # pass the folder so the engine loads the model class from the

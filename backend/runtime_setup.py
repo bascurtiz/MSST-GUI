@@ -357,14 +357,22 @@ def _ensure_onnx_gpu(py, log_cb, cancel_check):
     if not importable or has_gpu:
         return  # onnxruntime missing (set up later) or already GPU-capable
     log_cb("Upgrading onnxruntime to the CUDA build for MDX-Net models…")
+    # Drop both dist names: a previous onnxruntime-gpu install leaves its
+    # dist-info behind after the plain-name uninstall, which would confuse the
+    # downgrade below.
     if _run_pip_retries(py, ["uninstall", "-y", "onnxruntime",
-                             "onnxruntime-directml"],
+                             "onnxruntime-gpu", "onnxruntime-directml"],
                         log_cb, cancel_check) != 0:
         log_cb("WARNING: could not remove the CPU onnxruntime — "
                "MDX-Net models stay on CPU.")
         return
     ok = False
-    if _run_pip_retries(py, ["install", "onnxruntime-gpu>=1.20"],
+    # onnxruntime-gpu 1.27+ is built against CUDA 13 and needs a system CUDA
+    # 13 toolkit (its provider links cublas64_13.dll, which the CUDA 12.8
+    # torch wheel does not bundle — the provider DLL fails to initialise and
+    # ORT silently falls back to CPU). Pin the CUDA 12.8 builds (1.21-1.26)
+    # so the provider resolves cudart/cublas/cuDNN from torch's bundled libs.
+    if _run_pip_retries(py, ["install", "onnxruntime-gpu>=1.21,<1.27"],
                         log_cb, cancel_check) == 0:
         p = _probe_onnx(py)
         ok = bool(p and p[0] and p[1])

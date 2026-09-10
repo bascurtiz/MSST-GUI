@@ -652,6 +652,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, progress_cb=None):
         super().__init__()
+        self.setObjectName("mainWindow")
         # Startup-only progress hook consumed by the splash screen; cleared
         # by main() once the window is shown so theme rebuilds don't fire it.
         self._progress_cb = progress_cb
@@ -773,6 +774,11 @@ class MainWindow(QMainWindow):
         )
         self.settings_page.model_removed.connect(
             self.iterative_ensemble.on_model_removed
+        )
+        # Model Manager pre-fetches mvsep scores for the whole zoo; refresh
+        # library rows once that index (and cache) is warm.
+        self.settings_page._model_mgr.index_loaded.connect(
+            lambda _models: self.inference_page._sync_library_scores()
         )
         self.inference_page.log_output.connect(
             self.console_page.append_log
@@ -1327,6 +1333,8 @@ class MainWindow(QMainWindow):
             tab.set_active(i == idx)
         self._header._active_tab = self._nav_tabs[idx]
         self._indicator.move_to(self._nav_tabs[idx])
+        if idx == self.TAB_INFERENCE:
+            self.inference_page._sync_library_scores()
 
     def _on_iterative_selected(self):
         from PySide6.QtWidgets import QDialog

@@ -45,14 +45,46 @@ def parse_stem_suffix_map(text):
     return result
 
 
+def qc_suffix_map_for_model(suffix_map, trained_instruments):
+    """Adjust a dataset's stem-suffix map for the model actually running.
+
+    mvsep's 2-stem vocal datasets (Multisong / Synthetic / Synth Vocals
+    2026) score the instrumental part as "_instrum", so their maps rename
+    the model's "other" stem to "instrum". That is only correct when
+    "other" IS the mix-minus-vocals complement, i.e. a 2-stem vocals model.
+    A multi-stem model (4 stems: vocals/drums/bass/other) has "other" as
+    its own trained stem and mvsep names that "_other" (MUSDB18
+    convention); renaming it "instrum" mislabels the uploaded file.
+    Returns a new map with the other->instrum remap dropped when the model
+    has >= 3 trained stems; otherwise the map is returned unchanged.
+    """
+    if not suffix_map or not trained_instruments:
+        return suffix_map
+    if (len(trained_instruments) >= 3
+            and suffix_map.get("other") == "instrum"):
+        adjusted = dict(suffix_map)
+        adjusted["other"] = "other"
+        return adjusted
+    return suffix_map
+
+
 def stem_suffix_for(instr, suffix_map):
     """The mvsep output suffix for a config stem name, honouring an
-    explicit entry first and a "*" catch-all second; identity otherwise."""
+    explicit entry first and a "*" catch-all second; identity otherwise.
+    Lookup is case-insensitive (models commonly capitalize stems, e.g.
+    "Voices" vs the map's "vocals") and the identity fallback is
+    lowercased to match mvsep's always-lowercase suffixes."""
     if instr in suffix_map:
         return suffix_map[instr]
+    low = instr.lower()
+    if low in suffix_map:
+        return suffix_map[low]
     if "*" in suffix_map:
         return suffix_map["*"]
-    return instr
+    # Normalize case only when a map is active (Quality Checker mode, where
+    # mvsep's suffixes are always lowercase); plain runs keep the model's
+    # own stem names untouched.
+    return low if suffix_map else instr
 
 
 def resample_to_native(x, orig_sr, target_sr, target_len,

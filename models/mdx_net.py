@@ -76,6 +76,17 @@ class MDXNetModel:
                 pass
             os.environ["PATH"] = torch_lib + os.pathsep + os.environ.get("PATH", "")
 
+        # onnxruntime-gpu >= 1.27 is built against CUDA 13 and needs a system
+        # CUDA 13 toolkit; the runtime pins < 1.27 (CUDA 12.8) so the provider
+        # resolves cudart/cublas/cuDNN from torch's bundled libs above. The
+        # ORT-sanctioned preload (1.21+) is belt-and-suspenders for older or
+        # unusual installs.
+        if hasattr(ort, "preload_dlls"):
+            try:
+                ort.preload_dlls()
+            except Exception:
+                pass
+
         providers = ["CUDAExecutionProvider", "DmlExecutionProvider",
                      "CPUExecutionProvider"]
         try:
@@ -135,7 +146,7 @@ class MDXNetModel:
         else:
             mix_work = mix[:2]
 
-        primary = self._demix_stereo(mix_work, pbar=pbar)
+        primary = self._demix_stereo(mix_work, pbar=pbar, device=device)
         if orig_channels == 1:
             primary = primary[:1]
 
@@ -146,7 +157,8 @@ class MDXNetModel:
                               "secondary")
         return {primary_name: primary, secondary_name: secondary}
 
-    def _demix_stereo(self, mix: np.ndarray, pbar: bool = False) -> np.ndarray:
+    def _demix_stereo(self, mix: np.ndarray, pbar: bool = False,
+                      device: torch.device = torch.device("cpu")) -> np.ndarray:
         """Chunked overlap-add demix on [2, T] float32; returns [2, T'].
 
         Chunks are grouped into small batches per onnxruntime call: each
@@ -171,8 +183,9 @@ class MDXNetModel:
 
         # Chunks are small ([C, hop*(dim_t-1)] each); even the config's
         # batch_size=1 would spend most of the run on per-call overhead, so
-        # group at least 4 chunks per session.run.
-        batch = max(4, int(getattr(self.config.inference, "batch_size", 1) or 1))
+        # group at least 8 chunks per session.run (GPU STFT batches them in
+        # one cuFFT call too).
+        batch = max(8, int(getattr(self.config.inference, "batch_size", 1) or 1))
 
         starts = list(range(0, mixture.shape[1] - chunk_size + 1, step))
         result = np.zeros((c, mixture.shape[1]), np.float32)
@@ -188,7 +201,7 @@ class MDXNetModel:
         while i < len(starts):
             idx = starts[i:i + batch]
             parts = np.stack([mixture[:, s:s + chunk_size] for s in idx])
-            ests = self._process_batch(parts)            # [B, C, chunk]
+            ests = self._process_batch(parts, device)    # [B, C, chunk]
             for b, s in enumerate(idx):
                 result[:, s:s + chunk_size] += ests[b] * window
                 divider[:, s:s + chunk_size] += window
@@ -203,13 +216,21 @@ class MDXNetModel:
         out *= self.compensation
         return out
 
-    def _process_batch(self, chunks: np.ndarray) -> np.ndarray:
-        """STFT -> ONNX -> ISTFT for a stacked batch [B, C, chunk]."""
-        x = torch.from_numpy(chunks).float()                 # [B, C, T]
+    def _process_batch(self, chunks: np.ndarray,
+                       device: torch.device) -> np.ndarray:
+        """STFT -> ONNX -> ISTFT for a stacked batch [B, C, chunk].
+
+        The STFT/ISTFT follow the input tensor's device, so on a CUDA runtime
+        the FFTs run on the GPU (cuFFT) and only the [B, 2C, F, T'] spectro-
+        grams cross the CPU<->GPU boundary into the ONNX session — this keeps
+        the GPU busy instead of idling while the CPU does the transforms.
+        """
+        dev = device if isinstance(device, torch.device) else torch.device(device)
+        x = torch.from_numpy(chunks).float().to(dev)         # [B, C, T]
         spek = self.stft(x)                                  # [B, 2C, F, T']
         # UVR zeroes the first 3 frequency bins before inference
         spek[:, :, :3, :] *= 0
         inp = spek.detach().cpu().numpy()
         pred = self.session.run(None, {"input": inp})[0]     # [B, 2C, F, T']
-        out = self.stft.inverse(torch.from_numpy(pred).float())  # [B, C, T]
-        return out.numpy()
+        out = self.stft.inverse(torch.from_numpy(pred).float().to(dev))  # [B, C, T]
+        return out.detach().cpu().numpy()

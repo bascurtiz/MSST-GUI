@@ -1,6 +1,6 @@
 # coding: utf-8
 __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
-__version__ = '1.0.4'
+__version__ = '1.0.5'
 
 # Read more here:
 # https://huggingface.co/docs/accelerate/index

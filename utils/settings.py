@@ -400,6 +400,9 @@ def _resolve_bs_roformer_variant(config, checkpoint_path=None):
     * top-level ``siamese: true``    -> BSRoformer(siamese=True) two-stream trunk
     * top-level ``sw: true``         -> BSRoformerSW(learned positions)
     * 6-stem configs with no flag    -> BSRoformerSW(rope) shared-bias "Logic"
+    * top-level ``fno: true``         -> bs_roformer_fno (FNO mask estimator)
+    * top-level ``hyperace: true``     -> bs_roformer_hyperace (SegmModel v1)
+    * top-level ``hyperace2: true``    -> bs_roformer_hyperace2 (SegmModel v2)
     * unwa's "Instrumental Large v2" fork adds a 4-layer axial TransformerBlock
       inside the MaskEstimator, so its state dicts carry
       ``mask_estimators.N.layers...`` / ``mask_estimators.N.norm.gamma`` keys
@@ -421,10 +424,27 @@ def _resolve_bs_roformer_variant(config, checkpoint_path=None):
     if getattr(config, 'sw', None) is True:
         fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
         return BSRoformerSW(position_mode='learned', **fit)
+    if getattr(config, 'fno', None) is True:
+        from models.bs_roformer.bs_roformer_fno import BSRoformer as BSRoformerFNO
+        return BSRoformerFNO(**_fit_model_kwargs(BSRoformerFNO, _model_cfg))
+    if getattr(config, 'hyperace2', None) is True:
+        from models.bs_roformer.bs_roformer_hyperace2 import BSRoformer as BSRoformerHyperACE2
+        return BSRoformerHyperACE2(**_fit_model_kwargs(BSRoformerHyperACE2, _model_cfg))
+    if getattr(config, 'hyperace', None) is True:
+        from models.bs_roformer.bs_roformer_hyperace import BSRoformer as BSRoformerHyperACE
+        return BSRoformerHyperACE(**_fit_model_kwargs(BSRoformerHyperACE, _model_cfg))
     if _model_cfg.get('num_stems', 1) == 6:
         fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
         return BSRoformerSW(position_mode='rope', **fit)
     if checkpoint_path:
+        fork_cls = _sniff_fno_fork(checkpoint_path)
+        if fork_cls is not None:
+            fit = _fit_model_kwargs(fork_cls, _model_cfg)
+            return fork_cls(**fit)
+        fork_cls = _sniff_hyperace_fork(checkpoint_path)
+        if fork_cls is not None:
+            fit = _fit_model_kwargs(fork_cls, _model_cfg)
+            return fork_cls(**fit)
         fork_cls = _sniff_unwa_large_fork(checkpoint_path)
         if fork_cls is not None:
             fit = _fit_model_kwargs(fork_cls, _model_cfg)
@@ -515,6 +535,35 @@ def _torch_load_ckpt_keys(checkpoint_path):
             sd = sd[wrapper]
             break
     return list(sd.keys())
+
+
+def _sniff_fno_fork(checkpoint_path):
+    """Return the FNO fork class when the checkpoint uses FNO mask estimators."""
+    keys = _read_ckpt_keys(checkpoint_path)
+    if keys is None:
+        keys = _torch_load_ckpt_keys(checkpoint_path)
+    if not keys:
+        return None
+    if not any('fno_blocks' in k for k in keys):
+        return None
+    from models.bs_roformer.bs_roformer_fno import BSRoformer
+    return BSRoformer
+
+
+def _sniff_hyperace_fork(checkpoint_path):
+    """Return the HyperACE fork class matching a SegmModel checkpoint."""
+    keys = _read_ckpt_keys(checkpoint_path)
+    if keys is None:
+        keys = _torch_load_ckpt_keys(checkpoint_path)
+    if not keys:
+        return None
+    if not any(k.startswith('mask_estimators.0.segm.') for k in keys):
+        return None
+    if any('upsample_head.block1.out_conv' in k for k in keys):
+        from models.bs_roformer.bs_roformer_hyperace2 import BSRoformer
+    else:
+        from models.bs_roformer.bs_roformer_hyperace import BSRoformer
+    return BSRoformer
 
 
 def _sniff_unwa_large_fork(checkpoint_path):

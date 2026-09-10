@@ -59,6 +59,13 @@ def stems_of(card):
     return sorted(os.path.basename(p) for p in card._output_paths)
 
 
+def _norm(s):
+    import re as _re
+    s = (s or "").lower().strip()
+    s = _re.sub(r'[^a-z0-9]+', ' ', s)
+    return s.strip()
+
+
 def display_order(page):
     """Card song names in the visual list, top to bottom."""
     order = []
@@ -480,6 +487,131 @@ def main():
     pageB._sort_card_order()
     check(dB._card is cB0,
           "idle reorder must never change a manual selection")
+
+    # ── 9) multi-select run: 3 models on the same 104-song folder ──────
+    # The GUI pre-emits "Processing:" (first file) + "Queued:" (the rest)
+    # before the engine's own per-song "Processing:" lines arrive. Each
+    # re-run must get ONE fresh card set ("<base> #N") and its stems must
+    # land on ITS cards — the old bugs: (a) the engine's lines created a
+    # SECOND duplicate card per song per model (520 cards instead of 312)
+    # whose "Queued"/"Loading" entries lingered forever with a multi-hour
+    # elapsed timer; (b) the QC export matcher returned the first card per
+    # song (run-1), so run-2/3 cards completed with ZERO outputs and no
+    # waveforms (209 of 313 "Complete" cards were stem-less).
+    pageM = ConsolePage()
+    pageM.set_input_files([f"D:/in/song_dnr_{i:03d}_mixture.flac"
+                           for i in range(104)])
+    pageM.set_job_active(True)
+    models = ["bandit_63_zfturbo", "bandit_last", "bandit_v2_multi"]
+    stems = ["speech", "music", "sfx"]
+    for model in models:
+        out = os.path.join(tempfile.mkdtemp(prefix="msst_multimodel_"),
+                           model)
+        os.makedirs(out, exist_ok=True)
+        feed(pageM, f"Output directory: {out}")
+        feed(pageM, "Processing: song_dnr_000_mixture.flac")
+        for i in range(1, 104):
+            feed(pageM, f"Queued: song_dnr_{i:03d}_mixture.flac")
+        for i in range(104):
+            feed(pageM, f"Processing: song_dnr_{i:03d}_mixture.flac")
+            feed(pageM, "Processing audio chunks:  50%|####| 1521450/3042900")
+            for s in stems:
+                feed(pageM, f"Wrote file: {out}/song_dnr_{i:03d}_{s}.flac")
+        feed(pageM, "Completed: processing")
+        feed(pageM, "  TEST OK")
+
+    cardsM = list(pageM._song_cards.values())
+    check(len(cardsM) == 104 * 3,
+          f"3-model run must make exactly 312 cards, got {len(cardsM)}")
+    # Every card Complete, every card with its own model's stems (so the
+    # detail view can render waveforms) — the no-duplicate, no-stuck state.
+    for c in cardsM:
+        check(c._is_complete and not c._failed,
+              f"multi-model card {c._key!r} must be Complete, got "
+              f"{c._status_lbl.text()!r}")
+        check(len(c._output_paths) == 3,
+              f"multi-model card {c._key!r} must hold its 3 stems, got "
+              f"{len(c._output_paths)}")
+        for p in c._output_paths:
+            check(os.path.basename(p) == os.path.basename(p),
+                  "path sanity")
+    # Each song has exactly 3 cards — one per model — and each card's stems
+    # come from ITS model's folder (no stealing onto the run-1 card).
+    by_song = {}
+    for c in cardsM:
+        by_song.setdefault(_norm(c._song_name), []).append(c)
+    for song, cs in by_song.items():
+        check(len(cs) == 3, f"{song} must have one card per model, got "
+              f"{len(cs)}")
+        for c in cs:
+            d = os.path.basename(os.path.normpath(c._output_dir or ""))
+            for p in c._output_paths:
+                check(d and os.path.normpath(p).replace("/", "\\")
+                      .startswith(os.path.normpath(c._output_dir or "")
+                                  .replace("/", "\\")),
+                      f"{song} stems must come from its own model dir "
+                      f"({d}): {p}")
+    # No card may remain stuck in Queued/Loading with an ever-running timer
+    # (the 9h34m symptom).
+    for c in cardsM:
+        check(not getattr(c, "_loading", False)
+              and c._status_lbl.text() != "Loading...",
+              f"no card may stay Loading forever: {c._key!r}")
+        check(c._status_lbl.text() != "Queued",
+              f"no card may stay Queued forever: {c._key!r}")
+
+    # ── 10) QC out-of-order exports must never split a song's stems ────
+    #    The engine's "Wrote file:" lines (stdout) are captured with
+    #    different buffering than its "Processing:"/tqdm lines (stderr), so
+    #    an export can arrive while an EARLIER song is still the active
+    #    card. That prematurely completes the target card before its own
+    #    "Processing:" line shows up — and creating a duplicate card then
+    #    splits the song's stems across the pair (one card with
+    #    song_010_vocals only, another with song_010_instrum only), which
+    #    is the "some cards show a single waveform" symptom. Same-run
+    #    cards must be adopted (not duplicated) and their stems kept.
+    pageQ = ConsolePage()
+    qsongs = [f"song_{i:03d}_mixture" for i in range(12)]
+    pageQ.set_input_files([f"D:/in/{s}.wav" for s in qsongs])
+    pageQ.set_job_active(True)
+    qout = os.path.join(tempfile.mkdtemp(prefix="msst_qclag_"),
+                        "bs_fnf2_mrdense67")
+    os.makedirs(qout, exist_ok=True)
+    feed(pageQ, f"Output directory: {qout}")
+    for s in qsongs:
+        feed(pageQ, f"Queued: {s}.wav")
+    for i in range(9):
+        feed(pageQ, f"Processing: {qsongs[i]}.wav")
+        feed(pageQ, f"Processing audio chunks: 50%|#####|")
+    # song_010's vocals arrive while song_008 is still the active card...
+    feed(pageQ, f"Wrote file: {qout}/song_010_vocals.flac")
+    # ...the intervening Processing lines prematurely complete song_010's
+    # card before its own Processing line appears.
+    feed(pageQ, "Processing: song_009_mixture.wav")
+    feed(pageQ, "Processing audio chunks: 50%|#####|")
+    feed(pageQ, "Processing: song_010_mixture.wav")
+    feed(pageQ, "Processing audio chunks: 50%|#####|")
+    feed(pageQ, "Processing: song_011_mixture.wav")
+    feed(pageQ, "Processing audio chunks: 50%|#####|")
+    # The remaining exports, out of order relative to the Processing lines.
+    feed(pageQ, f"Wrote file: {qout}/song_010_instrum.flac")
+    feed(pageQ, f"Wrote file: {qout}/song_009_vocals.flac")
+    feed(pageQ, f"Wrote file: {qout}/song_009_instrum.flac")
+    feed(pageQ, f"Wrote file: {qout}/song_011_vocals.flac")
+    feed(pageQ, f"Wrote file: {qout}/song_011_instrum.flac")
+    feed(pageQ, "Completed: processing")
+    qcards = list(pageQ._song_cards.values())
+    check(len(qcards) == 12,
+          f"QC lag: expected 12 cards (no duplicates), got {len(qcards)}")
+    qby = {c._song_name: c for c in qcards}
+    for s in ("song_009_mixture", "song_010_mixture",
+              "song_011_mixture"):
+        expect = sorted([f"{s[:-len('_mixture')]}_instrum.flac",
+                         f"{s[:-len('_mixture')]}_vocals.flac"])
+        check(stems_of(qby[s]) == expect,
+              f"QC lag: {s} stems split: {stems_of(qby[s])}")
+    check(pageQ._unmatched_exports == [],
+          "QC lag: no exports may be stranded")
 
     if FAILURES:
         print(f"FAILED ({len(FAILURES)}):")

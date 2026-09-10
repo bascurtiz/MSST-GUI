@@ -70,9 +70,25 @@ def main():
     check(env_s.shape == env_m.shape, "fixed bin count")
 
     # --- integrated container path (the real fix) ---
+    # load_tracks decodes cold files on a worker thread (the main thread is
+    # never blocked), so the test must spin the event loop until the
+    # envelopes land — which also exercises the async delivery path.
+    def wait_samples(container, timeout=20.0):
+        import time as _time
+        t0 = _time.time()
+        while _time.time() - t0 < timeout:
+            app.processEvents()
+            if all(getattr(tr, "_samples", None) is not None
+                   for tr in container._tracks):
+                return True
+            _time.sleep(0.005)
+        return all(getattr(tr, "_samples", None) is not None
+                   for tr in container._tracks)
+
     card._output_paths = [music, inst, sfx]
     container = _WaveformContainer()
     container.load_tracks(card)
+    check(wait_samples(container), "async envelopes never arrived")
 
     by_label = {tr._label: tr for tr in container._tracks}
     check(set(by_label) == {"Music", "Instrument", "Sfx"}, f"labels: {list(by_label)}")
@@ -97,6 +113,7 @@ def main():
     card._output_paths = [wav(0.0, "a (vocals).wav"), wav(0.0, "a (other).wav")]
     container2 = _WaveformContainer()
     container2.load_tracks(card)
+    check(wait_samples(container2), "async envelopes never arrived (silent set)")
     for tr in container2._tracks:
         check(float(np.max(np.abs(tr._samples))) == 0.0, "all-silent set must be flat")
 

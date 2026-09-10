@@ -33,7 +33,17 @@ from backend.model_manager import (
     is_installed, ModelInfo, MODEL_TYPE_TO_ARCH,
 )
 from ui.pages.model_manager_dialog import ModelInstallDialog
-from ui.pages.inference_page import _ExpandArrow, _SearchBar
+from ui.pages.inference_page import (
+    _ExpandArrow, _SearchBar, _ComboBox, _combo_ss, _SortCombo, _MetricColumns,
+    SEARCH_FIELD_WIDTH, SORT_COMBO_WIDTH,
+)
+from backend.mvsep_scores import (
+    METRIC_LABELS as MVSEP_METRIC_LABELS,
+    METRICS as MVSEP_METRICS,
+    get_scores_store,
+    mean_metric,
+    metric_line,
+)
 
 
 class _ClickableFrame(QFrame):
@@ -1162,10 +1172,24 @@ class _FolderManagerWidget(QWidget):
         self._folder_file_dates: dict[str, str] = {}
         self._folder_file_sizes: dict[str, int] = {}
         self._show_new_badge: dict[str, bool] = {}
+        # mvsep quality sort: None = upload date, otherwise a metric key.
+        self._sort_metric = None
         # Pending render deferred because a modal dialog is up (see
         # _request_render) — (search_term,) while queued, None when idle.
         self._render_pending = None
         self._render_timer_active = False
+        # mvsep scores: rows re-render as background fetches land. Coalesced
+        # via a single-shot timer — the initial crawl delivers one signal per
+        # model and a full tree rebuild per signal would peg the main thread.
+        self._scores_store = get_scores_store()
+        self._scores_store.scores_ready.connect(self._on_scores_ready)
+        self._scores_store.entries_updated.connect(self._on_entries_updated)
+        self._scores_store.start()
+        self._scores_render_pending = False
+        self._scores_render_timer = QTimer(self)
+        self._scores_render_timer.setSingleShot(True)
+        self._scores_render_timer.setInterval(120)
+        self._scores_render_timer.timeout.connect(self._flush_scores_render)
 
         self.setStyleSheet("background:transparent;")
         lo = QVBoxLayout(self)
@@ -1285,10 +1309,50 @@ class _FolderManagerWidget(QWidget):
                 self._folder_order.append(key)
             self._model_type_map[key].append(m)
         self._folder_order.sort()  # alphabetical, like the MODEL LIBRARY
+        # Ask the mvsep store to fetch scores for every listed model (the
+        # store prioritizes installed models before the rest of the zoo).
+        for m in models:
+            ck = os.path.basename(m.checkpoint_url.split("?")[0]).lower()
+            self._scores_store.request(ck)
         self._request_render()
         # Let the page reconcile registered models' types against the zoo
         # (older installs stored the "vocals" fallback for uncovered cats).
         self.index_loaded.emit(models)
+
+    def set_sort_metric(self, metric):
+        """None = upload date; otherwise an mvsep metric key (sdr, si_sdr, …)
+        sorted high→low. Re-renders the folder list."""
+        metric = metric if metric in ("sdr", "si_sdr", "l1_freq", "log_wmse",
+                                      "aura_stft", "aura_mrstft",
+                                      "bleedless", "fullness") else None
+        if metric != self._sort_metric:
+            self._sort_metric = metric
+            self._request_render()
+
+    def _on_entries_updated(self):
+        """Google Sheet URL list changed — pick up newly listed models."""
+        for m in self._models:
+            ck = os.path.basename(m.checkpoint_url.split("?")[0]).lower()
+            self._scores_store.request(ck)
+        if not self._scores_render_pending:
+            self._scores_render_pending = True
+            self._scores_render_timer.start()
+
+    def _on_scores_ready(self, _filename):
+        if not self._scores_render_pending:
+            self._scores_render_pending = True
+            self._scores_render_timer.start()
+
+    def _flush_scores_render(self):
+        self._scores_render_pending = False
+        self._request_render()
+
+    def _metric_sort_key(self, info):
+        """Mean of the chosen metric across the model's stems; models without
+        scores sort to the bottom (the caller reverses the order)."""
+        ck = os.path.basename(info.checkpoint_url.split("?")[0]).lower()
+        mean = mean_metric(self._scores_store.get(ck), self._sort_metric)
+        return mean if mean is not None else float("-inf")
 
     def _on_error(self, msg):
         self._fetch_thread = None  # the thread retires itself when done
@@ -1578,7 +1642,12 @@ class _FolderManagerWidget(QWidget):
             models = [m for m in models
                       if search_term in m.full_name.lower()
                       or search_term in m.key.lower()]
-        models = sorted(models, key=lambda m: self._model_sort_ts(m), reverse=True)
+        if self._sort_metric:
+            # Quality metric chosen: best score first, unscored models last.
+            models = sorted(models, key=self._metric_sort_key, reverse=True)
+        else:
+            # Upload date (default): newest first, undated models last.
+            models = sorted(models, key=lambda m: self._model_sort_ts(m), reverse=True)
 
         container = QWidget()
         container.setStyleSheet("background:transparent;")
@@ -1675,16 +1744,34 @@ class _FolderManagerWidget(QWidget):
             updated_row.setContentsMargins(0, 0, 0, 0)
             updated_row.setSpacing(6)
 
-            if model_date:
-                updated_lbl = QLabel(_relative_time(model_date))
-                updated_lbl.setStyleSheet(
-                    f"font-family:'Montserrat';font-size:10px;"
-                    f"color:{theme_manager.theme.text_muted};background:transparent;border:none;"
-                )
-                updated_row.addWidget(updated_lbl)
+            # When a quality metric is selected, the 'Updated … size' line
+            # becomes that metric's per-stem values (e.g.
+            # 'SDR effects: 10.74 | music: 8.28 | sfx: 9.45'); upload-date
+            # mode keeps the relative time + size as before.
+            scores = (self._scores_store.get(
+                os.path.basename(ckpt_name).lower())
+                if self._sort_metric else None)
+            metric_text = metric_line(scores, self._sort_metric) if scores else ""
 
-            if size_lbl:
-                updated_row.addWidget(size_lbl)
+            if metric_text:
+                # Metric name on the left, one column per stem with the
+                # label above its value (dim labels, bright values), like
+                # the Model Library SDR rows.
+                metric_lbl = _MetricColumns(pixel=10, weight=600,
+                                            left=0, right=0)
+                metric_lbl.set_scores(scores, self._sort_metric)
+                updated_row.addWidget(metric_lbl)
+            else:
+                if model_date:
+                    updated_lbl = QLabel(_relative_time(model_date))
+                    updated_lbl.setStyleSheet(
+                        f"font-family:'Montserrat';font-size:10px;"
+                        f"color:{theme_manager.theme.text_muted};background:transparent;border:none;"
+                    )
+                    updated_row.addWidget(updated_lbl)
+
+                if size_lbl:
+                    updated_row.addWidget(size_lbl)
 
             if not not_new:
                 new_badge = QLabel("NEW")
@@ -1857,6 +1944,7 @@ class SettingsPage(QWidget):
         self._download_worker = None
         self._download_mode = "manager"
         self._pending_backend_module = ""
+        self._mgr_sort_metric = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 32, 32, 68)
@@ -1934,8 +2022,32 @@ class SettingsPage(QWidget):
         # MODEL LIBRARY header row
         reg_hdr.addWidget(_section_hdr("Register Model"))
         reg_hdr.addStretch()
+        # Model Manager sort: upload date (default) or one of the mvsep
+        # quality metrics — shown only in MODEL MANAGER mode, next to the
+        # folder search.
+        # "sort by" label + metric dropdown pill (same look as the Model
+        # Library sort) — shown in MODEL MANAGER mode, next to the folder
+        # search.
+        self._mgr_sort_lbl = QLabel("sort by")
+        self._mgr_sort_lbl.setStyleSheet(
+            "font-family:'Montserrat';font-size:9px;font-weight:600;"
+            f"color:{theme_manager.theme.text_muted};background:transparent;")
+        self._mgr_sort_lbl.setVisible(False)
+        reg_hdr.addWidget(self._mgr_sort_lbl)
+        self._mgr_sort_combo = _SortCombo()
+        self._mgr_sort_combo.addItem("upload date")
+        self._mgr_sort_combo.setFixedWidth(SORT_COMBO_WIDTH)
+        for _m in MVSEP_METRICS:
+            # lowercase options: less width next to the search field
+            self._mgr_sort_combo.addItem(MVSEP_METRIC_LABELS[_m].lower())
+        self._mgr_sort_combo.setVisible(False)  # shown in MODEL MANAGER mode
+        self._mgr_sort_combo.currentTextChanged.connect(self._on_mgr_sort_changed)
+        reg_hdr.addWidget(self._mgr_sort_combo)
         self._folder_search = _SearchBar("Search folders\u2026")
-        self._folder_search.setMaximumWidth(155)
+        # Match the Model Library search field and leave enough room for the
+        # complete "Search folders…" placeholder.
+        self._folder_search.setFixedWidth(SEARCH_FIELD_WIDTH)
+        self._folder_search.setToolTip("Filter model folders by name.")
         self._folder_search.setVisible(False)  # shown in MODEL MANAGER mode
         reg_hdr.addWidget(self._folder_search)
 
@@ -2159,6 +2271,19 @@ class SettingsPage(QWidget):
         self._model_mgr.setVisible(False)
         self._folder_search.textChanged.connect(self._model_mgr.set_search_text)
         ll.addWidget(self._model_mgr, 2)
+        # Restore the persisted Model Manager sort (fires _on_mgr_sort_changed
+        # once the widget exists so the folder list renders in that order).
+        from backend import settings as settings_store
+        data = settings_store.load()
+        saved = data.get("model_manager_sort", "upload date")
+        if not isinstance(saved, str):
+            saved = "upload date"
+        # Migrate the pre-lowercase label used by older settings files.
+        if saved.casefold() == "upload date":
+            saved = "upload date"
+        idx = self._mgr_sort_combo.findText(saved)
+        if idx >= 0:
+            self._mgr_sort_combo.setCurrentIndex(idx)
 
         # Surplus-height sink. In URL / LOCAL FILES modes the manager panel
         # is hidden, leaving the column with no item that absorbs extra
@@ -2256,6 +2381,8 @@ class SettingsPage(QWidget):
 
         self._model_mgr.setVisible(is_manager)
         self._folder_search.setVisible(is_manager)
+        self._mgr_sort_lbl.setVisible(is_manager)
+        self._mgr_sort_combo.setVisible(is_manager)
         self._folder_search_ph.setVisible(not is_manager)
 
         show_arch_type = not is_manager
@@ -2275,6 +2402,27 @@ class SettingsPage(QWidget):
             self._ckpt_url.edit.setFocus()
         self.update()
         self.repaint()
+
+    def _on_mgr_sort_changed(self, text):
+        """Model Manager sort dropdown: 'Upload date' (default) or one of the
+        mvsep metrics. Choosing a metric also swaps each model's 'Updated …
+        size' line for that metric's per-stem values."""
+        text = (text or "").strip()
+        if text.casefold() == "upload date":
+            text = "upload date"
+            self._mgr_sort_metric = None
+        else:
+            low = text.lower()
+            self._mgr_sort_metric = next(
+                (m for m, lbl in MVSEP_METRIC_LABELS.items()
+                 if lbl.lower() == low), None)
+        try:
+            data = settings_store.load()
+            data["model_manager_sort"] = text
+            settings_store.save(data)
+        except Exception:
+            pass
+        self._model_mgr.set_sort_metric(self._mgr_sort_metric)
 
     def _reconcile_model_types(self, models):
         """Align registered models' types with the zoo's categories. Older
@@ -2363,6 +2511,11 @@ class SettingsPage(QWidget):
 
     def reapply_theme(self):
         self.setStyleSheet(f"#settingsPage{{background:{theme_manager.theme.bg};}}")
+        # Metric columns are label-based (not custom-painted), so they need
+        # an explicit restyle when a deferred theme switch leaves pages in
+        # place during processing.
+        for w in self.findChildren(_MetricColumns):
+            w.reapply_theme()
 
     def _browse(self, row, filt):
         path, _ = QFileDialog.getOpenFileName(self, "Select file", "", filt)

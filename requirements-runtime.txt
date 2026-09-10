@@ -40,6 +40,8 @@ rotary-embedding-torch>=0.8.0
 pope-pytorch>=0.1.0
 # experimental bs/mel roformers (models/bs_roformer/*_experimental.py)
 hyper_connections>=0.1.11
+# FNO mask-estimator BS-Roformer forks (models/bs_roformer/bs_roformer_fno.py)
+neuraloperator>=2.0.0
 conformer>=0.3.0
 spafe>=0.3.0
 # segm_models / torchseg architectures (VitLarge23, TorchSeg encoders)
@@ -113,6 +115,10 @@ torch_audiomentations>=0.6.0
 # the baseline; runtime_setup.py (_ensure_onnx_gpu) swaps it for the
 # onnxruntime-gpu wheel whenever the runtime's torch is a working CUDA
 # build, so MDX-Net models run on the GPU like every other model.
+# NOTE: onnxruntime-gpu 1.27+ is built against CUDA 13 (links cublas64_13)
+# and cannot load against torch's bundled CUDA 12.8 libs — the provider
+# silently falls back to CPU. _ensure_onnx_gpu pins the CUDA 12.8 builds
+# (>=1.21,<1.27) instead, which resolve cudart/cublas/cuDNN from torch/lib.
 onnxruntime>=1.16.0
 
 # === Networking ===

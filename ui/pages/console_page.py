@@ -842,6 +842,10 @@ def _fmt_time(ms):
     return f"{m:02d}:{s:02d}"
 
 
+_ENVELOPE_CACHE = {}
+_ENVELOPE_CACHE_MAX = 500
+
+
 def _read_audio_envelope(path, bins=400):
     """Decode `path` into an Audacity-style peak envelope + its true peak.
 
@@ -851,27 +855,101 @@ def _read_audio_envelope(path, bins=400):
     peak of 1.0; `peak` is the file's real peak amplitude in [0, 1].  Both
     are None when the file cannot be decoded.
     """
+    if not path or not os.path.isfile(path):
+        return None, None
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = 0
+    cache_key = (path, mtime, bins)
+    cached = _ENVELOPE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         import numpy as np
         import soundfile as sf
-        data, _ = sf.read(path)
+        # Read as float32 to avoid doubling RAM allocation before abs
+        data, _ = sf.read(path, dtype="float32")
         if data.ndim > 1:
             data = data.mean(axis=1)
-        mag = np.abs(np.asarray(data, dtype=np.float64))
+        mag = np.abs(data)
         n = len(mag)
         if n < 2:
-            return None, None
-        if n <= bins:
+            res = (None, None)
+        elif n <= bins:
             env = mag
+            peak = float(env.max()) if len(env) else 0.0
+            if peak > 0.0:
+                env = env / peak
+            res = (env, peak)
         else:
             starts = (np.arange(bins, dtype=np.int64) * n) // bins
             env = np.maximum.reduceat(mag, starts)
-        peak = float(env.max())
-        if peak > 0.0:
-            env = env / peak
-        return env, peak
+            peak = float(env.max()) if len(env) else 0.0
+            if peak > 0.0:
+                env = env / peak
+            res = (env, peak)
+
+        if len(_ENVELOPE_CACHE) >= _ENVELOPE_CACHE_MAX:
+            # Evict oldest quarter of entries
+            for k in list(_ENVELOPE_CACHE.keys())[:len(_ENVELOPE_CACHE) // 4]:
+                _ENVELOPE_CACHE.pop(k, None)
+        _ENVELOPE_CACHE[cache_key] = res
+        return res
     except Exception:
         return None, None
+
+
+def _envelope_cached(path, bins=400):
+    """Cache-only probe: return the cached (envelope, peak) for `path`
+    without decoding anything, or None on a miss. Lets the main thread apply
+    warm envelopes synchronously and hand only cold files to the worker."""
+    if not path:
+        return None
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    return _ENVELOPE_CACHE.get((path, mtime, bins))
+
+
+# Sentinel for _WaveformTrack.load_audio: "do not decode now — a cold file's
+# envelope is being computed by the async loader; paint empty until it lands".
+_LAZY = object()
+
+# Envelope decoding runs on plain daemon threads; the owning container
+# polls for finished results on a short QTimer. This deliberately avoids
+# Qt signal/event delivery across thread boundaries: a queued signal that is
+# still pending when the interpreter exits (tests, a quick app close) can
+# crash during Qt teardown, while a daemon thread finishing quietly cannot.
+_ENVELOPE_RESULTS = []          # list of (gen, container, results)
+_ENVELOPE_RESULTS_LOCK = threading.Lock()
+_ENVELOPE_RESULTS_MAX = 256     # drop oldest once full (dead containers)
+
+
+def _envelope_worker_main(jobs, gen, container):
+    """Worker-thread body: decode every file, then hand the results to the
+    main thread via the results list (drained by the container's timer)."""
+    try:
+        results = [(p,) + _read_audio_envelope(p) for p in jobs]
+    except Exception:
+        results = [(p, None, None) for p in jobs]
+    with _ENVELOPE_RESULTS_LOCK:
+        if len(_ENVELOPE_RESULTS) >= _ENVELOPE_RESULTS_MAX:
+            del _ENVELOPE_RESULTS[:len(_ENVELOPE_RESULTS) // 2]
+        _ENVELOPE_RESULTS.append((gen, container, results))
+
+
+def _start_envelope_loader(gen, jobs, container):
+    """Start a daemon-thread decode of `jobs`; results are delivered back to
+    `container` (which holds a ref until the thread finishes, so it cannot
+    be collected mid-decode)."""
+    if not jobs:
+        return
+    threading.Thread(target=_envelope_worker_main, args=(list(jobs), gen, container),
+                     daemon=True).start()
+
 
 
 class _WaveformTrack(QWidget):
@@ -1073,6 +1151,11 @@ class _WaveformTrack(QWidget):
         self._ensure_player()
         if self._player is not None:
             self._player.setSource(QUrl.fromLocalFile(self._path))
+        if samples is _LAZY:
+            # Cold file: the async loader is computing its envelope. Leave
+            # _samples as-is (None paints an empty track) — the loader will
+            # fill it in via set_samples when it lands.
+            return
         if samples is None:
             env, _ = _read_audio_envelope(path)
             samples = env
@@ -1238,6 +1321,13 @@ class _WaveformContainer(QFrame):
         self._card = None
         self._tracks = []
         self._shared_pos_ms = 0
+        self._load_gen = 0  # bump per load; stale async results are dropped
+
+        # Poll for worker-thread envelope results (see _ENVELOPE_RESULTS).
+        self._load_timer = QTimer(self)
+        self._load_timer.setInterval(50)
+        self._load_timer.timeout.connect(self._drain_envelopes)
+        self._load_timer.start()
 
         self.setStyleSheet(
             "_WaveformContainer {"
@@ -1285,41 +1375,43 @@ class _WaveformContainer(QFrame):
                                     song_base=getattr(card_ref,
                                                       "_song_name", None))
 
-        # One shared amplitude reference for the whole output set: decode
-        # each file once and scale every track against the *loudest* one.
-        # A near-silent stem (an sfx file that is basically empty) then
-        # draws as the flat line it really is, instead of being blown up to
-        # full height by per-track peak normalization — which made quiet
-        # stems look as busy as the real ones (cf. Audacity's view).
-        decoded = [self._read_envelope(p) for p in tracks]
-        loudest = max((pk for _, pk in decoded if pk), default=0.0)
-
+        # One shared amplitude reference for the whole output set: scale
+        # every track against the *loudest* one. A near-silent stem (an sfx
+        # file that is basically empty) then draws as the flat line it
+        # really is, instead of being blown up to full height by per-track
+        # peak normalization — which made quiet stems look as busy as the
+        # real ones (cf. Audacity's view).
+        #
+        # Decoding happens off the main thread (see _kick_loader); a batch
+        # run ends with a burst of completed cards, and decoding every
+        # stem synchronously here froze the GUI while the engine (a
+        # separate process) kept finishing the queue.
         old_count = len(self._tracks)
-        for i, (path, (env, peak)) in enumerate(zip(tracks, decoded)):
+        for i, path in enumerate(tracks):
             label = _stem_label(path, song_base=getattr(card_ref,
                                                         "_song_name", None))
             ov = _stem_override_for_model(card_ref, label)
             line_c = ov or _stem_color(label)
             bg_c = _stem_bg_color(label, ov)
-            if env is not None and loudest > 0.0:
-                samples = env * (peak / loudest)
-            else:
-                samples = None if env is None else env * 0.0
+            cached = _envelope_cached(path)
             if i < old_count:
                 track = self._tracks[i]
-                track.load_audio(path, samples=samples)
+                track.load_audio(path,
+                                 samples=(cached[0] if cached else _LAZY))
                 track._label = label
                 track._color = line_c
                 track._bg_color = bg_c
                 track.setVisible(True)
             else:
                 track = _WaveformTrack(label, line_c, bg_c, self)
-                track.load_audio(path, samples=samples)
+                track.load_audio(path,
+                                 samples=(cached[0] if cached else _LAZY))
                 track.play_toggled.connect(self._on_track_toggle)
                 self._tracks.append(track)
                 self._track_layout.addWidget(track)
         for i in range(len(tracks), old_count):
             self._tracks[i].setVisible(False)
+        self._kick_loader(tracks)
 
     def refresh_tracks(self, card_ref):
         tracks = self._sorted_paths(card_ref._output_paths,
@@ -1339,13 +1431,75 @@ class _WaveformContainer(QFrame):
                 track._bg_color = bg_c
                 track.update()
             else:
+                # Never decode on the main thread here either: apply a warm
+                # cache entry synchronously, else let the async loader fill
+                # the track in.
+                cached = _envelope_cached(path)
                 track = _WaveformTrack(label, line_c, bg_c, self)
-                track.load_audio(path)
+                track.load_audio(path,
+                                 samples=(cached[0] if cached else _LAZY))
                 track.play_toggled.connect(self._on_track_toggle)
                 self._tracks.append(track)
                 self._track_layout.addWidget(track)
         for i in range(len(tracks), old_count):
             self._tracks[i].setVisible(False)
+        if any(_envelope_cached(p) is None for p in tracks):
+            self._kick_loader(tracks)
+
+    def _kick_loader(self, paths):
+        """Start (or restart) an async decode of `paths`. Each kick bumps the
+        generation, so results from a superseded load are dropped — the user
+        clicking another card mid-decode can never paint stale waveforms."""
+        jobs = [p for p in paths if p and os.path.isfile(p)]
+        if not jobs:
+            return
+        self._load_gen += 1
+        gen = self._load_gen
+        _start_envelope_loader(gen, jobs, self)
+
+    def _drain_envelopes(self):
+        """Main thread: collect this container's finished decodes from the
+        shared results list and apply them (stale generations are dropped by
+        _on_envelopes)."""
+        got = []
+        with _ENVELOPE_RESULTS_LOCK:
+            keep = []
+            for item in _ENVELOPE_RESULTS:
+                if item[1] is self:
+                    got.append(item)
+                else:
+                    keep.append(item)
+            if keep:
+                _ENVELOPE_RESULTS[:] = keep
+            else:
+                _ENVELOPE_RESULTS.clear()
+        for gen, _container, results in got:
+            self._on_envelopes(gen, results)
+
+    def _on_envelopes(self, load_id, results):
+        """Apply worker-decoded envelopes (main thread). Warm cache entries
+        are re-read here too so every track gets the shared-loudest scaling."""
+        if load_id != self._load_gen or self._card is None:
+            return
+        by_path = {p: (env, pk) for p, env, pk in results}
+        tracks = self._sorted_paths(
+            self._card._output_paths,
+            song_base=getattr(self._card, "_song_name", None))
+        decoded = [by_path.get(p) for p in tracks]
+        loudest = max((pk for _, pk in decoded if pk), default=0.0)
+        for track, path, item in zip(self._tracks, tracks, decoded):
+            if getattr(track, "_path", None) != path:
+                continue
+            env = peak = None
+            if item:
+                env, peak = item
+            if env is not None:
+                if loudest > 0.0:
+                    samples = env * (peak / loudest)
+                else:
+                    samples = env * 0.0
+                track._samples = samples
+            track.update()
 
     def _on_track_toggle(self, track, playing):
         if playing:
@@ -1657,6 +1811,31 @@ class _TaskCard(QFrame):
         self._icon.update()
         self._apply_style()
 
+    def reactivate(self):
+        """Re-open a card that was closed before its run actually finished.
+
+        A card can be marked Complete early when the engine's "Wrote file:"
+        lines land out of order relative to its "Processing:" lines (the
+        stdout/stderr streams are captured with different buffering), and
+        the card is then adopted by its own late "Processing:" line. Unlike
+        reset_progress, the stems already attached are THIS run's — wiping
+        them would split the song's waveforms across a duplicate card — so
+        they are kept while the completion state and progress are cleared."""
+        self._progress = 0
+        self._start_time = time.time()
+        self._is_complete = False
+        self._failed = False
+        self._stop_loading()
+        self._bar.setValueImmediate(0)
+        self._pct_lbl.setText("0%")
+        self._status_lbl.setText("Processing...")
+        if not self._timer.isActive():
+            self._timer.start(1000)
+        self._icon._completed = False
+        self._icon.update()
+        self._refresh_output_label()
+        self._apply_style()
+
     def mark_loading(self):
         """Model/runtime preparation phase: static "Loading..." status +
         indeterminate bar sweep, no fake percent. Switched to Processing by
@@ -1852,6 +2031,7 @@ class _OutputListPanel(QWidget):
         self._selected_card = None
         self._auto_follow = False  # job running: keep the detail on the top card
         self._manual_pick = False  # user clicked a card: pause following
+        self._rescroll_pending = False  # coalesce deferred follow-scrolls
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -1891,12 +2071,18 @@ class _OutputListPanel(QWidget):
         if card is None:
             return
         self._scroll.ensureWidgetVisible(card)
+        if self._rescroll_pending:
+            return
         # After a reorder the moved rows' geometry is not final yet — Qt
         # still reports where the card *used* to be, so the synchronous
         # scroll above can chase a stale position (observed as the list
         # scrolling the wrong way when a song completes). Re-scroll on the
-        # next event-loop pass, once the layout has settled.
+        # next event-loop pass, once the layout has settled. Coalesced: a
+        # burst of follow requests schedules at most one deferred re-scroll.
+        self._rescroll_pending = True
+
         def _rescroll(w=card):
+            self._rescroll_pending = False
             try:
                 self._scroll.ensureWidgetVisible(w)
             except RuntimeError:
@@ -2005,8 +2191,18 @@ class _OutputListPanel(QWidget):
         for card in card_order:
             c = getattr(card, '_container', None)
             if c:
-                self._card_layout.removeWidget(c)
                 containers.append(c)
+        # Early-out: reorder is called on nearly every log line during a
+        # long batch run; when the visual order already matches, the full
+        # remove/re-insert dance (which relayouts every row) is pure churn.
+        current = [self._card_layout.itemAt(i).widget()
+                   for i in range(self._card_layout.count())
+                   if self._card_layout.itemAt(i)
+                   and self._card_layout.itemAt(i).widget()]
+        if current == containers:
+            return
+        for c in containers:
+            self._card_layout.removeWidget(c)
         for i, c in enumerate(containers):
             self._card_layout.insertWidget(min(i, self._card_layout.count() - 1), c)
         self._scroll.verticalScrollBar().setValue(0)
@@ -2081,18 +2277,50 @@ class _LoadingRing(QWidget):
         p.drawArc(r, int(self._angle * 16), 300 * 16)
 
 
+class _LoadingLabel(QWidget):
+    """Pulsing text label drawn directly with QPainter alpha, avoiding
+    expensive setStyleSheet re-parsing on every animation frame."""
+    def __init__(self, text="Loading", parent=None):
+        super().__init__(parent)
+        self._text = text
+        self._alpha = 0.6
+        self.setFixedHeight(18)
+
+    def set_alpha(self, a):
+        self._alpha = float(a)
+        self.update()
+
+    def text(self):
+        return self._text
+
+    def setText(self, t):
+        self._text = t
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        c = QColor(theme_manager.theme.text)
+        c.setAlpha(int(255 * max(0.0, min(1.0, self._alpha))))
+        p.setPen(c)
+        font = p.font()
+        font.setFamily(FONT_FAMILY)
+        font.setPixelSize(12)
+        p.setFont(font)
+        p.drawText(self.rect(), Qt.AlignCenter, self._text)
+
+
 class _LoadingSpinner(QWidget):
     """Modern loading indicator: smooth ring + pulsing 'Loading' text.
 
-    The pulse is done by animating the label's color alpha directly — a
-    QGraphicsOpacityEffect here re-renders the label into a pixmap every
-    frame and floods the console with 'Painter not active' warnings.
+    The pulse is rendered directly with QPainter alpha in _LoadingLabel,
+    avoiding both QGraphicsOpacityEffect overhead and high-frequency setStyleSheet
+    re-parsing on the main UI thread.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
         self._ring = _LoadingRing()
-        self._label = QLabel("Loading")
-        self._label.setAlignment(Qt.AlignCenter)
+        self._label = _LoadingLabel("Loading")
         self._pulse_val = 0.6
         self._apply_pulse()
 
@@ -2121,13 +2349,7 @@ class _LoadingSpinner(QWidget):
     pulse = Property(float, _get_pulse, _set_pulse)
 
     def _apply_pulse(self):
-        c = QColor(theme_manager.theme.text)
-        c.setAlpha(int(255 * self._pulse_val))
-        self._label.setStyleSheet(
-            "background:transparent;border:none;font-size:12px;"
-            f"color:rgba({c.red()},{c.green()},{c.blue()},{c.alpha()});"
-            f"font-family:{FONT_STACK};"
-        )
+        self._label.set_alpha(self._pulse_val)
 
     def start(self):
         self._ring.start()
@@ -2440,6 +2662,9 @@ class _ConsoleEdit(QTextEdit):
         self.setReadOnly(True)
         self.setObjectName("consoleEdit")
         self.setLineWrapMode(QTextEdit.NoWrap)
+        # Cap document block count so rich text DOM never grows unbounded
+        # across long multi-song batch runs, preventing layout recalculation stalls.
+        self.document().setMaximumBlockCount(2000)
         self.setStyleSheet(
             f"QTextEdit#consoleEdit{{background:{theme_manager.theme.console_bg};color:{theme_manager.theme.console_text};"
             "font-family:'Courier New','Consolas',monospace;font-size:11px;"
@@ -2457,12 +2682,33 @@ class _ConsoleEdit(QTextEdit):
     def _insert(self, text):
         c = self.textCursor()
         c.movePosition(QTextCursor.MoveOperation.End)
+        c.beginEditBlock()
         self.setTextCursor(c)
         self.insertHtml(self._colorize(text) + "<br>")
-        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+        c.endEditBlock()
+        sb = self.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
     def append_line(self, text):
-        self._insert(text)
+        self.append_lines([text])
+
+    def append_lines(self, lines):
+        """Append several lines as ONE rich-text insertion with a single
+        scroll-to-bottom, instead of one insertHtml + scroll per line. A
+        long batch run streams tens of thousands of tqdm lines; per-line
+        inserts saturated the main thread while the engine (a separate
+        process) kept finishing the queue."""
+        if not lines:
+            return
+        html = "".join(self._colorize(ln) + "<br>" for ln in lines)
+        c = self.textCursor()
+        c.movePosition(QTextCursor.MoveOperation.End)
+        c.beginEditBlock()
+        self.setTextCursor(c)
+        self.insertHtml(html)
+        c.endEditBlock()
+        sb = self.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
     def clear_log(self):
         self.clear()
@@ -2512,6 +2758,27 @@ class ConsolePage(QWidget):
                 _f.write("=== msst console debug log ===\n")
         except Exception:
             self._debug_path = None
+
+        # Console text rendering is batched: during a long batch run the
+        # engine streams tens of thousands of tqdm lines, and inserting each
+        # one as rich text with a scroll-to-bottom repaint saturated the
+        # main thread. Lines are buffered here and flushed on a short timer
+        # (and parsing stays per-line, so card state is always current).
+        self._log_pending = []
+        self._log_flush_timer = QTimer(self)
+        self._log_flush_timer.setInterval(120)
+        self._log_flush_timer.timeout.connect(self._flush_log_buffer)
+
+        # Stall diagnostics: a heartbeat that measures event-loop gaps. When
+        # the main thread is blocked the timer fires late, and the gap
+        # records exactly how long the GUI was frozen — written to the debug
+        # log so a "stuck" batch run leaves ground truth about where it
+        # stalled.
+        self._stall_timer = QTimer(self)
+        self._stall_timer.setInterval(1000)
+        self._stall_timer.timeout.connect(self._check_stall)
+        self._stall_timer.start()
+        self._last_tick = time.monotonic()
 
     def set_job_active(self, active):
         """Driven by the pages' process_running signal so mid-run error text
@@ -2831,17 +3098,56 @@ class ConsolePage(QWidget):
             self._header.set_subtitle("PROCESSING, PLAY & REVIEW OUTPUT", highlight="OUTPUT")
 
     def append_log(self, text):
+        t0 = time.monotonic()
         self._parse_and_update(text)
         self._LOG_HISTORY.append(text)
         if len(self._LOG_HISTORY) > self._LOG_HISTORY_MAX:
             del self._LOG_HISTORY[:len(self._LOG_HISTORY) - self._LOG_HISTORY_MAX]
-        self._log_edit.append_line(text)
+        self._log_pending.append(text)
+        if not self._log_flush_timer.isActive():
+            self._log_flush_timer.start()
         if self._debug_path:
             try:
                 with open(self._debug_path, "a", encoding="utf-8") as _f:
                     _f.write(text.rstrip("\r\n") + "\n")
             except Exception:
                 self._debug_path = None
+        dt = time.monotonic() - t0
+        if dt > 0.2:
+            self._debug_write(
+                f"[SLOW] append_log took {dt * 1000:.0f} ms — {text[:90]!r}")
+
+    def _debug_write(self, text):
+        if not self._debug_path:
+            return
+        try:
+            with open(self._debug_path, "a", encoding="utf-8") as _f:
+                _f.write(text.rstrip("\r\n") + "\n")
+        except Exception:
+            pass
+
+    def _flush_log_buffer(self):
+        self._log_flush_timer.stop()
+        if not self._log_pending:
+            return
+        lines = self._log_pending
+        self._log_pending = []
+        try:
+            self._log_edit.append_lines(lines)
+        except RuntimeError:
+            pass  # page was destroyed mid-flush; _LOG_HISTORY replays on rebuild
+
+    def _check_stall(self):
+        """Heartbeat: a late tick means the event loop was blocked. Log the
+        gap while a job is active so a frozen run is diagnosable."""
+        now = time.monotonic()
+        gap = now - self._last_tick
+        self._last_tick = now
+        if self._job_active and gap > 2.5:
+            self._debug_write(
+                f"[STALL] event loop blocked for {gap:.1f}s — "
+                f"pending log lines: {len(self._log_pending)}, "
+                f"cards: {len(self._song_cards)}")
 
     def _is_media_file(self, raw):
         return bool(raw) and os.path.splitext(raw)[1].lower() in _AUDIO_EXTS
@@ -3014,12 +3320,71 @@ class ConsolePage(QWidget):
                 reuse = (card is not None and not card._is_complete
                          and not card._failed
                          and card._status_lbl.text() != "Complete")
+                if not reuse:
+                    # Multi-model runs: the GUI pre-emits "Processing:" /
+                    # "Queued:" lines that already created THIS run's fresh
+                    # card set (keyed "<base> #N") before the engine's own
+                    # lines arrive. The base-key lookup above finds the
+                    # PREVIOUS run's finished card, so a naive create here
+                    # would spawn a second duplicate card per song — the
+                    # first set then sat in the list forever (the "stuck"
+                    # Queued/Loading entries with a 9h+ elapsed timer)
+                    # while the duplicate did all the work. Reuse the
+                    # newest incomplete card for the song that belongs to
+                    # THIS run (its output dir matches the just-announced
+                    # one) instead.
+                    alt = None
+                    cur_out = getattr(self, "_output_dir", None)
+                    for c in self._song_cards.values():
+                        if _norm(c._song_name) != key:
+                            continue
+                        if cur_out:
+                            c_out = getattr(c, "_output_dir", None)
+                            if not c_out or \
+                                    os.path.normpath(c_out).lower() != \
+                                    os.path.normpath(cur_out).lower():
+                                continue
+                            # A card in THIS run's folder may be adopted even
+                            # when it was already marked Complete. With a
+                            # lagged output stream (the engine's "Wrote
+                            # file:" lines land out of order relative to its
+                            # "Processing:" lines), a song's first stem can
+                            # arrive while an EARLIER song is still active,
+                            # which prematurely completes this song's card
+                            # before its own "Processing:" line shows up.
+                            # Refusing it here spawns a duplicate card, and
+                            # the song's two stems then split across the
+                            # pair — one card shows a single waveform (or
+                            # none) even though both files exist on disk.
+                        else:
+                            # No known output dir: only adopt a card still in
+                            # flight; a Completed/Failed card may belong to a
+                            # previous run.
+                            if c._is_complete or c._failed:
+                                continue
+                        if alt is None or c._activity_seq > alt._activity_seq:
+                            alt = c
+                    if alt is not None:
+                        card = alt
+                        reuse = True
                 if reuse and card._output_paths:
-                    # Reusing a leftover card: a fresh "Processing:" line
-                    # means a fresh job, and the reused card is the leftover
-                    # of a previous run that ended without completion. Stale
-                    # stems from that old job must not mix with the new one's.
-                    card.reset_progress()
+                    # Reusing a card that already carries outputs: wipe them
+                    # only when the card is a leftover from ANOTHER
+                    # run/folder — its stale stems would mix with this run's.
+                    # A card whose folder matches this run was merely
+                    # completed early by out-of-order "Wrote file:" lines;
+                    # its stems ARE this run's and must be kept, or the
+                    # song's other stem (arriving later) splits onto a
+                    # duplicate card.
+                    c_out = getattr(card, "_output_dir", None)
+                    same_run = bool(
+                        self._output_dir and c_out and
+                        os.path.normpath(c_out).lower() ==
+                        os.path.normpath(self._output_dir).lower())
+                    if same_run:
+                        card.reactivate()
+                    else:
+                        card.reset_progress()
                     card.set_output_dir(self._output_dir)
                     card.mark_loading()
                 if not reuse:
@@ -3054,7 +3419,10 @@ class ConsolePage(QWidget):
                     prev.mark_complete()
                     if getattr(self._detail_view, "_card", None) is prev:
                         self._detail_view.show_card(prev)
-                    card.reset_progress()
+                    # Reactivate (not reset): when the new card is an
+                    # adopted same-run card it may already carry stems from
+                    # out-of-order "Wrote file:" lines — those must survive.
+                    card.reactivate()
                     card.mark_active()
                     card._activity_seq = self._next_card_seq()
                 self._current_song = card._key
@@ -3120,8 +3488,11 @@ class ConsolePage(QWidget):
             return
 
         # Ensure the active card correctly reflects alphabetical order.
-        # This is a no-op when _current_song is already correct.
-        self._ensure_active_card()
+        # Avoid redundant O(N^2) card scans on every progress line when a card
+        # is already actively in progress.
+        cur_card = self._song_cards.get(self._current_song) if self._current_song else None
+        if cur_card is None or cur_card._is_complete or cur_card._failed:
+            self._ensure_active_card()
 
         if not self._current_song:
             return
@@ -3214,8 +3585,14 @@ class ConsolePage(QWidget):
         #     the filename's leading part matches the card's input name once
         #     the card name's trailing "_mixture" is dropped (the underscore
         #     separator guards against song_001 matching song_0010...).
+        #     Multi-model runs create one card PER MODEL per song (each
+        #     writing into its own per-checkpoint subfolder), so collect all
+        #     candidates and pin the right one by output directory — then by
+        #     in-progress status, then by newest — instead of returning the
+        #     first (run-1) card and stealing every model's stems onto it.
         if not name_cards:
             low = stemless.lower()
+            qc_matches = []
             for c in self._song_cards.values():
                 if not c._song_name:
                     continue
@@ -3224,7 +3601,24 @@ class ConsolePage(QWidget):
                     base = base[:-len("_mixture")]
                 if base and low.startswith(base + "_") \
                         and len(low) > len(base) + 1:
-                    return c
+                    qc_matches.append(c)
+            if len(qc_matches) == 1:
+                return qc_matches[0]
+            if qc_matches:
+                if d:
+                    dir_cands = [c for c in qc_matches
+                                 if getattr(c, "_output_dir", None)
+                                 and os.path.normpath(c._output_dir).lower()
+                                 == os.path.normpath(d).lower()]
+                    if len(dir_cands) == 1:
+                        return dir_cands[0]
+                    if len(dir_cands) > 1:
+                        qc_matches = dir_cands
+                for c in qc_matches:
+                    if not c._is_complete and not c._failed:
+                        return c
+                return max(qc_matches,
+                           key=lambda c: getattr(c, "_activity_seq", 0))
 
         # 1) exact normalized key (handles sanitized display names)
         if nstem in self._song_cards:

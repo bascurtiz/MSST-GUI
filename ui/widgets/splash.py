@@ -32,12 +32,19 @@ class SplashPanel(QWidget):
         super().__init__(parent)
         self._base_dir = base_dir
         self._closing = False
+        self.setObjectName("startupSplash")
 
         self.setFixedSize(430, 430)
+        # Set the native window type and all visibility-related attributes
+        # before any layout/pixmap work. On Windows, creating a translucent
+        # Qt.SplashScreen can otherwise briefly expose a captioned app-name
+        # window beside the real splash while the native handle is created.
         self.setWindowFlags(
             Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
+        self.setAttribute(Qt.WA_NativeWindow, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_DontShowOnScreen, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
 
         root = QVBoxLayout(self)
@@ -113,6 +120,9 @@ class SplashPanel(QWidget):
         self._fade.finished.connect(self._on_fade_done)
 
         self._center_on_screen()
+        # The native handle now exists without being exposed. Clear the
+        # suppression immediately before main() explicitly calls show().
+        self.setAttribute(Qt.WA_DontShowOnScreen, False)
 
     # ── placement ────────────────────────────────────────────────────────────
     def _center_on_screen(self):

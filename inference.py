@@ -26,6 +26,7 @@ from utils.stem_planning import complement_stem_name
 from backend.audio_names import (
     strip_mixture_name,
     parse_stem_suffix_map,
+    qc_suffix_map_for_model,
     stem_suffix_for,
     resample_to_native,
 )
@@ -72,7 +73,6 @@ def run_folder(
 
     print(f"Total files found: {len(mixture_paths)}. Using sample rate: {sample_rate}")
 
-    instruments: list[str] = prefer_target_instrument(config)[:]
     os.makedirs(args.store_dir, exist_ok=True)
 
     # Wrap paths with progress bar if not in verbose mode
@@ -86,10 +86,26 @@ def run_folder(
         detailed_pbar = True
 
     # mvsep quality-checker naming: dataset-specific stem renames, parsed once
-    # (e.g. "other=instrum,effects=sfx,*=restored") from --stem_suffix_map.
-    _stem_suffix_map = parse_stem_suffix_map(getattr(args, "stem_suffix_map", ""))
+    # (e.g. "other=instrum,effects=sfx,*=restored") from --stem_suffix_map,
+    # then adjusted for the model at hand: a multi-stem model (>= 3 trained
+    # stems, e.g. vocals/drums/bass/other) has a REAL "other" stem which the
+    # 2-stem datasets' other->instrum remap must not swallow (mvsep's 4-stem
+    # convention names it "_other", MUSDB18-style).
+    _stem_suffix_map = qc_suffix_map_for_model(
+        parse_stem_suffix_map(getattr(args, "stem_suffix_map", "")),
+        list(getattr(config.training, "instruments", []) or []),
+    )
 
     for path in mixture_paths:
+        # Per-file target stems, re-derived from the config every iteration:
+        # the complement step below appends to this list, and reusing one
+        # list across files leaks the previous file's complement into the
+        # next (a 2-stem vocals+inst config would then label the mix-minus
+        # complement "instrumental" instead of "Inst" and crash on the
+        # second song with KeyError 'Inst' when the write loop hits the
+        # stale name).
+        instruments: list[str] = prefer_target_instrument(config)[:]
+
         # Get relative path from input folder
         relative_path: str = os.path.relpath(path, args.input_folder)
         # Extract directory and file name
@@ -268,6 +284,17 @@ def run_folder(
                 output_img_path = os.path.join(output_dir, f"{fname}.jpg")
                 draw_spectrogram(estimates.T, sr_out, args.draw_spectro, output_img_path)
                 print("Wrote file:", output_img_path)
+
+        # Clean up per-track tensors and GPU cache to prevent VRAM accumulation & fragmentation
+        # across consecutive files in a batch
+        try:
+            del waveforms_orig
+            del mix
+            del mix_orig
+        except NameError:
+            pass
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     print(f"Elapsed time: {time.time() - start_time:.2f} seconds.")
 

@@ -51,7 +51,13 @@ def bigshifts_wrapper(
         shifts_iterator = shifts
 
     for shift in shifts_iterator:
-        shifted_mix = np.concatenate((mix[:, -shift:], mix[:, :-shift]), axis=-1)
+        # A zero-shift pass is the original mixture. Python's ``[:-0]`` is
+        # an empty slice, so concatenating ``mix[:, -0:]`` with it would
+        # silently create a zero-length input on the first pass.
+        if shift == 0:
+            shifted_mix = mix.copy()
+        else:
+            shifted_mix = np.concatenate((mix[:, -shift:], mix[:, :-shift]), axis=-1)
         sources = demix(config, model, shifted_mix, device, model_type, pbar)
 
         if isinstance(sources, dict):
@@ -843,6 +849,11 @@ def load_start_checkpoint(args: argparse.Namespace,
             if 'model_state_dict' in old_model:
                 # Fix for full_check_point
                 old_model = old_model['model_state_dict']
+            # PyTorch Lightning checkpoints may carry a non-parameter
+            # ``_metadata`` entry alongside the weights.
+            if isinstance(old_model, dict):
+                old_model = {k: v for k, v in old_model.items()
+                             if k != '_metadata'}
         model.load_state_dict(old_model)
 
     if args.lora_checkpoint_loralib:

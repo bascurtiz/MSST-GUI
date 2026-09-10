@@ -34,7 +34,7 @@ import ui.pages.inference_page as ip  # noqa: E402
 import backend.settings as bs  # noqa: E402
 from backend.audio_names import (  # noqa: E402
     SDR_FILENAME_TEMPLATE, strip_mixture_name, parse_stem_suffix_map,
-    stem_suffix_for, resample_to_native,
+    qc_suffix_map_for_model, stem_suffix_for, resample_to_native,
 )
 import numpy as np  # noqa: E402
 from ui.pages.console_page import ConsolePage, _stem_label  # noqa: E402
@@ -118,12 +118,59 @@ def main():
           and stem_suffix_for("other", multisong_map) == "instrum"
           and stem_suffix_for("instrumental", multisong_map) == "instrum",
           "multisong/synthetic maps vocals + instrumental names")
+    check(stem_suffix_for("Voices", multisong_map) == "vocals"
+          and stem_suffix_for("Inst", multisong_map) == "instrum"
+          and stem_suffix_for("Voice", multisong_map) == "vocals"
+          and stem_suffix_for("vox", multisong_map) == "vocals"
+          and stem_suffix_for("inst", multisong_map) == "instrum"
+          and stem_suffix_for("Accompaniment", multisong_map) == "instrum",
+          "capitalized/alias stems (Voices, Inst, vox) map to vocals/instrum")
+    check(stem_suffix_for("Unmapped", multisong_map) == "unmapped",
+          "unknown stems fall back lowercased")
     check(needs is False, "multisong does not need extract_instrumental")
+
+    # A 2-stem vocals model (instruments [Voices, Inst]) keeps the
+    # other->instrum remap: its "other" IS the mix-minus-vocals complement.
+    two_stem_map = qc_suffix_map_for_model(
+        multisong_map, ["Voices", "Inst"])
+    check(stem_suffix_for("Inst", two_stem_map) == "instrum"
+          and stem_suffix_for("other", two_stem_map) == "instrum",
+          "2-stem vocals model still maps its Inst/other stem to instrum")
+
+    # The other->instrum remap exists in every 2-stem vocal dataset
+    # (Multisong, Synthetic, Synth Vocals 2026); a 4-stem model
+    # (bs_pope_4stem: vocals/other/drums/bass) has a REAL trained "other"
+    # stem — mvsep's 4-stem convention names it "_other" (MUSDB18-style),
+    # so the remap must be dropped in ALL of them.
+    for ds_name in ("Multisong", "Synthetic", "Synth Vocals 2026"):
+        ds_map, _ = ip._sdr_dataset(ds_name)
+        check(stem_suffix_for("other", ds_map) == "instrum",
+              f"{ds_name} raw map renames other -> instrum")
+        two_stem_map = qc_suffix_map_for_model(ds_map, ["Voices", "Inst"])
+        check(stem_suffix_for("Inst", two_stem_map) == "instrum"
+              and stem_suffix_for("other", two_stem_map) == "instrum",
+              f"{ds_name}: 2-stem vocals model still maps Inst/other to "
+              "instrum")
+        four_stem_map = qc_suffix_map_for_model(
+            ds_map, ["vocals", "other", "drums", "bass"])
+        check(stem_suffix_for("other", four_stem_map) == "other"
+              and stem_suffix_for("Other", four_stem_map) == "other"
+              and stem_suffix_for("vocals", four_stem_map) == "vocals"
+              and stem_suffix_for("drums", four_stem_map) == "drums"
+              and stem_suffix_for("bass", four_stem_map) == "bass",
+              f"{ds_name}: 4-stem model keeps other as _other (not _instrum)")
+    four_stem_map = qc_suffix_map_for_model(
+        multisong_map, ["vocals", "other", "drums", "bass"])
+    check(qc_suffix_map_for_model(multisong_map, ["vocals"])
+          == multisong_map, "single-stem models leave the map untouched")
+    check(qc_suffix_map_for_model({}, ["vocals", "other", "drums", "bass"])
+          == {}, "no QC map, no adjustment")
 
     musdb_map, musdb_needs = ip._sdr_dataset("MUSDB18")
     check(musdb_needs is True, "MUSDB18 derives _instrum via mix minus vocals")
     check(stem_suffix_for("instrumental", musdb_map) == "instrum"
-          and stem_suffix_for("other", musdb_map) == "other",
+          and stem_suffix_for("other", musdb_map) == "other"
+          and stem_suffix_for("Other", musdb_map) == "other",
           "MUSDB18 keeps _other and maps the engine instrumental to _instrum")
 
     dnr_map, _ = ip._sdr_dataset("DNR v3")
@@ -141,6 +188,45 @@ def main():
           and stem_suffix_for("other", guitar_map) == "other",
           "guitar/piano/strings/wind keep identity stems")
 
+    # case-insensitive + alias coverage across the remaining datasets: any
+    # model naming variant must land on the suffix mvsep scores.
+    alias_cases = [
+        ("Guitar", [("guitar", "guitar"), ("Guitars", "guitar"),
+                     ("Instrumental", "other"), ("accomp", "other")]),
+        ("Piano", [("Piano", "piano"), ("pianos", "piano"),
+                    ("instr", "other")]),
+        ("Medley Vox", [("vocals1", "vocals1"), ("vocal2", "vocals2"),
+                         ("Voice1", "vocals1")]),
+        ("Strings", [("Strings", "strings"), ("string", "strings"),
+                      ("Instrument", "other")]),
+        ("Wind", [("Wind", "wind"), ("brass", "wind"),
+                   ("woodwind", "wind"), ("inst", "other")]),
+        ("Lead/Back Vocals", [("Lead", "lead"), ("leadvocal", "lead"),
+                               ("back_vocals", "back"), ("backing", "back"),
+                               ("instrumental", "instrum"),
+                               ("back-instrumental", "back-instrum"),
+                               ("Backinst", "back-instrum")]),
+        ("Drums", [("Kick", "kick"), ("tom", "toms"), ("Hi-hat", "hh"),
+                    ("hi_hat", "hh"), ("hat", "hh"), ("cymbal", "cymbals"),
+                    ("ride", "cymbals"), ("overheads", "cymbals"),
+                    ("hh-cymbal", "hh-cymbals")]),
+        ("Male/Female Vocals", [("Male", "male"), ("man", "male"),
+                                 ("female_vocals", "female"),
+                                 ("women", "female"), ("malevoice", "male")]),
+        ("Phantom Center", [("Center", "center"), ("centre", "center"),
+                             ("mid", "center"), ("Wide", "wide"),
+                             ("side", "wide")]),
+        ("MUSDB18", [("Vocals", "vocals"), ("voice", "vocals"),
+                      ("bass", "bass"), ("drum", "drums"),
+                      ("instr", "instrum"), ("accompaniment", "instrum")]),
+    ]
+    for ds_name, cases in alias_cases:
+        ds_map, _ = ip._sdr_dataset(ds_name)
+        for stem, expected in cases:
+            check(stem_suffix_for(stem, ds_map) == expected,
+                  f"{ds_name}: {stem!r} -> {expected!r}, "
+                  f"got {stem_suffix_for(stem, ds_map)!r}")
+
     # ── 2) engine naming: strip _mixture + dataset suffix ─────────────
     def qc_name(input_base, instr, stem_map):
         suffix = stem_suffix_for(instr, stem_map)
@@ -153,10 +239,45 @@ def main():
           == "melody_086_vocals", "multisong naming: melody_086_vocals")
     check(qc_name("melody_086_mixture", "other", multisong_map)
           == "melody_086_instrum", "multisong naming: melody_086_instrum")
+    check(qc_name("song_000_mixture", "Inst", multisong_map)
+          == "song_000_instrum", "2-stem model with Inst stem: song_000_instrum")
+    check(qc_name("song_000_mixture", "Voices", multisong_map)
+          == "song_000_vocals", "2-stem model with Voices stem: song_000_vocals")
+    check(qc_name("song_000_mixture", "other", four_stem_map)
+          == "song_000_other", "4-stem model on multisong: song_000_other")
+    check(qc_name("song_000_mixture", "Other", four_stem_map)
+          == "song_000_other", "4-stem model on multisong: capitalized Other")
+    for ds_name, input_base in (("Synthetic", "song_000_mixture"),
+                                ("Synth Vocals 2026", "melody_086_mixture")):
+        ds_map, _ = ip._sdr_dataset(ds_name)
+        ds_map4 = qc_suffix_map_for_model(
+            ds_map, ["vocals", "other", "drums", "bass"])
+        check(qc_name(input_base, "other", ds_map4)
+              == input_base.replace("_mixture", "_other"),
+              f"{ds_name}: 4-stem model writes _other")
+        check(qc_name(input_base, "Inst", ds_map)
+              == input_base.replace("_mixture", "_instrum"),
+              f"{ds_name}: 2-stem model writes _instrum")
+    check(qc_name("song_000_mixture", "Speech", dnr_map)
+          == "song_000_speech", "case-insensitive: Speech -> speech")
     check(qc_name("song_plain", "vocals", multisong_map) == "song_plain_vocals",
           "no _mixture suffix is stripped only when present")
     check(qc_name("musdb_086_mixture", "instrumental", musdb_map)
           == "musdb_086_instrum", "MUSDB18 naming: musdb_086_instrum")
+    check(qc_name("musdb_086_mixture", "Vocals", musdb_map)
+          == "musdb_086_vocals", "MUSDB18 naming: capitalized Vocals")
+    phantom_map, _ = ip._sdr_dataset("Phantom Center")
+    check(qc_name("song_phantom_center_016_mixture", "Wide", phantom_map)
+          == "song_phantom_center_016_wide",
+          "phantom-center naming: song_phantom_center_016_wide")
+    drums_map, _ = ip._sdr_dataset("Drums")
+    check(qc_name("song_drumsep5_008_mixture", "ride", drums_map)
+          == "song_drumsep5_008_cymbals",
+          "drums naming: ride stem written as cymbals")
+    guitar_map2, _ = ip._sdr_dataset("Guitar")
+    check(qc_name("song_guitar_016_mixture", "Instrumental", guitar_map2)
+          == "song_guitar_016_other",
+          "guitar naming: Instrumental stem written as other")
     check(qc_name("song_sr_016_mixture", "restored", sr_map)
           == "song_sr_016_restored", "SR naming: song_sr_016_restored")
     check(parse_stem_suffix_map(ip._sdr_map_text(dnr_map))

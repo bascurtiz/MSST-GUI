@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 
 from PySide6.QtCore import QObject, Signal
 
@@ -124,6 +125,8 @@ class ProcessRunner(QObject):
             # line-by-line reader would only see progress after a real '\n'
             # arrives. Split on BOTH delimiters to stream every update.
             buf = ""
+            last_tqdm_emit = 0.0
+            last_tqdm_pct = None
             for chunk in self._process.stdout:
                 buf += chunk.replace("\r", "\n")
                 while "\n" in buf:
@@ -131,10 +134,19 @@ class ProcessRunner(QObject):
                     line = line.strip()
                     if not line:
                         continue
-                    self.log_line.emit(line)
                     pct = _parse_tqdm_percent(line)
                     if pct is not None:
-                        self.progress.emit(pct)
+                        now = time.time()
+                        # Throttle redundant intermediate tqdm updates within 100ms unless
+                        # percentage changes or reaches 0% / 100% boundary
+                        if (pct != last_tqdm_pct or pct in (0, 100)
+                                or (now - last_tqdm_emit) >= 0.1):
+                            last_tqdm_emit = now
+                            last_tqdm_pct = pct
+                            self.log_line.emit(line)
+                            self.progress.emit(pct)
+                    else:
+                        self.log_line.emit(line)
             if buf.strip():
                 self.log_line.emit(buf.strip())
 
