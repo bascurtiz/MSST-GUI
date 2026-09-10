@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
     QScrollArea, QSizePolicy, QMessageBox, QProgressBar,
-    QDialog,
+    QDialog, QStackedWidget,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint, QEvent, QRectF, QUrl
 from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath, QDesktopServices, QPixmap
@@ -22,7 +22,9 @@ from backend import update_checker as uc
 from ui.widgets.common import (
     PageHeader, outline_button_ss, solid_button_ss, ChevronCombo,
     EllipsisButton, add_button_hover,
-    GlyphButton, _outline_icon_color, _solid_icon_color, _custom_badge_ss,
+    GlyphButton, ScoresRefreshButton, SyncingLabel, _outline_icon_color,
+    _solid_icon_color,
+    _custom_badge_ss,
     css_color as _css_color, DOWNLOAD_GLYPH, run_blurred_dialog,
 )
 
@@ -1360,6 +1362,11 @@ class _FolderManagerWidget(QWidget):
 
     # ──── Expand / collapse ────
 
+    def collapse_all(self):
+        """Collapse every folder row — used when scores refresh starts."""
+        self._expanded.clear()
+        self._render()
+
     def _toggle_folder(self, folder_key):
         if folder_key in self._expanded:
             self._expanded.discard(folder_key)
@@ -1874,18 +1881,25 @@ class _GitHubIconButton(QPushButton):
         self.setFixedSize(30, 30)
         self.setCursor(Qt.PointingHandCursor)
         self.setToolTip(tooltip)
+        self._apply_style()
+
+    def _apply_style(self):
+        t = theme_manager.theme
         self.setStyleSheet(
-            f"QPushButton{{background:{theme_manager.theme.surface};"
-            f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;}}"
-        )
+            f"QPushButton{{background:{t.surface};"
+            f"color:{t.text_dim};"
+            f"border:1px solid {t.border_dim};border-radius:4px;}}"
+            + add_button_hover()
+            + f"QPushButton:disabled{{color:{t.disabled_text};}}")
 
     def _mark_pixmap(self, color):
-        key = (color.name(), 64)
+        key = (color.red(), color.green(), color.blue())
         pix = _GitHubIconButton._pix_cache.get(key)
         if pix is None:
             svg = (
                 '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-                f'<path fill="{color.name()}" d="{self._MARK}"/></svg>'
+                f'<path fill="rgb({color.red()},{color.green()},{color.blue()})" '
+                f'd="{self._MARK}"/></svg>'
             )
             from PySide6.QtSvg import QSvgRenderer
             from PySide6.QtCore import QByteArray
@@ -1910,22 +1924,18 @@ class _GitHubIconButton(QPushButton):
         super().leaveEvent(e)
 
     def paintEvent(self, e):
+        super().paintEvent(e)
         p = QPainter(self)
-        # Draw the QPushButton chrome (bg + border) first…
-        from PySide6.QtWidgets import QStyleOptionButton, QStyle
-        opt = QStyleOptionButton()
-        self.initStyleOption(opt)
-        opt.text = ""
-        self.style().drawControl(QStyle.CE_PushButton, opt, p, self)
-        # …then the mark, accent-colored on hover; at rest the same dim gray
-        # the "Check For Updates" label next to it uses (parsed properly —
-        # the token is a CSS rgba() string QColor() can't parse directly).
-        color = (QColor(theme_manager.accent) if self._hovered
-                 else _css_color(theme_manager.theme.text_dim))
+        t = theme_manager.theme
+        color = (_css_color(t.text) if self._hovered
+                 else _css_color(t.text_dim))
         pix = self._mark_pixmap(color)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
-        p.drawPixmap((self.width() - 15) // 2, (self.height() - 15) // 2,
-                     15, 15, pix)
+        mark = 15
+        x = (self.width() - mark) // 2
+        y = (self.height() - mark) // 2
+        p.setOpacity(color.alphaF())
+        p.drawPixmap(x, y, mark, mark, pix)
         p.end()
 
 
@@ -2043,25 +2053,32 @@ class SettingsPage(QWidget):
         self._mgr_sort_combo.setVisible(False)  # shown in MODEL MANAGER mode
         self._mgr_sort_combo.currentTextChanged.connect(self._on_mgr_sort_changed)
         reg_hdr.addWidget(self._mgr_sort_combo)
-        self._folder_search = _SearchBar("Search folders\u2026")
+        self._folder_search = _SearchBar("Search folder...")
         # Match the Model Library search field and leave enough room for the
-        # complete "Search folders…" placeholder.
+        # complete "Search folder..." placeholder.
         self._folder_search.setFixedWidth(SEARCH_FIELD_WIDTH)
         self._folder_search.setToolTip("Filter model folders by name.")
         self._folder_search.setVisible(False)  # shown in MODEL MANAGER mode
         reg_hdr.addWidget(self._folder_search)
 
-        # Invisible placeholder that keeps the row's height when the search
-        # field is hidden (URL / LOCAL FILES modes), so everything below
-        # stays on the same height across modes.
-        self._folder_search_ph = QWidget()
-        self._folder_search_ph.setFixedSize(155, 32)
-        self._folder_search_ph.setVisible(False)
-        reg_hdr.addWidget(self._folder_search_ph)
+        # Invisible placeholder for the full manager header strip (sort +
+        # search) so URL / LOCAL FILES keep the same vertical alignment.
+        self._mgr_hdr_ph = QWidget()
+        self._mgr_hdr_ph.setFixedSize(
+            self._mgr_sort_lbl.sizeHint().width() + 8
+            + SORT_COMBO_WIDTH + 8 + SEARCH_FIELD_WIDTH,
+            32,
+        )
+        self._mgr_hdr_ph.setVisible(False)
+        reg_hdr.addWidget(self._mgr_hdr_ph)
         ll.addLayout(reg_hdr)
         ll.addSpacing(4)
 
-        mode_row = QHBoxLayout()
+        mode_row_w = QWidget()
+        mode_row_w.setFixedHeight(28)
+        mode_row_w.setStyleSheet("background:transparent;")
+        mode_row = QHBoxLayout(mode_row_w)
+        mode_row.setContentsMargins(0, 0, 8, 0)  # match reg_hdr right inset
         mode_row.setSpacing(24)
 
         self._mode_manager = _RadioCheck("MODEL MANAGER", checked=True)
@@ -2076,7 +2093,25 @@ class SettingsPage(QWidget):
         mode_row.addWidget(self._mode_url)
         mode_row.addWidget(self._mode_local)
         mode_row.addStretch()
-        ll.addLayout(mode_row)
+        self._mgr_refresh_row = QWidget()
+        self._mgr_refresh_row.setStyleSheet("background:transparent;")
+        refresh_row_hl = QHBoxLayout(self._mgr_refresh_row)
+        refresh_row_hl.setContentsMargins(0, 0, 0, 0)
+        refresh_row_hl.setSpacing(6)
+        self._mgr_sync_lbl = SyncingLabel()
+        refresh_row_hl.addWidget(self._mgr_sync_lbl, 0, Qt.AlignVCenter)
+        self._mgr_scores_refresh_btn = ScoresRefreshButton()
+        refresh_row_hl.addWidget(self._mgr_scores_refresh_btn, 0, Qt.AlignVCenter)
+        self._mgr_refresh_row.setVisible(False)
+        mode_row.addWidget(self._mgr_refresh_row)
+        self._mgr_refresh_ph = QWidget()
+        self._mgr_refresh_ph.setFixedSize(
+            self._mgr_sync_lbl.width() + refresh_row_hl.spacing() + 28,
+            28,
+        )
+        self._mgr_refresh_ph.setVisible(False)
+        mode_row.addWidget(self._mgr_refresh_ph)
+        ll.addWidget(mode_row_w)
 
         def _field_group(label, field):
             # Fixed-height container: the column squeezes/rounds flexible
@@ -2089,10 +2124,20 @@ class SettingsPage(QWidget):
             g = QVBoxLayout(w)
             g.setContentsMargins(0, 0, 0, 0)
             g.setSpacing(6)
+            label.setFixedHeight(11)
             g.addWidget(label)
             field.setFixedHeight(48)
             g.addWidget(field)
             return w
+
+        def _mode_slot(local_w, url_w, height):
+            """Swap local/url fields in-place so shared rows stay aligned."""
+            stack = QStackedWidget()
+            stack.setStyleSheet("background:transparent;")
+            stack.addWidget(local_w)
+            stack.addWidget(url_w)
+            stack.setFixedHeight(height)
+            return stack
 
         self._ckpt_label = QLabel("CHECKPOINT")
         self._ckpt_label.setStyleSheet(
@@ -2105,7 +2150,6 @@ class SettingsPage(QWidget):
             self._ckpt, "Checkpoint (*.ckpt *.bin *.th *.chpt);;All (*.*)"
         ))
         self._grp_ckpt = _field_group(self._ckpt_label, self._ckpt)
-        ll.addWidget(self._grp_ckpt)
 
         self._yaml_label = QLabel("CONFIG YAML")
         self._yaml_label.setStyleSheet(
@@ -2118,7 +2162,6 @@ class SettingsPage(QWidget):
             self._yaml, "Config (*.yaml *.yml *.json);;All (*.*)"
         ))
         self._grp_yaml = _field_group(self._yaml_label, self._yaml)
-        ll.addWidget(self._grp_yaml)
 
         self._ckpt_url_label = QLabel("CHECKPOINT")
         self._ckpt_url_label.setStyleSheet(
@@ -2128,7 +2171,6 @@ class SettingsPage(QWidget):
 
         self._ckpt_url = _InputField("Checkpoint", "Paste HuggingFace checkpoint URL...")
         self._grp_ckpt_url = _field_group(self._ckpt_url_label, self._ckpt_url)
-        ll.addWidget(self._grp_ckpt_url)
 
         self._yaml_url_label = QLabel("CONFIG YAML")
         self._yaml_url_label.setStyleSheet(
@@ -2138,7 +2180,11 @@ class SettingsPage(QWidget):
 
         self._yaml_url = _InputField("Config File", "Paste HuggingFace config URL (.yaml .json)...")
         self._grp_yaml_url = _field_group(self._yaml_url_label, self._yaml_url)
-        ll.addWidget(self._grp_yaml_url)
+
+        self._slot_ckpt = _mode_slot(self._grp_ckpt, self._grp_ckpt_url, 65)
+        self._slot_yaml = _mode_slot(self._grp_yaml, self._grp_yaml_url, 65)
+        ll.addWidget(self._slot_ckpt)
+        ll.addWidget(self._slot_yaml)
 
         self._arch_label = QLabel("ARCHITECTURE")
         self._arch_label.setStyleSheet(
@@ -2225,7 +2271,6 @@ class SettingsPage(QWidget):
             self._backend_script, "Python (*.py);;All (*.*)"
         ))
         self._grp_backend_script = _field_group(self._backend_script_label, self._backend_script)
-        ll.addWidget(self._grp_backend_script)
 
         # URL mode: Backend Script URL
         self._backend_url_label = QLabel("BACKEND SCRIPT (.PY URL)")
@@ -2236,7 +2281,10 @@ class SettingsPage(QWidget):
         self._backend_url = _InputField("Backend Script URL",
             "Paste HuggingFace bs_roformer.py URL...")
         self._grp_backend_url = _field_group(self._backend_url_label, self._backend_url)
-        ll.addWidget(self._grp_backend_url)
+
+        self._slot_backend = _mode_slot(
+            self._grp_backend_script, self._grp_backend_url, 65)
+        ll.addWidget(self._slot_backend)
 
         ll.addSpacing(8)
 
@@ -2246,14 +2294,6 @@ class SettingsPage(QWidget):
         self._reg_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._reg_btn.setStyleSheet(solid_button_ss())
         self._reg_btn.clicked.connect(self._register)
-        ll.addWidget(self._reg_btn)
-
-        self._download_section = QWidget()
-        self._download_section.setVisible(False)
-        self._download_section.setStyleSheet("background:transparent;")
-        dl = QVBoxLayout(self._download_section)
-        dl.setContentsMargins(0, 0, 0, 0)
-        dl.setSpacing(12)
 
         self._download_btn = GlyphButton("Download Model", DOWNLOAD_GLYPH, _solid_icon_color,
                                          glyph_size=18, text_size=12)
@@ -2261,15 +2301,19 @@ class SettingsPage(QWidget):
         self._download_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._download_btn.setStyleSheet(solid_button_ss())
         self._download_btn.clicked.connect(self._start_download)
-        dl.addWidget(self._download_btn)
 
-        ll.addWidget(self._download_section)
+        self._slot_action = _mode_slot(self._reg_btn, self._download_btn, 44)
+        ll.addWidget(self._slot_action)
 
         self._model_mgr = _FolderManagerWidget()
         self._model_mgr.model_installed.connect(self._refresh_registered)
         self._model_mgr.index_loaded.connect(self._reconcile_model_types)
         self._model_mgr.setVisible(False)
         self._folder_search.textChanged.connect(self._model_mgr.set_search_text)
+        _scores = get_scores_store()
+        self._mgr_scores_refresh_btn.clicked.connect(_scores.refresh_all)
+        _scores.refresh_started.connect(self._on_mgr_scores_refresh_started)
+        _scores.refresh_finished.connect(self._on_mgr_scores_refresh_finished)
         ll.addWidget(self._model_mgr, 2)
         # Restore the persisted Model Manager sort (fires _on_mgr_sort_changed
         # once the widget exists so the folder list renders in that order).
@@ -2339,6 +2383,15 @@ class SettingsPage(QWidget):
         # that every section widget exists.
         self._set_mode("manager")
 
+    def _on_mgr_scores_refresh_started(self):
+        self._mgr_scores_refresh_btn.set_busy(True)
+        self._mgr_sync_lbl.start()
+        self._model_mgr.collapse_all()
+
+    def _on_mgr_scores_refresh_finished(self, _success):
+        self._mgr_scores_refresh_btn.set_busy(False)
+        self._mgr_sync_lbl.stop()
+
     def _open_github_repo(self):
         from PySide6.QtCore import QUrl as _QUrl
         btn = self._gh_btn
@@ -2365,29 +2418,26 @@ class SettingsPage(QWidget):
         self._mode_url.set_checked(is_url)
         self._mode_manager.set_checked(is_manager)
 
-        visible_local = is_local
-        visible_url = is_url
-        # toggle the fixed-height group containers (they hide their labels
-        # and fields with them)
-        self._grp_ckpt.setVisible(visible_local)
-        self._grp_yaml.setVisible(visible_local)
-        self._grp_backend_script.setVisible(visible_local)
-        self._reg_btn.setVisible(visible_local)
-
-        self._grp_ckpt_url.setVisible(visible_url)
-        self._grp_yaml_url.setVisible(visible_url)
-        self._grp_backend_url.setVisible(visible_url)
-        self._download_section.setVisible(visible_url)
+        slot_idx = 0 if is_local else 1
+        if is_local or is_url:
+            self._slot_ckpt.setCurrentIndex(slot_idx)
+            self._slot_yaml.setCurrentIndex(slot_idx)
+            self._slot_backend.setCurrentIndex(slot_idx)
+            self._slot_action.setCurrentIndex(slot_idx)
 
         self._model_mgr.setVisible(is_manager)
+        self._slot_ckpt.setVisible(not is_manager)
+        self._slot_yaml.setVisible(not is_manager)
+        self._slot_backend.setVisible(not is_manager)
+        self._slot_action.setVisible(not is_manager)
+        self._grp_arch.setVisible(not is_manager)
+        self._grp_type.setVisible(not is_manager)
         self._folder_search.setVisible(is_manager)
         self._mgr_sort_lbl.setVisible(is_manager)
         self._mgr_sort_combo.setVisible(is_manager)
-        self._folder_search_ph.setVisible(not is_manager)
-
-        show_arch_type = not is_manager
-        self._grp_arch.setVisible(show_arch_type)
-        self._grp_type.setVisible(show_arch_type)
+        self._mgr_refresh_row.setVisible(is_manager)
+        self._mgr_refresh_ph.setVisible(not is_manager)
+        self._mgr_hdr_ph.setVisible(not is_manager)
 
         # Trail spacer: in URL / LOCAL modes it soaks up surplus height so
         # the radios stay pinned to the content below (see the column ctor);

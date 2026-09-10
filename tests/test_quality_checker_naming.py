@@ -202,8 +202,10 @@ def main():
         ("Wind", [("Wind", "wind"), ("brass", "wind"),
                    ("woodwind", "wind"), ("inst", "other")]),
         ("Lead/Back Vocals", [("Lead", "lead"), ("leadvocal", "lead"),
-                               ("back_vocals", "back"), ("backing", "back"),
-                               ("instrumental", "instrum"),
+                               ("vocals", "lead"), ("Voices", "lead"),
+                               ("vox", "lead"), ("back_vocals", "back"),
+                               ("backing", "back"), ("instrumental", "instrum"),
+                               ("other", "back-instrum"),
                                ("back-instrumental", "back-instrum"),
                                ("Backinst", "back-instrum")]),
         ("Drums", [("Kick", "kick"), ("tom", "toms"), ("Hi-hat", "hh"),
@@ -226,6 +228,32 @@ def main():
             check(stem_suffix_for(stem, ds_map) == expected,
                   f"{ds_name}: {stem!r} -> {expected!r}, "
                   f"got {stem_suffix_for(stem, ds_map)!r}")
+
+    # Lead/Back Vocals: 2-stem karaoke (vocals + instrum) vs 3+ stems.
+    lead_back_map, _ = ip._sdr_dataset("Lead/Back Vocals")
+    lb_two_stem = qc_suffix_map_for_model(
+        lead_back_map, ["vocals", "instrum"])
+    check(stem_suffix_for("vocals", lb_two_stem) == "lead"
+          and stem_suffix_for("instrum", lb_two_stem) == "back-instrum"
+          and stem_suffix_for("Inst", lb_two_stem) == "back-instrum"
+          and stem_suffix_for("other", lb_two_stem) == "back-instrum",
+          "Lead/Back: 2-stem vocals+instrum maps to lead + back-instrum")
+    lb_two_stem_alt = qc_suffix_map_for_model(
+        lead_back_map, ["Voices", "Inst"])
+    check(stem_suffix_for("Voices", lb_two_stem_alt) == "lead"
+          and stem_suffix_for("Inst", lb_two_stem_alt) == "back-instrum",
+          "Lead/Back: 2-stem Voices+Inst maps to lead + back-instrum")
+    lb_three_stem = qc_suffix_map_for_model(
+        lead_back_map, ["lead", "back", "instrum"])
+    check(stem_suffix_for("instrum", lb_three_stem) == "instrum"
+          and stem_suffix_for("lead", lb_three_stem) == "lead"
+          and stem_suffix_for("back", lb_three_stem) == "back",
+          "Lead/Back: 3-stem model keeps pure instrum stem")
+    lb_four_stem = qc_suffix_map_for_model(
+        lead_back_map, ["lead", "back", "instrum", "back-instrum"])
+    check(stem_suffix_for("instrum", lb_four_stem) == "instrum"
+          and stem_suffix_for("back-instrum", lb_four_stem) == "back-instrum",
+          "Lead/Back: 4-stem model keeps all suffixes unchanged")
 
     # ── 2) engine naming: strip _mixture + dataset suffix ─────────────
     def qc_name(input_base, instr, stem_map):
@@ -280,6 +308,15 @@ def main():
           "guitar naming: Instrumental stem written as other")
     check(qc_name("song_sr_016_mixture", "restored", sr_map)
           == "song_sr_016_restored", "SR naming: song_sr_016_restored")
+    check(qc_name("song_karaoke_008_mixture", "vocals", lb_two_stem)
+          == "song_karaoke_008_lead",
+          "Lead/Back naming: song_karaoke_008_lead")
+    check(qc_name("song_karaoke_008_mixture", "instrum", lb_two_stem)
+          == "song_karaoke_008_back-instrum",
+          "Lead/Back naming: song_karaoke_008_back-instrum")
+    check(qc_name("melody_086_mixture", "vocals", multisong_map)
+          == "melody_086_vocals",
+          "Multisong unaffected: still writes _vocals not _lead")
     check(parse_stem_suffix_map(ip._sdr_map_text(dnr_map))
           == dnr_map, "map text round-trips through the engine parser")
 

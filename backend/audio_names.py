@@ -57,15 +57,32 @@ def qc_suffix_map_for_model(suffix_map, trained_instruments):
     convention); renaming it "instrum" mislabels the uploaded file.
     Returns a new map with the other->instrum remap dropped when the model
     has >= 3 trained stems; otherwise the map is returned unchanged.
+
+    Lead/Back Vocals: a 2-stem karaoke model (vocals + instrum) outputs
+    lead vocals and back+instrumental combined. Every map entry that targets
+    "_instrum" must become "_back-instrum" when the model has <= 2 trained
+    stems; 3+ stem models keep "_instrum" for a real pure-instrumental stem.
     """
     if not suffix_map or not trained_instruments:
         return suffix_map
+
+    adjusted = None
+
     if (len(trained_instruments) >= 3
             and suffix_map.get("other") == "instrum"):
         adjusted = dict(suffix_map)
         adjusted["other"] = "other"
-        return adjusted
-    return suffix_map
+
+    is_lead_back = (suffix_map.get("lead") == "lead"
+                    and suffix_map.get("back-instrum") == "back-instrum")
+    if is_lead_back and len(trained_instruments) <= 2:
+        if adjusted is None:
+            adjusted = dict(suffix_map)
+        for key, val in list(adjusted.items()):
+            if val == "instrum":
+                adjusted[key] = "back-instrum"
+
+    return adjusted if adjusted is not None else suffix_map
 
 
 def stem_suffix_for(instr, suffix_map):

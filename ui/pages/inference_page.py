@@ -100,11 +100,14 @@ SDR_DATASETS = [
     ("Super Resolution", {"*": "restored"}, False),
     ("Lead/Back Vocals",
      {"lead": "lead", "leadvocal": "lead", "leadvocals": "lead",
-      "lead_vocal": "lead", "lead_vocals": "lead", "back": "back",
+      "lead_vocal": "lead", "lead_vocals": "lead",
+      "vocals": "lead", "voice": "lead", "voices": "lead",
+      "vocal": "lead", "vox": "lead", "back": "back",
       "backvocal": "back", "backvocals": "back", "back_vocal": "back",
       "back_vocals": "back", "backing": "back", "instrum": "instrum",
       "instrumental": "instrum", "instrument": "instrum", "instr": "instrum",
       "inst": "instrum", "accompaniment": "instrum", "accomp": "instrum",
+      "other": "back-instrum",
       "back-instrum": "back-instrum", "back_instrum": "back-instrum",
       "backinstrumental": "back-instrum", "back-instrumental": "back-instrum",
       "back_instrumental": "back-instrum", "backinst": "back-instrum",
@@ -344,7 +347,7 @@ class _SearchIcon(QWidget):
 # Shared header control dimensions. Keeping these in one place prevents the
 # Model Library and Model Manager headers from drifting apart as controls are
 # added or translated.
-SEARCH_FIELD_WIDTH = 155
+SEARCH_FIELD_WIDTH = 144
 SORT_COMBO_WIDTH = 115
 SORT_METRIC_FONT_PX = 11  # matches _combo_ss() / sort-dropdown label size
 
@@ -386,8 +389,7 @@ class _SearchBar(QFrame):
     def sizeHint(self):
         # No layout anymore (children are overlaid on the input), so the
         # frame would otherwise collapse to zero width in its parent layout.
-        # The shared width leaves enough room for the complete folder
-        # placeholder while keeping both page headers balanced.
+        # The shared width fits the full "Search model/folder..." placeholder.
         return QSize(SEARCH_FIELD_WIDTH, 32)
 
     def resizeEvent(self, event):
@@ -399,7 +401,7 @@ class _SearchBar(QFrame):
         self._input.setGeometry(0, 0, self.width(), self.height())
         cy = self.height() // 2
         self._icon.move(10, cy - 10)
-        self._clear_btn.move(self.width() - 28, cy - 11)
+        self._clear_btn.move(self.width() - 24, cy - 11)
 
     def _input_ss(self):
         t = theme_manager.theme
@@ -407,7 +409,7 @@ class _SearchBar(QFrame):
             f"QLineEdit{{background:{t.surface_alt};"
             f"border:1px solid {t.border};border-radius:8px;"
             "font-family:'Montserrat';font-size:11px;"
-            f"color:{t.text_dim};padding:0 32px 0 34px;"
+            f"color:{t.text_dim};padding:0 26px 0 30px;"
             f"selection-background-color:{theme_manager.accent};"
             f"selection-color:{theme_manager._accent_text};}}"
             f"QLineEdit:hover{{background:{t.input_hover};}}"
@@ -2997,6 +2999,7 @@ class _SortToggle(QWidget):
         for lbl in (self._arch_lbl, self._target_lbl):
             lbl.setStyleSheet(
                 "font-family:'Montserrat';font-size:8px;font-weight:600;"
+                "margin-top:1px;"
             )
         self._sw = _MiniSwitch()
         self._sw.toggled.connect(self._set_on)
@@ -3016,10 +3019,12 @@ class _SortToggle(QWidget):
         dim = theme_manager.theme.text_muted
         self._arch_lbl.setStyleSheet(
             "font-family:'Montserrat';font-size:8px;font-weight:600;"
+            "margin-top:1px;"
             f"color:{dim if self._on else accent};"
         )
         self._target_lbl.setStyleSheet(
             "font-family:'Montserrat';font-size:8px;font-weight:600;"
+            "margin-top:1px;"
             f"color:{accent if self._on else dim};"
         )
 
@@ -3384,16 +3389,45 @@ class InferencePage(QWidget):
         self._sort_toggle = _SortToggle()
         self._sort_toggle.changed.connect(self._on_sort_changed)
         hdr_row.addWidget(self._sort_toggle)
-        hdr_row.addSpacing(8)
+        hdr_row.addStretch(1)
+
+        # Right cluster: "sort by" + metric dropdown + search stay grouped
+        # when the window is wide (same pattern as Settings' folder header).
+        self._library_hdr_right = QWidget()
+        self._library_hdr_right.setStyleSheet("background:transparent;")
+        self._library_hdr_right.setSizePolicy(
+            QSizePolicy.Maximum, QSizePolicy.Fixed)
+        right_hdr = QHBoxLayout(self._library_hdr_right)
+        right_hdr.setContentsMargins(0, 0, 0, 0)
+        right_hdr.setSpacing(10)
+        self._sort_lbl = QLabel("sort by")
+        self._sort_lbl.setStyleSheet(
+            "font-family:'Montserrat';font-size:9px;font-weight:600;"
+            f"color:{theme_manager.theme.text_muted};background:transparent;")
+        right_hdr.addWidget(self._sort_lbl)
+        self._metric_sort = _SortCombo()
+        self._metric_sort.addItem("name")
+        self._metric_sort.setFixedWidth(SORT_COMBO_WIDTH)
+        for _m in MVSEP_METRICS:
+            # lowercase options: less width next to the search field
+            self._metric_sort.addItem(MVSEP_METRIC_LABELS[_m].lower())
+        self._metric_sort.currentTextChanged.connect(self._on_metric_sort_changed)
+        right_hdr.addWidget(self._metric_sort)
+        self._search_bar = _SearchBar("Search model...")
+        self._search_bar.textChanged.connect(self._filter_models)
+        self._search_bar.setFixedWidth(SEARCH_FIELD_WIDTH)
+        right_hdr.addWidget(self._search_bar)
+        hdr_row.addWidget(self._library_hdr_right)
+
+        rl.addLayout(hdr_row)
 
         # Select all — only appears in multi-run mode (armed by the
-        # "Multi-select Models" button): tick every model of the active
-        # grouping (arch or target) at once, with a partial dash when only
-        # some are checked.
+        # "Multi-select Models" button): sits below the header row, above
+        # the arch/target cards.
         self._sel_all_row = QWidget()
         self._sel_all_row.setStyleSheet("background:transparent;")
         sel_all_hl = QHBoxLayout(self._sel_all_row)
-        sel_all_hl.setContentsMargins(0, 0, 0, 0)
+        sel_all_hl.setContentsMargins(0, 8, 14, 0)
         sel_all_hl.setSpacing(5)
         self._sel_all = _CircleCheck()
         self._sel_all.set_square(True)
@@ -3405,50 +3439,10 @@ class InferencePage(QWidget):
             f"color:{theme_manager.theme.text_dim};background:transparent;"
         )
         sel_all_hl.addWidget(self._sel_all_lbl)
+        sel_all_hl.addStretch()
         self._sel_all_row.setVisible(False)
-        hdr_row.addWidget(self._sel_all_row)
-        hdr_row.addSpacing(10)
+        rl.addWidget(self._sel_all_row)
 
-        # Quality sort — "sort by" label + metric dropdown pill, on the
-        # header row between the grouping toggle and the search box. Name
-        # (default) or one of the mvsep metrics, always high→low inside
-        # each architecture / target group.
-        sort_ctrl = QWidget()
-        sort_ctrl.setStyleSheet("background:transparent;")
-        sort_cl = QHBoxLayout(sort_ctrl)
-        sort_cl.setContentsMargins(0, 0, 0, 0)
-        sort_cl.setSpacing(6)
-        self._sort_lbl = QLabel("sort by")
-        self._sort_lbl.setStyleSheet(
-            "font-family:'Montserrat';font-size:9px;font-weight:600;"
-            f"color:{theme_manager.theme.text_muted};background:transparent;")
-        sort_cl.addWidget(self._sort_lbl)
-        self._metric_sort = _SortCombo()
-        self._metric_sort.addItem("name")
-        self._metric_sort.setFixedWidth(SORT_COMBO_WIDTH)
-        for _m in MVSEP_METRICS:
-            # lowercase options: less width next to the search field
-            self._metric_sort.addItem(MVSEP_METRIC_LABELS[_m].lower())
-        self._metric_sort.currentTextChanged.connect(self._on_metric_sort_changed)
-        sort_cl.addWidget(self._metric_sort)
-        hdr_row.addWidget(sort_ctrl)
-        hdr_row.addSpacing(10)
-
-        # The cluster hugs the MODEL LIBRARY heading (toggle, Select all,
-        # sort). The search field still absorbs shrinking on narrow windows
-        # but stops at a comfortable width, leaving the free space on the
-        # panel's right instead of a full-width field — same layout whether
-        # Select all is hidden or shown.
-        self._search_bar = _SearchBar("Search models\u2026")
-        self._search_bar.textChanged.connect(self._filter_models)
-        # Match the wider folder search so the two page headers feel
-        # consistent, while leaving the surrounding controls breathing room.
-        # Keep the inference search field at the shared default width; the
-        # same value is used by Settings' "Search in folders…" field.
-        self._search_bar.setFixedWidth(SEARCH_FIELD_WIDTH)
-        hdr_row.addWidget(self._search_bar, 1)
-
-        rl.addLayout(hdr_row)
         rl.addSpacing(10)
 
         # Model cards scroll area
@@ -4941,11 +4935,17 @@ class InferencePage(QWidget):
     def _on_finished(self, code):
         if getattr(self, "_report_timer", None) is not None:
             self._report_timer.stop()
-        self.btn_run.setEnabled(True)
-        self.btn_stop.setEnabled(False)
+        # Multi-model batch owns process_running for the whole session —
+        # emitting False here would finish the overall bar / play the chime
+        # after model 1 of N. The batch loop re-enables buttons itself.
+        batch = bool(getattr(self, "_batch_testing", False))
+        if not batch:
+            self.btn_run.setEnabled(True)
+            self.btn_stop.setEnabled(False)
         if code == 0:
             self._report_written_files()
-        self.process_running.emit(False)
+        if not batch:
+            self.process_running.emit(False)
         if code == 0:
             self.log_output.emit("Completed: processing")
         else:

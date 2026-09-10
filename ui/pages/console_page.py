@@ -14,7 +14,10 @@ from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QPainterPath, QDe
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from ui.theme import theme_manager, FONT_FAMILY, FONT_STACK
 from ui.widgets.common import PageHeader, add_button_hover, MODEL_TYPE_COLORS, dark_menu_qss
+from backend.paths import REPO_ROOT
 from mutagen import File as _MutagenFile
+
+_CHIME_PATH = os.path.join(REPO_ROOT, "resources", "chime.mp3")
 
 
 # ── helpers ──────────────────────────────────────────────────────
@@ -406,6 +409,23 @@ _RE_DONE = re.compile(r'^Done\b', re.IGNORECASE)
 _RE_ERROR = re.compile(r'(?:^ERROR|FATAL|Traceback|Error\s+message)', re.IGNORECASE)
 _RE_OUTPUT_DIR = re.compile(r'Output\s+directory[:\s]\s*(.+)', re.IGNORECASE)
 _RE_QUEUED = re.compile(r'Queued[:\s]\s*(.+)', re.IGNORECASE)
+# Multi-model session: "── RUNNING SELECTED MODELS (2) — ..." and
+# "[1/2] Model Name" / "[TEST-ALL 1/2] Model Name".
+_RE_BATCH_MODELS = re.compile(
+    r'RUNNING SELECTED MODELS\s*\((\d+)\)', re.IGNORECASE)
+_RE_BATCH_STEP = re.compile(
+    r'\[(?:TEST-ALL\s+)?(\d+)/(\d+)\]\s+\S', re.IGNORECASE)
+
+
+def _fmt_hms(seconds, pad_hours=True):
+    """Format a duration as H:MM:SS (or HH:MM:SS when pad_hours)."""
+    seconds = max(0, int(seconds))
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    if pad_hours:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{h}:{m:02d}:{s:02d}"
 
 
 def _norm(s):
@@ -2717,6 +2737,78 @@ class _ConsoleEdit(QTextEdit):
         return self.toPlainText()
 
 
+# ── overall job progress (right column, above the waveform card) ──
+
+class _OverallProgress(QWidget):
+    """Batch-level elapsed / percent / ETA bar shown above the detail card."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("overallProgress")
+        root = QHBoxLayout(self)
+        root.setContentsMargins(4, 0, 4, 0)
+        root.setSpacing(12)
+
+        self._elapsed_lbl = QLabel("Elapsed: 0:00:00")
+        self._elapsed_lbl.setObjectName("overallElapsed")
+        root.addWidget(self._elapsed_lbl)
+
+        self._bar = _SmoothBar()
+        self._bar.setFixedHeight(6)
+        self._bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        root.addWidget(self._bar, 1)
+
+        self._pct_lbl = QLabel("0%")
+        self._pct_lbl.setObjectName("overallPct")
+        root.addWidget(self._pct_lbl)
+
+        self._eta_lbl = QLabel("ETA: --:--:--")
+        self._eta_lbl.setObjectName("overallEta")
+        root.addWidget(self._eta_lbl)
+
+        self._apply_styles()
+
+    def _apply_styles(self):
+        dim = theme_manager.theme.text_dim
+        acc = theme_manager.accent
+        self._elapsed_lbl.setStyleSheet(
+            "background:transparent;border:none;font-size:11px;"
+            f"color:{dim};"
+        )
+        self._pct_lbl.setStyleSheet(
+            "background:transparent;border:none;font-size:11px;"
+            f"font-weight:bold;color:{acc};"
+        )
+        self._eta_lbl.setStyleSheet(
+            "background:transparent;border:none;font-size:11px;"
+            f"color:{dim};"
+        )
+        self._bar.update()
+
+    def reapply_theme(self):
+        self._apply_styles()
+
+    def set_state(self, pct, elapsed_s, eta_s):
+        pct = max(0, min(100, int(round(pct))))
+        self._bar.setValue(pct)
+        self._pct_lbl.setText(f"{pct}%")
+        self._elapsed_lbl.setText(f"Elapsed: {_fmt_hms(elapsed_s, pad_hours=False)}")
+        if eta_s is None:
+            self._eta_lbl.setText("ETA: --:--:--")
+        else:
+            self._eta_lbl.setText(f"ETA: {_fmt_hms(eta_s, pad_hours=True)}")
+
+    def set_state_immediate(self, pct, elapsed_s, eta_s):
+        pct = max(0, min(100, int(round(pct))))
+        self._bar.setValueImmediate(pct)
+        self._pct_lbl.setText(f"{pct}%")
+        self._elapsed_lbl.setText(f"Elapsed: {_fmt_hms(elapsed_s, pad_hours=False)}")
+        if eta_s is None:
+            self._eta_lbl.setText("ETA: --:--:--")
+        else:
+            self._eta_lbl.setText(f"ETA: {_fmt_hms(eta_s, pad_hours=True)}")
+
+
 # ── console page (main) ───────────────────────────────────────────
 
 class ConsolePage(QWidget):
@@ -2731,6 +2823,14 @@ class ConsolePage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._job_active = False  # True while an inference/ensemble job runs
+        self._job_generation = 0
+        self._job_start_mono = 0.0
+        # Multi-model session: each checked model processes the full input
+        # set once. Overall progress is songs × models, not songs alone.
+        self._session_model_count = 1
+        self._session_model_index = 1
+        self._chime_player = None
+        self._chime_out = None
         self._song_cards = {}
         self._song_run = {}  # normalized song -> run counter, for re-run keys
         self._card_seq = 0   # monotonically increasing card recency rank
@@ -2780,14 +2880,145 @@ class ConsolePage(QWidget):
         self._stall_timer.start()
         self._last_tick = time.monotonic()
 
+        self._overall_timer = QTimer(self)
+        self._overall_timer.setInterval(1000)
+        self._overall_timer.timeout.connect(self._refresh_overall_progress)
+
     def set_job_active(self, active):
         """Driven by the pages' process_running signal so mid-run error text
-        never marks a card FAILED before the job has actually ended."""
-        self._job_active = bool(active)
+        never marks a card FAILED before the job has actually ended.
+
+        A multi-model batch keeps the same session across per-model
+        process_running(True) pulses from _run_inner — only the first True
+        starts the clock, and only the final False (after all models)
+        finishes the bar and plays the chime."""
+        was_active = self._job_active
+        active = bool(active)
+        if active and was_active:
+            # Mid-batch model switch: keep generation, clock, and model count.
+            self._btn_stop.setEnabled(True)
+            self._output_list._auto_follow = True
+            return
+        self._job_active = active
         self._btn_stop.setEnabled(self._job_active)
         self._output_list._auto_follow = bool(active)
         if active:
+            self._job_generation += 1
+            self._job_start_mono = time.monotonic()
+            self._session_model_count = 1
+            self._session_model_index = 1
+            for c in self._song_cards.values():
+                if not c._is_complete and not c._failed:
+                    c._job_gen = self._job_generation
             self._output_list.reset_follow()
+            self._overall.setVisible(True)
+            self._overall.set_state_immediate(0, 0, None)
+            if not self._overall_timer.isActive():
+                self._overall_timer.start()
+            self._refresh_overall_progress()
+        else:
+            self._overall_timer.stop()
+            self._refresh_overall_progress(finished=True)
+            if was_active:
+                self._play_chime()
+
+    def _job_cards(self):
+        """Cards that belong to the current (or most recent) inference job."""
+        gen = self._job_generation
+        return [c for c in self._song_cards.values()
+                if getattr(c, "_job_gen", 0) == gen]
+
+    def _note_session_models(self, count, index=None):
+        """Record how many model passes this session will run (and which
+        pass is in flight). Drives songs×models overall progress."""
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            return
+        if count < 1:
+            return
+        self._session_model_count = max(self._session_model_count, count)
+        if index is not None:
+            try:
+                index = int(index)
+            except (TypeError, ValueError):
+                index = None
+            if index is not None and index >= 1:
+                self._session_model_index = min(index, self._session_model_count)
+        self._refresh_overall_progress()
+
+    def _overall_progress_state(self, finished=False):
+        """(percent, elapsed_s, eta_s_or_None) for the batch progress bar.
+
+        A multi-model session processes every input once per model, so the
+        denominator is songs × models. Each card is tagged with `_model_pass`
+        (1-based) when created; prior announced passes with no cards yet
+        still count as complete so the bar does not snap back to 0% between
+        models."""
+        cards = self._job_cards()
+        n_input = len(self._input_order) if self._input_order else 0
+        n_models = max(1, int(self._session_model_count or 1))
+        n_songs = max(n_input, 1)
+        if cards and n_input == 0:
+            n_songs = max(n_songs, len({_norm(c._song_name) for c in cards}))
+        total_units = max(n_songs * n_models, 1)
+        model_i = max(1, min(n_models, int(self._session_model_index or 1)))
+
+        weight = 0.0
+        for pass_i in range(1, n_models + 1):
+            pass_cards = [c for c in cards
+                          if int(getattr(c, "_model_pass", 1) or 1) == pass_i]
+            if pass_cards:
+                for c in pass_cards:
+                    if c._is_complete or c._failed:
+                        weight += 100.0
+                    else:
+                        weight += max(0.0, min(100.0, float(c._progress)))
+            elif pass_i < model_i:
+                # This pass finished; its cards may still be present under
+                # an older tag, but if not, credit a full pass so the bar
+                # holds at (pass_i / n_models) between model runs.
+                weight += n_songs * 100.0
+
+        pct = (weight / (total_units * 100.0)) * 100.0
+        if finished:
+            pct = 100.0
+        elapsed = 0.0
+        if self._job_start_mono:
+            elapsed = max(0.0, time.monotonic() - self._job_start_mono)
+        eta = None
+        if not finished and pct > 0.5 and pct < 100.0:
+            eta = elapsed * (100.0 - pct) / pct
+        elif finished:
+            eta = 0
+        return pct, elapsed, eta
+
+    def _refresh_overall_progress(self, finished=False):
+        bar = getattr(self, "_overall", None)
+        if bar is None:
+            return
+        if self._job_generation == 0 and not self._job_active:
+            return
+        pct, elapsed, eta = self._overall_progress_state(finished=finished)
+        if finished:
+            bar.set_state_immediate(pct, elapsed, eta)
+        else:
+            bar.set_state(pct, elapsed, eta)
+
+    def _play_chime(self):
+        """Play resources/chime.mp3 once the whole job has finished."""
+        if not os.path.isfile(_CHIME_PATH):
+            return
+        try:
+            if self._chime_player is None:
+                self._chime_out = QAudioOutput()
+                self._chime_player = QMediaPlayer()
+                self._chime_player.setAudioOutput(self._chime_out)
+            self._chime_player.stop()
+            self._chime_player.setSource(QUrl.fromLocalFile(_CHIME_PATH))
+            self._chime_player.play()
+        except Exception:
+            pass
 
     def _on_friendly_names(self, models):
         """Zoo index arrived: cache ckpt -> friendly name and refresh the
@@ -2891,6 +3122,8 @@ class ConsolePage(QWidget):
                 self._input_path_map[key.lower()] = p
                 self._input_order.append(_norm(key))
         self._sort_card_order()
+        if self._job_active:
+            self._refresh_overall_progress()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -2958,11 +3191,22 @@ class ConsolePage(QWidget):
         self._output_list.cardDeleteRequested.connect(self._on_delete_requested)
         content_layout.addWidget(self._output_list, 35)
 
+        right = QWidget()
+        right.setStyleSheet("background:transparent;")
+        right_lo = QVBoxLayout(right)
+        right_lo.setContentsMargins(0, 0, 0, 0)
+        right_lo.setSpacing(12)
+
+        self._overall = _OverallProgress()
+        self._overall.setVisible(False)
+        right_lo.addWidget(self._overall)
+
         self._detail_view = _DetailView()
         self._detail_view.cardDeleted.connect(self._on_card_deleted)
         self._detail_view.deleteRequested.connect(self._on_delete_requested)
         self._detail_view._show_empty()
-        content_layout.addWidget(self._detail_view, 65)
+        right_lo.addWidget(self._detail_view, 1)
+        content_layout.addWidget(right, 65)
 
         self._stack.addWidget(content_widget)
 
@@ -3166,9 +3410,31 @@ class ConsolePage(QWidget):
         card = _TaskCard(display_name, input_path=input_full)
         card._key = key
         card._activity_seq = self._next_card_seq()
+        card._job_gen = self._job_generation
+        card._model_pass = max(1, int(self._session_model_index or 1))
         self._song_cards[key] = card
         self._output_list.add_card(card)
+        orig_complete = card.mark_complete
+        orig_fail = card.mark_failed
+        orig_progress = card.set_progress
+
+        def _mark_complete():
+            orig_complete()
+            self._refresh_overall_progress()
+
+        def _mark_failed():
+            orig_fail()
+            self._refresh_overall_progress()
+
+        def _set_progress(pct, from_tqdm=False):
+            orig_progress(pct, from_tqdm=from_tqdm)
+            self._refresh_overall_progress()
+
+        card.mark_complete = _mark_complete
+        card.mark_failed = _mark_failed
+        card.set_progress = _set_progress
         self._finalize_superseded_same_song(card)
+        self._refresh_overall_progress()
         return card
 
     def _finalize_superseded_same_song(self, new_card):
@@ -3269,6 +3535,13 @@ class ConsolePage(QWidget):
         self._output_list.scroll_to_card(card)
 
     def _parse_and_update(self, text):
+        m_batch = _RE_BATCH_MODELS.search(text)
+        if m_batch:
+            self._note_session_models(m_batch.group(1))
+        m_step = _RE_BATCH_STEP.search(text)
+        if m_step:
+            self._note_session_models(m_step.group(2), index=m_step.group(1))
+
         m_dir = _RE_OUTPUT_DIR.search(text)
         if m_dir:
             d = m_dir.group(1).strip()
@@ -3769,9 +4042,17 @@ class ConsolePage(QWidget):
         self._log_edit.clear_log()
         del self._LOG_HISTORY[:]
         self._detail_view._show_empty()
+        self._overall_timer.stop()
+        self._overall.setVisible(False)
+        self._overall.set_state_immediate(0, 0, None)
+        self._job_generation = 0
+        self._job_start_mono = 0.0
+        self._session_model_count = 1
+        self._session_model_index = 1
 
     def reapply_theme(self):
         self._apply_styles()
         for card in self._song_cards.values():
             card.reapply_theme()
         self._detail_view.reapply_theme()
+        self._overall.reapply_theme()

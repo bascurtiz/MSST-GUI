@@ -455,6 +455,58 @@ def test_attach_cached_scores_without_signal():
           and item.height() > 38)
 
 
+def test_worker_refetches_when_url_changes():
+    """A changed mvsep entry URL must not reuse the old cached scores."""
+    tmp = tempfile.mkdtemp(prefix="msst_url_change_")
+    old_cache = ms.CACHE_PATH
+    old_entries = ms.ENTRIES_CACHE_PATH
+    ms.CACHE_PATH = os.path.join(tmp, "cache.json")
+    _use_entries_cache(tmp)
+    try:
+        key = "bs_vox_xlancer.ckpt"
+        old_url = "https://mvsep.com/quality_checker/entry/10000"
+        new_url = "https://mvsep.com/quality_checker/entry/10626"
+        _seed_entries_cache()
+        ms._save_entries_cache({key: new_url})
+        ms._ENTRIES = None
+        ms._save_cache({
+            key: {
+                "url": old_url,
+                "fetched_at": "2026-09-08T12:00:00+00:00",
+                "stems": ["instrum"],
+                "metrics": {"instrum": {"sdr": 1.0}},
+            }
+        })
+        def _fake_fetch(url):
+            assert url == new_url
+            return {
+                "stems": ["instrum", "vocals"],
+                "metrics": {
+                    "instrum": {"sdr": 10.0},
+                    "vocals": {"sdr": 5.0},
+                },
+            }
+
+        old_fetch = ms.fetch_entry
+        ms.fetch_entry = _fake_fetch
+        store = ms.ScoresStore()
+        store._needed.add(key)
+        try:
+            with store._worker_lock:
+                store._worker_pass({key: new_url})
+        finally:
+            ms.fetch_entry = old_fetch
+        got = store.get(key)
+        check("url change triggers refetch", got is not None)
+        check("refetched url stored", store._cache[key]["url"] == new_url)
+        check("old single-stem cache replaced",
+              "vocals" in (got.get("metrics") or {}))
+    finally:
+        ms.CACHE_PATH = old_cache
+        ms.ENTRIES_CACHE_PATH = old_entries
+        ms._ENTRIES = None
+
+
 def test_request_queues_cached_refresh():
     """request() must emit scores_ready for fresh cache hits (no refetch)."""
     tmp = tempfile.mkdtemp(prefix="msst_scores_refresh_")
@@ -527,6 +579,7 @@ def main():
     test_l1_freq_row_height()
     test_attach_cached_scores_without_signal()
     test_sort_combo_options()
+    test_worker_refetches_when_url_changes()
     test_request_queues_cached_refresh()
     print(f"{CHECKS} checks, {len(FAILURES)} failures")
     if FAILURES:

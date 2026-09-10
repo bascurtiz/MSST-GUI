@@ -29,7 +29,7 @@ def main():
     # Both page headers use the same compact control dimensions: the folder
     # placeholder must fit in full, while the sort pill stays the inference
     # width when reused by Settings.
-    search = _SearchBar("Search folders…")
+    search = _SearchBar("Search folder...")
     sort = _SortCombo()
     if search.sizeHint().width() != SEARCH_FIELD_WIDTH:
         failures.append("shared search field width")

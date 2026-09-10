@@ -285,9 +285,16 @@ class ScoresStore(QObject):
 
     `entries_updated` fires when the Google Sheet URL list changes (new rows
     or updated links) so pages can re-request scores for newly listed models.
+
+    Call ``refresh_all()`` (or use the refresh icon in the Model Library /
+    Model Manager) to force a sheet re-download and re-fetch mvsep scores for
+    displayed models — needed after a leaderboard URL changes or a model is
+    re-uploaded under a new entry.
     """
     scores_ready = Signal(str)  # checkpoint filename (lowercase)
     entries_updated = Signal()
+    refresh_started = Signal()
+    refresh_finished = Signal(bool)  # success
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -296,6 +303,7 @@ class ScoresStore(QObject):
         self._results = []          # (filename, scores) produced by the thread
         self._refresh_pending = set()  # cached keys already queued this session
         self._started = False
+        self._refresh_running = False
         self._worker_lock = threading.Lock()
         self._thread = None
         self._timer = QTimer(self)
@@ -351,6 +359,15 @@ class ScoresStore(QObject):
             self._needed.add(fn)
             self._queue_cached_refresh(fn)
 
+    def refresh_all(self) -> None:
+        """Force a Google Sheet download and re-fetch mvsep scores for models
+        the UI has requested. Safe to call from the main thread."""
+        if self._refresh_running:
+            return
+        if not self._started:
+            self.start()
+        threading.Thread(target=self._manual_refresh, daemon=True).start()
+
     def start(self) -> None:
         if self._started:
             return
@@ -366,37 +383,70 @@ class ScoresStore(QObject):
 
     def _bootstrap(self) -> None:
         """Refresh the sheet URL list when needed, then crawl mvsep scores."""
-        self._sync_entries_from_sheet()
+        if self._sync_entries_from_sheet():
+            self.entries_updated.emit()
         with self._worker_lock:
             self._worker_pass(load_entries())
 
-    def _sync_entries_from_sheet(self) -> None:
-        """Fetch the published Google Sheet when the local snapshot is stale."""
+    def _sync_entries_from_sheet(self, force: bool = False) -> bool:
+        """Fetch the published Google Sheet when the local snapshot is stale.
+
+        Returns True when a new snapshot was downloaded and applied.
+        """
         cached = _load_entries_cache()
-        if cached and not _entries_cache_stale(cached):
-            return
+        if not force and cached and not _entries_cache_stale(cached):
+            return False
         try:
             entries = _fetch_remote_entries()
         except Exception:
-            return
+            return False
         _save_entries_cache(entries)
-        old = _set_entries(entries)
-        if entries != old:
-            self.entries_updated.emit()
+        _set_entries(entries)
+        return True
 
-    def _worker_pass(self, entries: dict) -> None:
+    def _manual_refresh(self) -> None:
+        self._refresh_running = True
+        self.refresh_started.emit()
+        success = False
+        try:
+            if not self._sync_entries_from_sheet(force=True):
+                return
+            entries = load_entries()
+            if not entries:
+                return
+            force_scores = set(self._needed)
+            for fn, url in entries.items():
+                cached = self._cache.get(fn)
+                if not cached or cached.get("url") != url:
+                    self._cache.pop(fn, None)
+                    self._refresh_pending.discard(fn)
+                    force_scores.add(fn)
+            _save_cache(self._cache)
+            with self._worker_lock:
+                self._worker_pass(entries, force=force_scores)
+            self.entries_updated.emit()
+            success = True
+        except Exception:
+            pass
+        self._refresh_running = False
+        self.refresh_finished.emit(success)
+
+    def _worker_pass(self, entries: dict, force: set | None = None) -> None:
         # Needed (installed/displayed) models first, then the rest.
         order = sorted(entries, key=lambda fn: (fn not in self._needed, fn))
         for fn in order:
+            url = entries[fn]
             cached = self._cache.get(fn)
-            if cached and not _is_stale(cached):
-                continue
+            if force is None or fn not in force:
+                if (cached and not _is_stale(cached)
+                        and cached.get("url") == url):
+                    continue
             try:
-                parsed = fetch_entry(entries[fn])
+                parsed = fetch_entry(url)
             except Exception:
                 continue  # leave it for a later run
             entry = {
-                "url": entries[fn],
+                "url": url,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
                 "stems": parsed["stems"],
                 "metrics": parsed["metrics"],

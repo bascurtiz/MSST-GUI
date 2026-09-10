@@ -1,0 +1,6690 @@
+{
+ "12_sp-uvr-3b-44100.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10502",
+  "fetched_at": "2026-09-08T13:23:24.775267+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 12.8772,
+    "si_sdr": 12.6298,
+    "l1_freq": 30.4619,
+    "log_wmse": 10.1613,
+    "aura_stft": 7.7599,
+    "aura_mrstft": 12.6772,
+    "bleedless": 32.4159,
+    "fullness": 25.9422
+   },
+   "vocals": {
+    "sdr": 6.5831,
+    "si_sdr": 5.4217,
+    "l1_freq": 28.345,
+    "log_wmse": 10.1526,
+    "aura_stft": 4.9585,
+    "aura_mrstft": 6.0453,
+    "bleedless": 20.7427,
+    "fullness": 12.3044
+   }
+  }
+ },
+ "13_sp-uvr-4b-44100-1.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10503",
+  "fetched_at": "2026-09-08T13:23:25.345928+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.1062,
+    "si_sdr": 12.8691,
+    "l1_freq": 31.1532,
+    "log_wmse": 10.3287,
+    "aura_stft": 11.0721,
+    "aura_mrstft": 13.9481,
+    "bleedless": 31.6241,
+    "fullness": 27.6412
+   },
+   "vocals": {
+    "sdr": 6.7923,
+    "si_sdr": 5.7061,
+    "l1_freq": 28.6041,
+    "log_wmse": 10.3082,
+    "aura_stft": 5.7299,
+    "aura_mrstft": 6.1473,
+    "bleedless": 20.8417,
+    "fullness": 12.2568
+   }
+  }
+ },
+ "14_sp-uvr-4b-44100-2.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10504",
+  "fetched_at": "2026-09-08T13:23:26.045611+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.1454,
+    "si_sdr": 12.9076,
+    "l1_freq": 31.1967,
+    "log_wmse": 10.3656,
+    "aura_stft": 10.9521,
+    "aura_mrstft": 13.6287,
+    "bleedless": 32.2658,
+    "fullness": 27.0027
+   },
+   "vocals": {
+    "sdr": 6.8341,
+    "si_sdr": 5.733,
+    "l1_freq": 28.9451,
+    "log_wmse": 10.3481,
+    "aura_stft": 5.8611,
+    "aura_mrstft": 6.4394,
+    "bleedless": 21.0549,
+    "fullness": 12.7499
+   }
+  }
+ },
+ "15_sp-uvr-mid-44100-1.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10505",
+  "fetched_at": "2026-09-08T13:23:26.677003+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.0768,
+    "si_sdr": 12.8555,
+    "l1_freq": 31.1049,
+    "log_wmse": 10.349,
+    "aura_stft": 7.9519,
+    "aura_mrstft": 13.6358,
+    "bleedless": 31.1231,
+    "fullness": 28.0956
+   },
+   "vocals": {
+    "sdr": 6.7711,
+    "si_sdr": 5.6663,
+    "l1_freq": 28.4879,
+    "log_wmse": 10.3275,
+    "aura_stft": 4.933,
+    "aura_mrstft": 5.9829,
+    "bleedless": 21.0786,
+    "fullness": 12.2637
+   }
+  }
+ },
+ "16_sp-uvr-mid-44100-2.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10506",
+  "fetched_at": "2026-09-08T13:23:27.263192+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.0717,
+    "si_sdr": 12.8531,
+    "l1_freq": 31.1275,
+    "log_wmse": 10.3455,
+    "aura_stft": 7.9697,
+    "aura_mrstft": 13.6866,
+    "bleedless": 30.8722,
+    "fullness": 28.3496
+   },
+   "vocals": {
+    "sdr": 6.7659,
+    "si_sdr": 5.65,
+    "l1_freq": 28.4209,
+    "log_wmse": 10.324,
+    "aura_stft": 4.9303,
+    "aura_mrstft": 5.8888,
+    "bleedless": 21.118,
+    "fullness": 12.0177
+   }
+  }
+ },
+ "1_hp-uvr.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10495",
+  "fetched_at": "2026-09-08T13:23:27.849833+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.2448,
+    "si_sdr": 13.0094,
+    "l1_freq": 31.395,
+    "log_wmse": 10.4636,
+    "aura_stft": 10.724,
+    "aura_mrstft": 13.2927,
+    "bleedless": 34.6472,
+    "fullness": 25.6374
+   },
+   "vocals": {
+    "sdr": 6.9408,
+    "si_sdr": 5.8809,
+    "l1_freq": 29.4329,
+    "log_wmse": 10.4534,
+    "aura_stft": 6.1236,
+    "aura_mrstft": 6.8574,
+    "bleedless": 21.7779,
+    "fullness": 13.272
+   }
+  }
+ },
+ "2_hp-uvr.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10496",
+  "fetched_at": "2026-09-08T13:23:28.518991+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.4598,
+    "si_sdr": 13.2353,
+    "l1_freq": 31.975,
+    "log_wmse": 10.6638,
+    "aura_stft": 7.2751,
+    "aura_mrstft": 13.8751,
+    "bleedless": 34.8743,
+    "fullness": 26.3204
+   },
+   "vocals": {
+    "sdr": 7.182,
+    "si_sdr": 6.2145,
+    "l1_freq": 29.8082,
+    "log_wmse": 10.6731,
+    "aura_stft": 5.1546,
+    "aura_mrstft": 6.7126,
+    "bleedless": 22.7219,
+    "fullness": 13.4564
+   }
+  }
+ },
+ "3_hp-vocal-uvr.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10497",
+  "fetched_at": "2026-09-08T13:23:32.430656+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.4481,
+    "si_sdr": 13.2309,
+    "l1_freq": 31.7198,
+    "log_wmse": 10.6405,
+    "aura_stft": 9.7546,
+    "aura_mrstft": 12.4625,
+    "bleedless": 33.8679,
+    "fullness": 24.55
+   },
+   "vocals": {
+    "sdr": 7.1423,
+    "si_sdr": 6.0737,
+    "l1_freq": 29.8096,
+    "log_wmse": 10.627,
+    "aura_stft": 6.0184,
+    "aura_mrstft": 6.3344,
+    "bleedless": 25.9371,
+    "fullness": 11.7318
+   }
+  }
+ },
+ "4_hp-vocal-uvr.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10498",
+  "fetched_at": "2026-09-08T13:23:34.253177+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.2433,
+    "si_sdr": 12.9995,
+    "l1_freq": 30.832,
+    "log_wmse": 10.4607,
+    "aura_stft": 9.1211,
+    "aura_mrstft": 11.3867,
+    "bleedless": 34.2173,
+    "fullness": 23.419
+   },
+   "vocals": {
+    "sdr": 6.9525,
+    "si_sdr": 5.9007,
+    "l1_freq": 30.0719,
+    "log_wmse": 10.4638,
+    "aura_stft": 6.3854,
+    "aura_mrstft": 7.2044,
+    "bleedless": 24.608,
+    "fullness": 13.0837
+   }
+  }
+ },
+ "7_hp2-uvr.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10499",
+  "fetched_at": "2026-09-08T13:23:34.875486+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.5127,
+    "si_sdr": 13.2972,
+    "l1_freq": 32.3436,
+    "log_wmse": 10.6928,
+    "aura_stft": 12.3406,
+    "aura_mrstft": 14.893,
+    "bleedless": 33.644,
+    "fullness": 28.4803
+   },
+   "vocals": {
+    "sdr": 7.2146,
+    "si_sdr": 6.2295,
+    "l1_freq": 29.6377,
+    "log_wmse": 10.7014,
+    "aura_stft": 5.4197,
+    "aura_mrstft": 6.5058,
+    "bleedless": 22.4186,
+    "fullness": 13.1001
+   }
+  }
+ },
+ "8_hp2-uvr.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10500",
+  "fetched_at": "2026-09-08T13:23:35.490721+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.168,
+    "si_sdr": 12.9313,
+    "l1_freq": 31.7336,
+    "log_wmse": 10.397,
+    "aura_stft": 11.7093,
+    "aura_mrstft": 14.9141,
+    "bleedless": 32.0532,
+    "fullness": 29.8696
+   },
+   "vocals": {
+    "sdr": 6.8565,
+    "si_sdr": 5.8277,
+    "l1_freq": 28.6322,
+    "log_wmse": 10.3783,
+    "aura_stft": 5.4919,
+    "aura_mrstft": 6.2204,
+    "bleedless": 20.6609,
+    "fullness": 12.5556
+   }
+  }
+ },
+ "9_hp2-uvr.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10501",
+  "fetched_at": "2026-09-08T13:23:36.153443+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.3039,
+    "si_sdr": 13.0793,
+    "l1_freq": 32.1073,
+    "log_wmse": 10.5166,
+    "aura_stft": 11.8714,
+    "aura_mrstft": 15.4492,
+    "bleedless": 31.3889,
+    "fullness": 31.0511
+   },
+   "vocals": {
+    "sdr": 6.9872,
+    "si_sdr": 6.0045,
+    "l1_freq": 28.6012,
+    "log_wmse": 10.4919,
+    "aura_stft": 5.5032,
+    "aura_mrstft": 6.0559,
+    "bleedless": 22.0495,
+    "fullness": 12.0141
+   }
+  }
+ },
+ "bandit_30_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10393",
+  "fetched_at": "2026-09-08T13:58:34.012259+00:00",
+  "stems": [
+   "music",
+   "sfx",
+   "speech"
+  ],
+  "metrics": {
+   "music": {
+    "sdr": 8.2824,
+    "si_sdr": 7.3786,
+    "l1_freq": 64.2916,
+    "log_wmse": 14.2247,
+    "aura_stft": 6.8169,
+    "aura_mrstft": 7.5462,
+    "bleedless": 15.5726,
+    "fullness": 16.8895
+   },
+   "sfx": {
+    "sdr": 9.4532,
+    "si_sdr": 8.9623,
+    "l1_freq": 58.5955,
+    "log_wmse": 12.9684,
+    "aura_stft": 9.4918,
+    "aura_mrstft": 10.5272,
+    "bleedless": 22.832,
+    "fullness": 25.0946
+   },
+   "speech": {
+    "sdr": 10.7387,
+    "si_sdr": 10.307,
+    "l1_freq": 72.5506,
+    "log_wmse": 15.912,
+    "aura_stft": 5.8109,
+    "aura_mrstft": 5.3945,
+    "bleedless": 22.6031,
+    "fullness": 22.3444
+   }
+  }
+ },
+ "bandit_57_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10394",
+  "fetched_at": "2026-09-08T13:58:34.699920+00:00",
+  "stems": [
+   "music",
+   "sfx",
+   "speech"
+  ],
+  "metrics": {
+   "music": {
+    "sdr": 8.026,
+    "si_sdr": 7.0683,
+    "l1_freq": 63.8479,
+    "log_wmse": 14.093,
+    "aura_stft": 6.8127,
+    "aura_mrstft": 7.5312,
+    "bleedless": 15.3643,
+    "fullness": 17.1053
+   },
+   "sfx": {
+    "sdr": 9.2388,
+    "si_sdr": 8.6884,
+    "l1_freq": 58.5284,
+    "log_wmse": 12.8973,
+    "aura_stft": 9.3521,
+    "aura_mrstft": 10.5197,
+    "bleedless": 28.7681,
+    "fullness": 22.7114
+   },
+   "speech": {
+    "sdr": 10.8392,
+    "si_sdr": 10.3952,
+    "l1_freq": 73.0586,
+    "log_wmse": 16.0309,
+    "aura_stft": 6.0324,
+    "aura_mrstft": 5.5968,
+    "bleedless": 26.4004,
+    "fullness": 20.3386
+   }
+  }
+ },
+ "bandit_63_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10399",
+  "fetched_at": "2026-09-08T13:58:35.341546+00:00",
+  "stems": [
+   "music",
+   "sfx",
+   "speech"
+  ],
+  "metrics": {
+   "music": {
+    "sdr": 8.2894,
+    "si_sdr": 7.3704,
+    "l1_freq": 64.2381,
+    "log_wmse": 14.2437,
+    "aura_stft": 6.8703,
+    "aura_mrstft": 7.5494,
+    "bleedless": 16.2336,
+    "fullness": 16.9659
+   },
+   "sfx": {
+    "sdr": 9.7179,
+    "si_sdr": 9.1991,
+    "l1_freq": 59.5921,
+    "log_wmse": 13.1817,
+    "aura_stft": 9.6788,
+    "aura_mrstft": 10.9394,
+    "bleedless": 25.1985,
+    "fullness": 25.0111
+   },
+   "speech": {
+    "sdr": 11.1476,
+    "si_sdr": 10.7133,
+    "l1_freq": 73.5122,
+    "log_wmse": 16.1583,
+    "aura_stft": 6.041,
+    "aura_mrstft": 5.6454,
+    "bleedless": 27.9869,
+    "fullness": 20.0253
+   }
+  }
+ },
+ "bandit_last.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10400",
+  "fetched_at": "2026-09-08T13:58:35.959282+00:00",
+  "stems": [
+   "music",
+   "sfx",
+   "speech"
+  ],
+  "metrics": {
+   "music": {
+    "sdr": 6.4951,
+    "si_sdr": 5.268,
+    "l1_freq": 61.3623,
+    "log_wmse": 12.9252,
+    "aura_stft": 6.5868,
+    "aura_mrstft": 7.4487,
+    "bleedless": 14.5796,
+    "fullness": 16.2061
+   },
+   "sfx": {
+    "sdr": 8.6135,
+    "si_sdr": 7.9656,
+    "l1_freq": 57.8074,
+    "log_wmse": 12.9957,
+    "aura_stft": 8.8656,
+    "aura_mrstft": 10.6425,
+    "bleedless": 22.4455,
+    "fullness": 24.1276
+   },
+   "speech": {
+    "sdr": 8.2862,
+    "si_sdr": 7.2682,
+    "l1_freq": 69.0047,
+    "log_wmse": 14.1568,
+    "aura_stft": 5.5303,
+    "aura_mrstft": 5.1339,
+    "bleedless": 26.1348,
+    "fullness": 18.2402
+   }
+  }
+ },
+ "bandit_plus.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10395",
+  "fetched_at": "2026-09-08T13:58:36.535422+00:00",
+  "stems": [
+   "music",
+   "sfx",
+   "speech"
+  ],
+  "metrics": {
+   "music": {
+    "sdr": 6.8979,
+    "si_sdr": 5.7927,
+    "l1_freq": 61.3917,
+    "log_wmse": 12.9093,
+    "aura_stft": 5.8074,
+    "aura_mrstft": 6.1514,
+    "bleedless": 18.5971,
+    "fullness": 13.8605
+   },
+   "sfx": {
+    "sdr": 8.9382,
+    "si_sdr": 8.4252,
+    "l1_freq": 59.3408,
+    "log_wmse": 12.2377,
+    "aura_stft": 9.856,
+    "aura_mrstft": 10.3662,
+    "bleedless": 31.1326,
+    "fullness": 23.6104
+   },
+   "speech": {
+    "sdr": 9.8945,
+    "si_sdr": 9.0463,
+    "l1_freq": 72.3017,
+    "log_wmse": 14.751,
+    "aura_stft": 6.3039,
+    "aura_mrstft": 5.9112,
+    "bleedless": 46.4431,
+    "fullness": 17.3052
+   }
+  }
+ },
+ "bandit_v2_multi.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10401",
+  "fetched_at": "2026-09-08T13:58:37.186684+00:00",
+  "stems": [
+   "music",
+   "sfx",
+   "speech"
+  ],
+  "metrics": {
+   "music": {
+    "sdr": 9.0271,
+    "si_sdr": 8.2181,
+    "l1_freq": 66.1905,
+    "log_wmse": 14.8754,
+    "aura_stft": 6.3978,
+    "aura_mrstft": 7.1057,
+    "bleedless": 26.6985,
+    "fullness": 14.716
+   },
+   "sfx": {
+    "sdr": 10.7765,
+    "si_sdr": 10.3555,
+    "l1_freq": 63.6272,
+    "log_wmse": 13.8826,
+    "aura_stft": 12.2067,
+    "aura_mrstft": 11.237,
+    "bleedless": 40.1283,
+    "fullness": 22.8363
+   },
+   "speech": {
+    "sdr": 12.2494,
+    "si_sdr": 11.9154,
+    "l1_freq": 76.4963,
+    "log_wmse": 16.7438,
+    "aura_stft": 8.008,
+    "aura_mrstft": 7.1304,
+    "bleedless": 44.4905,
+    "fullness": 20.4458
+   }
+  }
+ },
+ "bs_4stem_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10424",
+  "fetched_at": "2026-09-08T13:58:37.866834+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.1287,
+    "si_sdr": 8.3773,
+    "l1_freq": 34.2361,
+    "log_wmse": 12.3892,
+    "aura_stft": 6.647,
+    "aura_mrstft": 7.3373,
+    "bleedless": 34.0586,
+    "fullness": 12.6413
+   },
+   "bass": {
+    "sdr": 9.7897,
+    "si_sdr": 7.7942,
+    "l1_freq": 49.0814,
+    "log_wmse": 15.7443,
+    "aura_stft": 4.8982,
+    "aura_mrstft": 3.8672,
+    "bleedless": 35.577,
+    "fullness": 14.8858
+   },
+   "drums": {
+    "sdr": 10.2163,
+    "si_sdr": 9.1819,
+    "l1_freq": 35.197,
+    "log_wmse": 14.6581,
+    "aura_stft": 5.8455,
+    "aura_mrstft": 4.9087,
+    "bleedless": 35.8671,
+    "fullness": 11.2886
+   },
+   "other": {
+    "sdr": 5.2667,
+    "si_sdr": 4.1545,
+    "l1_freq": 31.3896,
+    "log_wmse": 10.664,
+    "aura_stft": 4.4797,
+    "aura_mrstft": 6.6303,
+    "bleedless": 20.7124,
+    "fullness": 14.105
+   }
+  }
+ },
+ "bs_4stem_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10425",
+  "fetched_at": "2026-09-08T13:58:38.585062+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.194,
+    "si_sdr": 8.4348,
+    "l1_freq": 34.8296,
+    "log_wmse": 12.4324,
+    "aura_stft": 7.1156,
+    "aura_mrstft": 8.0268,
+    "bleedless": 33.1231,
+    "fullness": 13.4323
+   },
+   "bass": {
+    "sdr": 11.0762,
+    "si_sdr": 10.2782,
+    "l1_freq": 52.2913,
+    "log_wmse": 16.2634,
+    "aura_stft": 5.3355,
+    "aura_mrstft": 4.0824,
+    "bleedless": 34.6862,
+    "fullness": 16.0575
+   },
+   "drums": {
+    "sdr": 11.2882,
+    "si_sdr": 10.564,
+    "l1_freq": 37.7119,
+    "log_wmse": 15.4349,
+    "aura_stft": 6.658,
+    "aura_mrstft": 5.9327,
+    "bleedless": 37.2786,
+    "fullness": 12.496
+   },
+   "other": {
+    "sdr": 5.9641,
+    "si_sdr": 4.8737,
+    "l1_freq": 32.4892,
+    "log_wmse": 11.0211,
+    "aura_stft": 4.7008,
+    "aura_mrstft": 6.7027,
+    "bleedless": 22.4796,
+    "fullness": 13.8761
+   }
+  }
+ },
+ "bs_4stemft_syh99999.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10426",
+  "fetched_at": "2026-09-08T13:58:39.228735+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.5771,
+    "si_sdr": 7.6596,
+    "l1_freq": 32.6102,
+    "log_wmse": 11.8894,
+    "aura_stft": 7.1174,
+    "aura_mrstft": 7.8762,
+    "bleedless": 32.0952,
+    "fullness": 12.7205
+   },
+   "bass": {
+    "sdr": 8.6771,
+    "si_sdr": 7.5959,
+    "l1_freq": 44.4674,
+    "log_wmse": 14.9125,
+    "aura_stft": 4.744,
+    "aura_mrstft": 3.7475,
+    "bleedless": 22.8074,
+    "fullness": 16.4355
+   },
+   "drums": {
+    "sdr": 10.3697,
+    "si_sdr": 9.587,
+    "l1_freq": 34.5501,
+    "log_wmse": 14.722,
+    "aura_stft": 6.5354,
+    "aura_mrstft": 5.9903,
+    "bleedless": 32.1064,
+    "fullness": 12.1063
+   },
+   "other": {
+    "sdr": 5.0546,
+    "si_sdr": 3.8614,
+    "l1_freq": 30.8308,
+    "log_wmse": 10.486,
+    "aura_stft": 4.7744,
+    "aura_mrstft": 7.1047,
+    "bleedless": 19.0753,
+    "fullness": 14.9694
+   }
+  }
+ },
+ "bs_cr_4stem_zf_turbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10427",
+  "fetched_at": "2026-09-08T13:58:39.986902+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.7615,
+    "si_sdr": 7.9182,
+    "l1_freq": 33.4561,
+    "log_wmse": 12.036,
+    "aura_stft": 7.036,
+    "aura_mrstft": 7.8895,
+    "bleedless": 33.121,
+    "fullness": 13.1053
+   },
+   "bass": {
+    "sdr": 10.3568,
+    "si_sdr": 9.3204,
+    "l1_freq": 50.5084,
+    "log_wmse": 15.7111,
+    "aura_stft": 5.0592,
+    "aura_mrstft": 3.8875,
+    "bleedless": 43.5029,
+    "fullness": 12.9339
+   },
+   "drums": {
+    "sdr": 10.7294,
+    "si_sdr": 9.9612,
+    "l1_freq": 36.2284,
+    "log_wmse": 14.9702,
+    "aura_stft": 6.1482,
+    "aura_mrstft": 5.499,
+    "bleedless": 37.6104,
+    "fullness": 11.4422
+   },
+   "other": {
+    "sdr": 5.537,
+    "si_sdr": 4.2901,
+    "l1_freq": 31.2437,
+    "log_wmse": 10.6106,
+    "aura_stft": 4.5352,
+    "aura_mrstft": 6.5664,
+    "bleedless": 20.9296,
+    "fullness": 14.0608
+   }
+  }
+ },
+ "bs_fnf2_mrdense67.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10410",
+  "fetched_at": "2026-09-08T13:58:40.651682+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.6307,
+    "si_sdr": 14.5121,
+    "l1_freq": 34.4169,
+    "log_wmse": 11.6391,
+    "aura_stft": 12.4927,
+    "aura_mrstft": 15.1513,
+    "bleedless": 33.8754,
+    "fullness": 29.8576
+   },
+   "vocals": {
+    "sdr": 8.3232,
+    "si_sdr": 7.4393,
+    "l1_freq": 31.2333,
+    "log_wmse": 11.6391,
+    "aura_stft": 5.2792,
+    "aura_mrstft": 5.6483,
+    "bleedless": 30.3629,
+    "fullness": 11.4191
+   }
+  }
+ },
+ "bs_fnf_mrdense67.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10414",
+  "fetched_at": "2026-09-08T13:58:41.251667+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.442,
+    "si_sdr": 14.3065,
+    "l1_freq": 34.0313,
+    "log_wmse": 11.4628,
+    "aura_stft": 11.8622,
+    "aura_mrstft": 13.8955,
+    "bleedless": 34.3243,
+    "fullness": 28.0921
+   },
+   "vocals": {
+    "sdr": 8.1343,
+    "si_sdr": 7.1724,
+    "l1_freq": 31.5263,
+    "log_wmse": 11.4627,
+    "aura_stft": 5.7924,
+    "aura_mrstft": 6.2643,
+    "bleedless": 32.5378,
+    "fullness": 12.3726
+   }
+  }
+ },
+ "bs_inst_exp_vlp_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10428",
+  "fetched_at": "2026-09-08T13:58:41.840834+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.2172,
+    "si_sdr": 16.0885,
+    "l1_freq": 36.9542,
+    "log_wmse": 13.1044,
+    "aura_stft": 13.4461,
+    "aura_mrstft": 15.9963,
+    "bleedless": 39.5372,
+    "fullness": 28.381
+   },
+   "vocals": {
+    "sdr": 9.9096,
+    "si_sdr": 9.3248,
+    "l1_freq": 35.8214,
+    "log_wmse": 13.1043,
+    "aura_stft": 7.7117,
+    "aura_mrstft": 9.6794,
+    "bleedless": 28.4064,
+    "fullness": 15.6005
+   }
+  }
+ },
+ "bs_inst_large2_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10429",
+  "fetched_at": "2026-09-08T13:58:42.442818+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.6056,
+    "si_sdr": 17.5133,
+    "l1_freq": 40.1042,
+    "log_wmse": 14.3077,
+    "aura_stft": 15.1061,
+    "aura_mrstft": 20.6726,
+    "bleedless": 43.7333,
+    "fullness": 32.1835
+   },
+   "vocals": {
+    "sdr": 11.2982,
+    "si_sdr": 10.8659,
+    "l1_freq": 38.1329,
+    "log_wmse": 14.3077,
+    "aura_stft": 8.3232,
+    "aura_mrstft": 10.0694,
+    "bleedless": 32.1549,
+    "fullness": 16.3873
+   }
+  }
+ },
+ "bs_leap_inst_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10415",
+  "fetched_at": "2026-09-08T13:58:43.046763+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.7626,
+    "si_sdr": 17.6832,
+    "l1_freq": 39.8493,
+    "log_wmse": 14.5093,
+    "aura_stft": 16.0114,
+    "aura_mrstft": 19.9138,
+    "bleedless": 42.1222,
+    "fullness": 31.5237
+   },
+   "vocals": {
+    "sdr": 11.4551,
+    "si_sdr": 11.0617,
+    "l1_freq": 38.434,
+    "log_wmse": 14.5093,
+    "aura_stft": 8.5759,
+    "aura_mrstft": 10.8924,
+    "bleedless": 23.6463,
+    "fullness": 17.9502
+   }
+  }
+ },
+ "bs_leap_voc_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10416",
+  "fetched_at": "2026-09-08T13:58:43.625165+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 18.0317,
+    "si_sdr": 17.9442,
+    "l1_freq": 40.3733,
+    "log_wmse": 14.7083,
+    "aura_stft": 11.8251,
+    "aura_mrstft": 16.435,
+    "bleedless": 46.6828,
+    "fullness": 27.7228
+   },
+   "vocals": {
+    "sdr": 11.7243,
+    "si_sdr": 11.3504,
+    "l1_freq": 39.8646,
+    "log_wmse": 14.7084,
+    "aura_stft": 10.1396,
+    "aura_mrstft": 11.4422,
+    "bleedless": 38.8498,
+    "fullness": 17.0879
+   }
+  }
+ },
+ "bs_leap_xe_inst_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10413",
+  "fetched_at": "2026-09-08T13:58:44.247741+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.5094,
+    "si_sdr": 17.4152,
+    "l1_freq": 40.1818,
+    "log_wmse": 14.2987,
+    "aura_stft": 15.5831,
+    "aura_mrstft": 21.4023,
+    "bleedless": 40.7029,
+    "fullness": 35.3154
+   },
+   "vocals": {
+    "sdr": 11.202,
+    "si_sdr": 10.8096,
+    "l1_freq": 38.2472,
+    "log_wmse": 14.2987,
+    "aura_stft": 9.6305,
+    "aura_mrstft": 11.4394,
+    "bleedless": 24.1281,
+    "fullness": 18.7368
+   }
+  }
+ },
+ "bs_leap_xe_voc_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10411",
+  "fetched_at": "2026-09-08T13:58:44.805196+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 18.0689,
+    "si_sdr": 17.9819,
+    "l1_freq": 40.8611,
+    "log_wmse": 14.7653,
+    "aura_stft": 13.1671,
+    "aura_mrstft": 17.3366,
+    "bleedless": 45.1882,
+    "fullness": 29.7306
+   },
+   "vocals": {
+    "sdr": 11.7615,
+    "si_sdr": 11.3974,
+    "l1_freq": 40.02,
+    "log_wmse": 14.7653,
+    "aura_stft": 9.7864,
+    "aura_mrstft": 11.9447,
+    "bleedless": 37.3806,
+    "fullness": 18.2599
+   }
+  }
+ },
+ "bs_mag_3179_anvuew.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10417",
+  "fetched_at": "2026-09-08T13:58:45.380157+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.0496,
+    "si_sdr": 16.9619,
+    "l1_freq": 36.1817,
+    "log_wmse": 13.8005,
+    "aura_stft": 10.6242,
+    "aura_mrstft": 12.8178,
+    "bleedless": 40.5339,
+    "fullness": 24.3958
+   },
+   "vocals": {
+    "sdr": 10.7421,
+    "si_sdr": 10.2986,
+    "l1_freq": 39.3208,
+    "log_wmse": 13.8005,
+    "aura_stft": 11.5288,
+    "aura_mrstft": 15.8329,
+    "bleedless": 27.6087,
+    "fullness": 26.1003
+   }
+  }
+ },
+ "bs_mag_anvuew.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10430",
+  "fetched_at": "2026-09-08T13:58:45.957345+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.4008,
+    "si_sdr": 17.3089,
+    "l1_freq": 37.8919,
+    "log_wmse": 14.1139,
+    "aura_stft": 11.3579,
+    "aura_mrstft": 14.1353,
+    "bleedless": 39.3018,
+    "fullness": 26.7404
+   },
+   "vocals": {
+    "sdr": 11.0934,
+    "si_sdr": 10.6131,
+    "l1_freq": 39.6994,
+    "log_wmse": 14.1139,
+    "aura_stft": 11.348,
+    "aura_mrstft": 15.1817,
+    "bleedless": 32.1566,
+    "fullness": 22.1467
+   }
+  }
+ },
+ "bs_neo_inst_beta.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10418",
+  "fetched_at": "2026-09-08T13:58:46.477528+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.2516,
+    "si_sdr": 17.1516,
+    "l1_freq": 39.3986,
+    "log_wmse": 14.0475,
+    "aura_stft": 16.4648,
+    "aura_mrstft": 21.6578,
+    "bleedless": 40.0019,
+    "fullness": 34.5937
+   },
+   "vocals": {
+    "sdr": 10.9442,
+    "si_sdr": 10.5043,
+    "l1_freq": 37.025,
+    "log_wmse": 14.0474,
+    "aura_stft": 7.6473,
+    "aura_mrstft": 9.7138,
+    "bleedless": 22.8713,
+    "fullness": 16.1082
+   }
+  }
+ },
+ "bs_pope_4stem_09072026_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10412",
+  "fetched_at": "2026-09-08T13:58:47.051479+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 5.0231,
+    "si_sdr": 3.3197,
+    "l1_freq": 26.0042,
+    "log_wmse": 8.8673,
+    "aura_stft": 5.8286,
+    "aura_mrstft": 5.9901,
+    "bleedless": 23.1504,
+    "fullness": 12.1634
+   },
+   "bass": {
+    "sdr": 7.4481,
+    "si_sdr": 6.5344,
+    "l1_freq": 41.0445,
+    "log_wmse": 13.6917,
+    "aura_stft": 5.0711,
+    "aura_mrstft": 3.886,
+    "bleedless": 23.353,
+    "fullness": 17.1725
+   },
+   "drums": {
+    "sdr": 7.7484,
+    "si_sdr": 6.6948,
+    "l1_freq": 30.8083,
+    "log_wmse": 13.0691,
+    "aura_stft": 7.2608,
+    "aura_mrstft": 6.2834,
+    "bleedless": 17.5832,
+    "fullness": 15.7011
+   },
+   "other": {
+    "sdr": 3.994,
+    "si_sdr": 1.8213,
+    "l1_freq": 26.7301,
+    "log_wmse": 9.152,
+    "aura_stft": 5.2161,
+    "aura_mrstft": 7.287,
+    "bleedless": 14.7484,
+    "fullness": 15.9727
+   }
+  }
+ },
+ "bs_pope_4stem_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10432",
+  "fetched_at": "2026-09-08T13:58:47.654049+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 4.8609,
+    "si_sdr": 2.6019,
+    "l1_freq": 26.7457,
+    "log_wmse": 8.7227,
+    "aura_stft": 6.0646,
+    "aura_mrstft": 7.1321,
+    "bleedless": 22.1346,
+    "fullness": 14.7968
+   },
+   "bass": {
+    "sdr": 6.2306,
+    "si_sdr": 4.6553,
+    "l1_freq": 38.4043,
+    "log_wmse": 12.6734,
+    "aura_stft": 4.7821,
+    "aura_mrstft": 3.9019,
+    "bleedless": 17.3541,
+    "fullness": 17.7391
+   },
+   "drums": {
+    "sdr": 6.6512,
+    "si_sdr": 5.1918,
+    "l1_freq": 30.807,
+    "log_wmse": 12.2873,
+    "aura_stft": 7.0367,
+    "aura_mrstft": 7.244,
+    "bleedless": 18.0367,
+    "fullness": 17.6536
+   },
+   "other": {
+    "sdr": 3.1867,
+    "si_sdr": 0.9583,
+    "l1_freq": 26.2901,
+    "log_wmse": 8.4709,
+    "aura_stft": 5.8011,
+    "aura_mrstft": 8.0473,
+    "bleedless": 13.8509,
+    "fullness": 18.8745
+   }
+  }
+ },
+ "bs_pope_instvoc_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10433",
+  "fetched_at": "2026-09-08T13:58:48.224004+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.4515,
+    "si_sdr": 15.2979,
+    "l1_freq": 36.6968,
+    "log_wmse": 12.3449,
+    "aura_stft": 15.7266,
+    "aura_mrstft": 20.6751,
+    "bleedless": 35.5879,
+    "fullness": 36.8237
+   },
+   "vocals": {
+    "sdr": 9.252,
+    "si_sdr": 8.5957,
+    "l1_freq": 37.0971,
+    "log_wmse": 12.4462,
+    "aura_stft": 10.9943,
+    "aura_mrstft": 14.8344,
+    "bleedless": 24.5367,
+    "fullness": 26.2187
+   }
+  }
+ },
+ "bs_pope_vocals_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10434",
+  "fetched_at": "2026-09-08T13:58:48.806540+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.3152,
+    "si_sdr": 17.2125,
+    "l1_freq": 39.2919,
+    "log_wmse": 14.0798,
+    "aura_stft": 12.903,
+    "aura_mrstft": 16.1229,
+    "bleedless": 45.8382,
+    "fullness": 27.0862
+   },
+   "vocals": {
+    "sdr": 11.0079,
+    "si_sdr": 10.5726,
+    "l1_freq": 38.1775,
+    "log_wmse": 14.0799,
+    "aura_stft": 8.3988,
+    "aura_mrstft": 9.909,
+    "bleedless": 36.0367,
+    "fullness": 16.0422
+   }
+  }
+ },
+ "bs_resurrection2_quality_test_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10419",
+  "fetched_at": "2026-09-08T13:58:49.441697+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.9702,
+    "si_sdr": 17.8814,
+    "l1_freq": 40.6469,
+    "log_wmse": 14.6556,
+    "aura_stft": 12.6275,
+    "aura_mrstft": 17.217,
+    "bleedless": 47.2617,
+    "fullness": 27.8981
+   },
+   "vocals": {
+    "sdr": 11.6627,
+    "si_sdr": 11.2838,
+    "l1_freq": 39.5063,
+    "log_wmse": 14.6556,
+    "aura_stft": 8.8115,
+    "aura_mrstft": 10.4791,
+    "bleedless": 39.657,
+    "fullness": 16.0526
+   }
+  }
+ },
+ "bs_resurrection_inst_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10435",
+  "fetched_at": "2026-09-08T13:58:50.029250+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.9665,
+    "si_sdr": 16.8794,
+    "l1_freq": 38.8648,
+    "log_wmse": 13.7693,
+    "aura_stft": 16.6808,
+    "aura_mrstft": 22.8031,
+    "bleedless": 35.6478,
+    "fullness": 39.7478
+   },
+   "vocals": {
+    "sdr": 10.6586,
+    "si_sdr": 10.2338,
+    "l1_freq": 35.1401,
+    "log_wmse": 13.7687,
+    "aura_stft": 6.9616,
+    "aura_mrstft": 8.6513,
+    "bleedless": 20.0336,
+    "fullness": 14.7568
+   }
+  }
+ },
+ "bs_resurrection_inst_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10436",
+  "fetched_at": "2026-09-08T13:58:50.600736+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.2321,
+    "si_sdr": 17.1327,
+    "l1_freq": 39.3956,
+    "log_wmse": 14.0282,
+    "aura_stft": 16.5776,
+    "aura_mrstft": 21.9864,
+    "bleedless": 39.4525,
+    "fullness": 35.2654
+   },
+   "vocals": {
+    "sdr": 10.9247,
+    "si_sdr": 10.4863,
+    "l1_freq": 36.8456,
+    "log_wmse": 14.0281,
+    "aura_stft": 7.5733,
+    "aura_mrstft": 9.5743,
+    "bleedless": 22.4842,
+    "fullness": 15.956
+   }
+  }
+ },
+ "bs_resurrection_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10437",
+  "fetched_at": "2026-09-08T13:58:51.173042+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.6434,
+    "si_sdr": 17.5498,
+    "l1_freq": 39.7935,
+    "log_wmse": 14.3449,
+    "aura_stft": 12.9978,
+    "aura_mrstft": 16.3193,
+    "bleedless": 47.1967,
+    "fullness": 27.1003
+   },
+   "vocals": {
+    "sdr": 11.3362,
+    "si_sdr": 10.9204,
+    "l1_freq": 38.7931,
+    "log_wmse": 14.345,
+    "aura_stft": 7.8053,
+    "aura_mrstft": 9.5429,
+    "bleedless": 40.0599,
+    "fullness": 15.1268
+   }
+  }
+ },
+ "bs_revive1_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10438",
+  "fetched_at": "2026-09-08T13:58:51.752798+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.3405,
+    "si_sdr": 17.2446,
+    "l1_freq": 39.5152,
+    "log_wmse": 14.0913,
+    "aura_stft": 12.9633,
+    "aura_mrstft": 16.2416,
+    "bleedless": 45.58,
+    "fullness": 27.4911
+   },
+   "vocals": {
+    "sdr": 11.0333,
+    "si_sdr": 10.542,
+    "l1_freq": 38.4071,
+    "log_wmse": 14.0914,
+    "aura_stft": 7.7491,
+    "aura_mrstft": 9.6164,
+    "bleedless": 38.8096,
+    "fullness": 15.4754
+   }
+  }
+ },
+ "bs_revive2_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10439",
+  "fetched_at": "2026-09-08T13:58:52.353493+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.2784,
+    "si_sdr": 17.1827,
+    "l1_freq": 39.4869,
+    "log_wmse": 14.0337,
+    "aura_stft": 13.0096,
+    "aura_mrstft": 16.3187,
+    "bleedless": 44.8542,
+    "fullness": 27.7334
+   },
+   "vocals": {
+    "sdr": 10.9711,
+    "si_sdr": 10.4646,
+    "l1_freq": 38.2627,
+    "log_wmse": 14.0338,
+    "aura_stft": 7.6845,
+    "aura_mrstft": 9.4585,
+    "bleedless": 40.0765,
+    "fullness": 15.1232
+   }
+  }
+ },
+ "bs_revive3e_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10440",
+  "fetched_at": "2026-09-08T13:58:52.948261+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.2985,
+    "si_sdr": 17.1993,
+    "l1_freq": 38.4833,
+    "log_wmse": 14.0527,
+    "aura_stft": 12.2187,
+    "aura_mrstft": 15.2341,
+    "bleedless": 41.5053,
+    "fullness": 27.4712
+   },
+   "vocals": {
+    "sdr": 10.9912,
+    "si_sdr": 10.5006,
+    "l1_freq": 39.1368,
+    "log_wmse": 14.0527,
+    "aura_stft": 10.1959,
+    "aura_mrstft": 14.1032,
+    "bleedless": 30.7085,
+    "fullness": 21.3892
+   }
+  }
+ },
+ "bs_siamese_vocals_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10441",
+  "fetched_at": "2026-09-08T13:58:53.516898+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.7066,
+    "si_sdr": 17.6124,
+    "l1_freq": 40.0408,
+    "log_wmse": 14.416,
+    "aura_stft": 12.2597,
+    "aura_mrstft": 16.3437,
+    "bleedless": 47.8152,
+    "fullness": 26.8866
+   },
+   "vocals": {
+    "sdr": 11.3993,
+    "si_sdr": 10.9962,
+    "l1_freq": 39.1541,
+    "log_wmse": 14.4161,
+    "aura_stft": 8.625,
+    "aura_mrstft": 10.0735,
+    "bleedless": 39.6626,
+    "fullness": 15.6611
+   }
+  }
+ },
+ "bs_speech_alicen.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10443",
+  "fetched_at": "2026-09-08T13:58:54.160334+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 9.7168,
+    "si_sdr": 9.6358,
+    "l1_freq": 24.2086,
+    "log_wmse": 7.1383,
+    "aura_stft": 9.9551,
+    "aura_mrstft": 10.9088,
+    "bleedless": 20.2964,
+    "fullness": 44.3536
+   },
+   "vocals": {
+    "sdr": 3.4093,
+    "l1_freq": 20.2117,
+    "log_wmse": 7.1382,
+    "aura_stft": 3.052,
+    "aura_mrstft": 2.8953,
+    "bleedless": 21.7073,
+    "fullness": 6.7519
+   }
+  }
+ },
+ "demucs3_mmi.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10402",
+  "fetched_at": "2026-09-08T13:58:54.781477+00:00",
+  "stems": [
+   "instrum",
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.5332,
+    "si_sdr": 14.3452,
+    "l1_freq": 33.1372,
+    "log_wmse": 11.5621,
+    "aura_stft": 13.1398,
+    "aura_mrstft": 14.4578,
+    "bleedless": 32.1602,
+    "fullness": 27.1338
+   },
+   "vocals": {
+    "sdr": 8.2258,
+    "si_sdr": 7.408,
+    "l1_freq": 32.4106,
+    "log_wmse": 11.5621,
+    "aura_stft": 7.6246,
+    "aura_mrstft": 9.2334,
+    "bleedless": 20.3672,
+    "fullness": 16.8299
+   },
+   "bass": {
+    "sdr": 11.1775,
+    "si_sdr": 10.6376,
+    "l1_freq": 50.9653,
+    "log_wmse": 15.9624,
+    "aura_stft": 5.5918,
+    "aura_mrstft": 4.7338,
+    "bleedless": 21.3866,
+    "fullness": 20.6537
+   },
+   "drums": {
+    "sdr": 10.7034,
+    "si_sdr": 9.9421,
+    "l1_freq": 35.1006,
+    "log_wmse": 14.3914,
+    "aura_stft": 6.7756,
+    "aura_mrstft": 6.214,
+    "bleedless": 28.7117,
+    "fullness": 12.9164
+   },
+   "other": {
+    "sdr": 5.4243,
+    "si_sdr": 4.014,
+    "l1_freq": 30.2951,
+    "log_wmse": 10.4564,
+    "aura_stft": 6.1513,
+    "aura_mrstft": 8.4121,
+    "bleedless": 16.3732,
+    "fullness": 16.909
+   }
+  }
+ },
+ "demucs4_4stem.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10403",
+  "fetched_at": "2026-09-08T13:58:55.372532+00:00",
+  "stems": [
+   "instrum",
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.5565,
+    "si_sdr": 14.3705,
+    "l1_freq": 33.2769,
+    "log_wmse": 11.5864,
+    "aura_stft": 13.1177,
+    "aura_mrstft": 14.451,
+    "bleedless": 32.2468,
+    "fullness": 27.3351
+   },
+   "vocals": {
+    "sdr": 8.249,
+    "si_sdr": 7.4327,
+    "l1_freq": 32.5229,
+    "log_wmse": 11.5864,
+    "aura_stft": 7.791,
+    "aura_mrstft": 9.343,
+    "bleedless": 21.0427,
+    "fullness": 16.5053
+   },
+   "bass": {
+    "sdr": 11.7655,
+    "si_sdr": 11.4082,
+    "l1_freq": 52.6428,
+    "log_wmse": 16.5455,
+    "aura_stft": 6.0406,
+    "aura_mrstft": 5.1828,
+    "bleedless": 24.7153,
+    "fullness": 21.6786
+   },
+   "drums": {
+    "sdr": 10.8855,
+    "si_sdr": 10.0765,
+    "l1_freq": 35.0063,
+    "log_wmse": 14.5451,
+    "aura_stft": 7.1331,
+    "aura_mrstft": 6.2938,
+    "bleedless": 28.2489,
+    "fullness": 12.7617
+   },
+   "other": {
+    "sdr": 5.7419,
+    "si_sdr": 4.3847,
+    "l1_freq": 30.7393,
+    "log_wmse": 10.6066,
+    "aura_stft": 6.1224,
+    "aura_mrstft": 8.4007,
+    "bleedless": 16.405,
+    "fullness": 17.0896
+   }
+  }
+ },
+ "demucs4_ft_bass.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10408",
+  "fetched_at": "2026-09-08T13:58:55.978144+00:00",
+  "stems": [
+   "instrum",
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 12.6393,
+    "si_sdr": 12.3786,
+    "l1_freq": 23.7334,
+    "log_wmse": 9.7642,
+    "aura_stft": 8.8649,
+    "aura_mrstft": 10.7667,
+    "bleedless": 17.0512,
+    "fullness": 24.961
+   },
+   "vocals": {
+    "sdr": 6.3319,
+    "si_sdr": 5.0505,
+    "l1_freq": 23.6182,
+    "log_wmse": 9.7642,
+    "aura_stft": 5.9082,
+    "aura_mrstft": 7.26,
+    "bleedless": 10.4975,
+    "fullness": 17.9974
+   },
+   "bass": {
+    "sdr": 11.9604,
+    "si_sdr": 11.5791,
+    "l1_freq": 53.0485,
+    "log_wmse": 16.7209,
+    "aura_stft": 6.1589,
+    "aura_mrstft": 5.3042,
+    "bleedless": 25.6257,
+    "fullness": 21.3618
+   },
+   "drums": {
+    "sdr": 6.1858,
+    "si_sdr": 6.2569,
+    "l1_freq": 20.4836,
+    "log_wmse": 10.5642,
+    "aura_stft": 3.785,
+    "aura_mrstft": 2.4958,
+    "bleedless": 14.7696,
+    "fullness": 7.6529
+   },
+   "other": {
+    "sdr": 4.2138,
+    "si_sdr": 2.5437,
+    "l1_freq": 23.0582,
+    "log_wmse": 9.2891,
+    "aura_stft": 4.2246,
+    "aura_mrstft": 6.4377,
+    "bleedless": 9.4114,
+    "fullness": 21.3223
+   }
+  }
+ },
+ "demucs4_ft_drums.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10407",
+  "fetched_at": "2026-09-08T13:58:56.541332+00:00",
+  "stems": [
+   "instrum",
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 12.2822,
+    "si_sdr": 12.033,
+    "l1_freq": 27.8254,
+    "log_wmse": 9.5418,
+    "aura_stft": 9.9372,
+    "aura_mrstft": 12.3467,
+    "bleedless": 18.2696,
+    "fullness": 37.5268
+   },
+   "vocals": {
+    "sdr": 5.9747,
+    "si_sdr": 4.4258,
+    "l1_freq": 26.6442,
+    "log_wmse": 9.5418,
+    "aura_stft": 6.013,
+    "aura_mrstft": 7.1384,
+    "bleedless": 13.7323,
+    "fullness": 15.1191
+   },
+   "bass": {
+    "sdr": 6.3304,
+    "si_sdr": 9.6838,
+    "l1_freq": 34.5034,
+    "log_wmse": 13.407,
+    "aura_stft": 3.9364,
+    "aura_mrstft": 3.0975,
+    "bleedless": 11.9184,
+    "fullness": 13.3205
+   },
+   "drums": {
+    "sdr": 11.133,
+    "si_sdr": 10.2722,
+    "l1_freq": 35.4588,
+    "log_wmse": 14.6913,
+    "aura_stft": 7.389,
+    "aura_mrstft": 6.2767,
+    "bleedless": 28.7642,
+    "fullness": 13.6449
+   },
+   "other": {
+    "sdr": 2.5499,
+    "si_sdr": 1.3259,
+    "l1_freq": 22.1579,
+    "log_wmse": 7.8549,
+    "aura_stft": 4.4299,
+    "aura_mrstft": 6.5163,
+    "bleedless": 10.4328,
+    "fullness": 21.0546
+   }
+  }
+ },
+ "demucs4_ft_other.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10406",
+  "fetched_at": "2026-09-08T13:58:57.094014+00:00",
+  "stems": [
+   "instrum",
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.8059,
+    "si_sdr": 13.6021,
+    "l1_freq": 27.0436,
+    "log_wmse": 10.8705,
+    "aura_stft": 10.1715,
+    "aura_mrstft": 12.1127,
+    "bleedless": 23.1307,
+    "fullness": 24.6036
+   },
+   "vocals": {
+    "sdr": 7.4984,
+    "si_sdr": 6.5791,
+    "l1_freq": 28.0653,
+    "log_wmse": 10.8705,
+    "aura_stft": 6.9417,
+    "aura_mrstft": 8.6887,
+    "bleedless": 13.6346,
+    "fullness": 18.6903
+   },
+   "bass": {
+    "sdr": 8.7358,
+    "si_sdr": 10.0865,
+    "l1_freq": 40.2201,
+    "log_wmse": 15.2512,
+    "aura_stft": 3.7301,
+    "aura_mrstft": 3.3298,
+    "bleedless": 11.3632,
+    "fullness": 17.7185
+   },
+   "drums": {
+    "sdr": 7.9531,
+    "si_sdr": 8.689,
+    "l1_freq": 25.7945,
+    "log_wmse": 12.7789,
+    "aura_stft": 5.3929,
+    "aura_mrstft": 4.551,
+    "bleedless": 13.7707,
+    "fullness": 12.0639
+   },
+   "other": {
+    "sdr": 5.8509,
+    "si_sdr": 4.5,
+    "l1_freq": 30.9678,
+    "log_wmse": 10.6775,
+    "aura_stft": 6.2539,
+    "aura_mrstft": 8.5113,
+    "bleedless": 16.4593,
+    "fullness": 17.2733
+   }
+  }
+ },
+ "demucs4_ft_vocals.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10405",
+  "fetched_at": "2026-09-08T14:02:21.464448+00:00",
+  "stems": [
+   "instrum",
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.6926,
+    "si_sdr": 14.5116,
+    "l1_freq": 33.5533,
+    "log_wmse": 11.7075,
+    "aura_stft": 13.2355,
+    "aura_mrstft": 14.645,
+    "bleedless": 31.893,
+    "fullness": 27.8715
+   },
+   "vocals": {
+    "sdr": 8.3852,
+    "si_sdr": 7.5883,
+    "l1_freq": 32.8129,
+    "log_wmse": 11.7075,
+    "aura_stft": 7.9486,
+    "aura_mrstft": 9.6168,
+    "bleedless": 20.7635,
+    "fullness": 17.204
+   },
+   "bass": {
+    "sdr": 2.2495,
+    "si_sdr": 6.3959,
+    "l1_freq": 25.7045,
+    "log_wmse": 11.2521,
+    "aura_stft": 1.8913,
+    "aura_mrstft": 1.9516,
+    "bleedless": 9.5955,
+    "fullness": 9.9185
+   },
+   "drums": {
+    "sdr": 0.109,
+    "l1_freq": 15.0744,
+    "log_wmse": 7.9216,
+    "aura_stft": 1.1353,
+    "aura_mrstft": 1.6047,
+    "bleedless": 11.1662,
+    "fullness": 7.0878
+   },
+   "other": {
+    "sdr": 2.0269,
+    "l1_freq": 16.0716,
+    "log_wmse": 7.0811,
+    "aura_stft": 2.3084,
+    "aura_mrstft": 2.8762,
+    "bleedless": 7.3698,
+    "fullness": 10.3653
+   }
+  }
+ },
+ "demucs4_mvsep_vocals.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10404",
+  "fetched_at": "2026-09-08T14:02:24.435065+00:00",
+  "stems": [
+   "instrum",
+   "vocals",
+   "other"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.0943,
+    "si_sdr": 14.9259,
+    "l1_freq": 34.3644,
+    "log_wmse": 12.066,
+    "aura_stft": 13.128,
+    "aura_mrstft": 15.4051,
+    "bleedless": 33.5944,
+    "fullness": 28.2906
+   },
+   "vocals": {
+    "sdr": 8.7868,
+    "si_sdr": 8.0579,
+    "l1_freq": 33.4755,
+    "log_wmse": 12.066,
+    "aura_stft": 8.2833,
+    "aura_mrstft": 9.8753,
+    "bleedless": 21.0105,
+    "fullness": 17.6509
+   },
+   "other": {
+    "l1_freq": 12.2702,
+    "log_wmse": 4.9178,
+    "aura_stft": 3.9337,
+    "aura_mrstft": 5.9277,
+    "bleedless": 8.556,
+    "fullness": 21.595
+   }
+  }
+ },
+ "mbr_4stemlarge1_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10512",
+  "fetched_at": "2026-09-08T14:02:25.670508+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.6245,
+    "si_sdr": 7.8386,
+    "l1_freq": 33.5627,
+    "log_wmse": 11.9456,
+    "aura_stft": 7.1501,
+    "aura_mrstft": 7.5449,
+    "bleedless": 34.2477,
+    "fullness": 12.3042
+   },
+   "bass": {
+    "sdr": 9.3137,
+    "si_sdr": 7.9336,
+    "l1_freq": 48.0439,
+    "log_wmse": 15.1772,
+    "aura_stft": 5.1602,
+    "aura_mrstft": 4.2833,
+    "bleedless": 36.2167,
+    "fullness": 14.2606
+   },
+   "drums": {
+    "sdr": 9.7105,
+    "si_sdr": 8.7436,
+    "l1_freq": 35.0302,
+    "log_wmse": 14.4664,
+    "aura_stft": 6.3726,
+    "aura_mrstft": 5.7829,
+    "bleedless": 30.6587,
+    "fullness": 12.8391
+   },
+   "other": {
+    "sdr": 5.0519,
+    "si_sdr": 3.7996,
+    "l1_freq": 31.1688,
+    "log_wmse": 10.4601,
+    "aura_stft": 4.9263,
+    "aura_mrstft": 7.0816,
+    "bleedless": 20.6182,
+    "fullness": 14.3925
+   }
+  }
+ },
+ "mbr_4stemlarge2_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10513",
+  "fetched_at": "2026-09-08T14:02:26.325503+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.5065,
+    "si_sdr": 7.7132,
+    "l1_freq": 33.1416,
+    "log_wmse": 11.853,
+    "aura_stft": 7.67,
+    "aura_mrstft": 8.4578,
+    "bleedless": 26.9887,
+    "fullness": 14.7904
+   },
+   "bass": {
+    "sdr": 9.5854,
+    "si_sdr": 8.5767,
+    "l1_freq": 48.6456,
+    "log_wmse": 15.2883,
+    "aura_stft": 5.2645,
+    "aura_mrstft": 4.4142,
+    "bleedless": 31.9231,
+    "fullness": 15.29
+   },
+   "drums": {
+    "sdr": 9.657,
+    "si_sdr": 8.7604,
+    "l1_freq": 34.5102,
+    "log_wmse": 14.3624,
+    "aura_stft": 6.1251,
+    "aura_mrstft": 5.4783,
+    "bleedless": 29.8099,
+    "fullness": 12.7699
+   },
+   "other": {
+    "sdr": 5.4143,
+    "si_sdr": 4.1142,
+    "l1_freq": 30.9667,
+    "log_wmse": 10.5805,
+    "aura_stft": 5.1856,
+    "aura_mrstft": 7.4313,
+    "bleedless": 16.8523,
+    "fullness": 16.4731
+   }
+  }
+ },
+ "mbr_4stemxl1_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10514",
+  "fetched_at": "2026-09-08T14:02:26.921869+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.5682,
+    "si_sdr": 7.7757,
+    "l1_freq": 33.1068,
+    "log_wmse": 11.912,
+    "aura_stft": 6.9133,
+    "aura_mrstft": 7.35,
+    "bleedless": 31.0323,
+    "fullness": 12.4883
+   },
+   "bass": {
+    "sdr": 9.3637,
+    "si_sdr": 8.0199,
+    "l1_freq": 47.6841,
+    "log_wmse": 15.2769,
+    "aura_stft": 5.1228,
+    "aura_mrstft": 4.2069,
+    "bleedless": 33.5701,
+    "fullness": 16.0268
+   },
+   "drums": {
+    "sdr": 9.8276,
+    "si_sdr": 9.0281,
+    "l1_freq": 35.167,
+    "log_wmse": 14.6334,
+    "aura_stft": 6.7827,
+    "aura_mrstft": 6.4203,
+    "bleedless": 29.219,
+    "fullness": 13.284
+   },
+   "other": {
+    "sdr": 5.3076,
+    "si_sdr": 3.965,
+    "l1_freq": 31.1452,
+    "log_wmse": 10.6124,
+    "aura_stft": 4.9536,
+    "aura_mrstft": 6.9359,
+    "bleedless": 19.9117,
+    "fullness": 13.9455
+   }
+  }
+ },
+ "mbr_bgm_jasper.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10515",
+  "fetched_at": "2026-09-08T14:02:51.854200+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.8461,
+    "si_sdr": 16.7346,
+    "l1_freq": 38.0472,
+    "log_wmse": 13.6851,
+    "aura_stft": 11.2219,
+    "aura_mrstft": 13.9409,
+    "bleedless": 44.281,
+    "fullness": 25.2132
+   },
+   "vocals": {
+    "sdr": 10.5386,
+    "si_sdr": 10.0344,
+    "l1_freq": 37.6012,
+    "log_wmse": 13.6851,
+    "aura_stft": 9.0295,
+    "aura_mrstft": 10.6671,
+    "bleedless": 31.0262,
+    "fullness": 16.832
+   }
+  }
+ },
+ "mbr_bigbeta1_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10576",
+  "fetched_at": "2026-09-08T14:02:52.428291+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.17,
+    "si_sdr": 17.0633,
+    "l1_freq": 39.1473,
+    "log_wmse": 13.9881,
+    "aura_stft": 13.8152,
+    "aura_mrstft": 17.0151,
+    "bleedless": 44.6419,
+    "fullness": 27.5331
+   },
+   "vocals": {
+    "sdr": 10.8625,
+    "si_sdr": 10.4011,
+    "l1_freq": 38.2443,
+    "log_wmse": 13.9881,
+    "aura_stft": 8.0872,
+    "aura_mrstft": 10.0818,
+    "bleedless": 35.0123,
+    "fullness": 16.4551
+   }
+  }
+ },
+ "mbr_bigbeta2_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10577",
+  "fetched_at": "2026-09-08T14:02:53.114427+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.197,
+    "si_sdr": 17.0905,
+    "l1_freq": 39.1774,
+    "log_wmse": 14.0134,
+    "aura_stft": 13.7686,
+    "aura_mrstft": 16.9677,
+    "bleedless": 45.0402,
+    "fullness": 27.294
+   },
+   "vocals": {
+    "sdr": 10.8896,
+    "si_sdr": 10.4325,
+    "l1_freq": 38.3311,
+    "log_wmse": 14.0133,
+    "aura_stft": 8.2056,
+    "aura_mrstft": 10.1349,
+    "bleedless": 34.6033,
+    "fullness": 16.6486
+   }
+  }
+ },
+ "mbr_bigbeta3_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10578",
+  "fetched_at": "2026-09-08T14:02:53.764013+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.2563,
+    "si_sdr": 17.1505,
+    "l1_freq": 39.5944,
+    "log_wmse": 14.0581,
+    "aura_stft": 12.8923,
+    "aura_mrstft": 16.5196,
+    "bleedless": 45.919,
+    "fullness": 27.7603
+   },
+   "vocals": {
+    "sdr": 10.9488,
+    "si_sdr": 10.503,
+    "l1_freq": 38.7204,
+    "log_wmse": 14.058,
+    "aura_stft": 9.0228,
+    "aura_mrstft": 10.3999,
+    "bleedless": 36.3211,
+    "fullness": 16.2603
+   }
+  }
+ },
+ "mbr_bigbeta4_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10579",
+  "fetched_at": "2026-09-08T14:02:54.498342+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.0845,
+    "si_sdr": 16.9746,
+    "l1_freq": 38.337,
+    "log_wmse": 13.8979,
+    "aura_stft": 12.1665,
+    "aura_mrstft": 14.8735,
+    "bleedless": 45.0144,
+    "fullness": 26.2076
+   },
+   "vocals": {
+    "sdr": 10.777,
+    "si_sdr": 10.3302,
+    "l1_freq": 39.0079,
+    "log_wmse": 13.8978,
+    "aura_stft": 9.3323,
+    "aura_mrstft": 11.7199,
+    "bleedless": 34.1479,
+    "fullness": 17.9642
+   }
+  }
+ },
+ "mbr_bigbeta5e_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10580",
+  "fetched_at": "2026-09-08T14:02:55.304249+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.977,
+    "si_sdr": 16.8714,
+    "l1_freq": 37.792,
+    "log_wmse": 13.8123,
+    "aura_stft": 12.6735,
+    "aura_mrstft": 14.694,
+    "bleedless": 46.2791,
+    "fullness": 25.5713
+   },
+   "vocals": {
+    "sdr": 10.6695,
+    "si_sdr": 10.2028,
+    "l1_freq": 39.0985,
+    "log_wmse": 13.8123,
+    "aura_stft": 10.0764,
+    "aura_mrstft": 13.6364,
+    "bleedless": 32.1393,
+    "fullness": 20.7468
+   }
+  }
+ },
+ "mbr_bigbeta6_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10581",
+  "fetched_at": "2026-09-08T14:02:56.027131+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.3656,
+    "si_sdr": 17.2651,
+    "l1_freq": 39.9254,
+    "log_wmse": 14.1606,
+    "aura_stft": 13.4305,
+    "aura_mrstft": 16.6923,
+    "bleedless": 46.2028,
+    "fullness": 27.7439
+   },
+   "vocals": {
+    "sdr": 11.0582,
+    "si_sdr": 10.6118,
+    "l1_freq": 39.0038,
+    "log_wmse": 14.1606,
+    "aura_stft": 8.1236,
+    "aura_mrstft": 9.9743,
+    "bleedless": 38.1588,
+    "fullness": 16.1858
+   }
+  }
+ },
+ "mbr_bigbeta6x_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10582",
+  "fetched_at": "2026-09-08T14:02:56.693374+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.4223,
+    "si_sdr": 17.3223,
+    "l1_freq": 39.8913,
+    "log_wmse": 14.2106,
+    "aura_stft": 13.455,
+    "aura_mrstft": 16.7783,
+    "bleedless": 44.7388,
+    "fullness": 28.6505
+   },
+   "vocals": {
+    "sdr": 11.1148,
+    "si_sdr": 10.6672,
+    "l1_freq": 39.2812,
+    "log_wmse": 14.2106,
+    "aura_stft": 9.2341,
+    "aura_mrstft": 11.4565,
+    "bleedless": 35.1323,
+    "fullness": 17.7563
+   }
+  }
+ },
+ "mbr_bigbeta7_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10516",
+  "fetched_at": "2026-09-08T14:02:57.467713+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.4253,
+    "si_sdr": 17.3255,
+    "l1_freq": 40.0595,
+    "log_wmse": 14.2199,
+    "aura_stft": 12.6715,
+    "aura_mrstft": 16.5646,
+    "bleedless": 46.9008,
+    "fullness": 27.392
+   },
+   "vocals": {
+    "sdr": 11.1179,
+    "si_sdr": 10.6805,
+    "l1_freq": 39.1315,
+    "log_wmse": 14.2199,
+    "aura_stft": 8.8381,
+    "aura_mrstft": 10.3235,
+    "bleedless": 38.7188,
+    "fullness": 16.1938
+   }
+  }
+ },
+ "mbr_bigsyhft1fast.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10517",
+  "fetched_at": "2026-09-08T14:02:58.160389+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.219,
+    "si_sdr": 17.1151,
+    "l1_freq": 39.6544,
+    "log_wmse": 14.032,
+    "aura_stft": 13.0353,
+    "aura_mrstft": 16.6785,
+    "bleedless": 45.1208,
+    "fullness": 28.3247
+   },
+   "vocals": {
+    "sdr": 10.9115,
+    "si_sdr": 10.4563,
+    "l1_freq": 38.5472,
+    "log_wmse": 14.032,
+    "aura_stft": 8.9731,
+    "aura_mrstft": 10.3594,
+    "bleedless": 36.2574,
+    "fullness": 16.3505
+   }
+  }
+ },
+ "mbr_deux_becruily.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10583",
+  "fetched_at": "2026-09-08T14:02:58.717341+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.5161,
+    "si_sdr": 17.4186,
+    "l1_freq": 40.0988,
+    "log_wmse": 14.2525,
+    "aura_stft": 16.5913,
+    "aura_mrstft": 22.015,
+    "bleedless": 41.8969,
+    "fullness": 33.5674
+   },
+   "vocals": {
+    "sdr": 11.3596,
+    "si_sdr": 10.9727,
+    "l1_freq": 40.2839,
+    "log_wmse": 14.3827,
+    "aura_stft": 11.6069,
+    "aura_mrstft": 15.4388,
+    "bleedless": 29.7883,
+    "fullness": 22.8106
+   }
+  }
+ },
+ "mbr_duality1_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10518",
+  "fetched_at": "2026-09-08T14:02:59.282521+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.1419,
+    "si_sdr": 17.0388,
+    "l1_freq": 37.9263,
+    "log_wmse": 13.9643,
+    "aura_stft": 11.8157,
+    "aura_mrstft": 14.2193,
+    "bleedless": 45.3995,
+    "fullness": 24.963
+   },
+   "vocals": {
+    "sdr": 10.8344,
+    "si_sdr": 10.3916,
+    "l1_freq": 39.3788,
+    "log_wmse": 13.9643,
+    "aura_stft": 10.9338,
+    "aura_mrstft": 13.579,
+    "bleedless": 33.789,
+    "fullness": 19.2503
+   }
+  }
+ },
+ "mbr_gen_jazzpear.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10519",
+  "fetched_at": "2026-09-08T14:02:59.870787+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 8.9217,
+    "si_sdr": 8.8137,
+    "l1_freq": 22.9209,
+    "log_wmse": 6.4588,
+    "aura_stft": 10.2148,
+    "aura_mrstft": 10.6601,
+    "bleedless": 19.1242,
+    "fullness": 43.4122
+   },
+   "vocals": {
+    "sdr": 2.6141,
+    "l1_freq": 18.6512,
+    "log_wmse": 6.4588,
+    "aura_stft": 2.5541,
+    "aura_mrstft": 2.7136,
+    "bleedless": 18.5769,
+    "fullness": 6.4655
+   }
+  }
+ },
+ "mbr_hybrid_arch_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10520",
+  "fetched_at": "2026-09-08T14:03:00.430661+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 13.5075,
+    "si_sdr": 13.282,
+    "l1_freq": 32.218,
+    "log_wmse": 10.6326,
+    "aura_stft": 13.7596,
+    "aura_mrstft": 16.0425,
+    "bleedless": 34.1098,
+    "fullness": 29.575
+   },
+   "vocals": {
+    "sdr": 7.0747,
+    "si_sdr": 6.0721,
+    "l1_freq": 31.8516,
+    "log_wmse": 10.5007,
+    "aura_stft": 9.3166,
+    "aura_mrstft": 11.6429,
+    "bleedless": 20.86,
+    "fullness": 21.7552
+   }
+  }
+ },
+ "mbr_inst1+_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10588",
+  "fetched_at": "2026-09-08T14:03:00.954697+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.7044,
+    "si_sdr": 16.5942,
+    "l1_freq": 39.032,
+    "log_wmse": 13.587,
+    "aura_stft": 16.1251,
+    "aura_mrstft": 20.8573,
+    "bleedless": 38.5675,
+    "fullness": 34.9956
+   },
+   "vocals": {
+    "sdr": 10.3967,
+    "si_sdr": 9.8961,
+    "l1_freq": 36.3967,
+    "log_wmse": 13.5868,
+    "aura_stft": 7.6172,
+    "aura_mrstft": 9.2491,
+    "bleedless": 28.3916,
+    "fullness": 15.4488
+   }
+  }
+ },
+ "mbr_inst1_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10587",
+  "fetched_at": "2026-09-08T14:03:01.464236+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.542,
+    "si_sdr": 16.4241,
+    "l1_freq": 38.6049,
+    "log_wmse": 13.4483,
+    "aura_stft": 16.5337,
+    "aura_mrstft": 21.2942,
+    "bleedless": 37.1692,
+    "fullness": 35.9964
+   },
+   "vocals": {
+    "sdr": 10.2343,
+    "si_sdr": 9.7312,
+    "l1_freq": 36.0275,
+    "log_wmse": 13.448,
+    "aura_stft": 7.6464,
+    "aura_mrstft": 9.5529,
+    "bleedless": 24.6104,
+    "fullness": 15.9777
+   }
+  }
+ },
+ "mbr_inst1e+_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10590",
+  "fetched_at": "2026-09-08T14:03:02.010539+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.6309,
+    "si_sdr": 16.5224,
+    "l1_freq": 38.9703,
+    "log_wmse": 13.5131,
+    "aura_stft": 16.4827,
+    "aura_mrstft": 21.6992,
+    "bleedless": 37.5364,
+    "fullness": 36.8929
+   },
+   "vocals": {
+    "sdr": 10.3233,
+    "si_sdr": 9.8293,
+    "l1_freq": 35.7327,
+    "log_wmse": 13.5129,
+    "aura_stft": 7.3263,
+    "aura_mrstft": 8.8566,
+    "bleedless": 27.3321,
+    "fullness": 15.0494
+   }
+  }
+ },
+ "mbr_inst1e_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10589",
+  "fetched_at": "2026-09-08T14:03:02.557035+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.3554,
+    "si_sdr": 16.2426,
+    "l1_freq": 38.2523,
+    "log_wmse": 13.2629,
+    "aura_stft": 16.4106,
+    "aura_mrstft": 21.7655,
+    "bleedless": 34.742,
+    "fullness": 39.6459
+   },
+   "vocals": {
+    "sdr": 10.0476,
+    "si_sdr": 9.556,
+    "l1_freq": 34.3406,
+    "log_wmse": 13.2626,
+    "aura_stft": 6.8517,
+    "aura_mrstft": 8.4975,
+    "bleedless": 23.3333,
+    "fullness": 14.7382
+   }
+  }
+ },
+ "mbr_inst2_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10591",
+  "fetched_at": "2026-09-08T14:03:03.148112+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.8351,
+    "si_sdr": 16.7208,
+    "l1_freq": 38.778,
+    "log_wmse": 13.6924,
+    "aura_stft": 16.1553,
+    "aura_mrstft": 20.2246,
+    "bleedless": 40.368,
+    "fullness": 32.638
+   },
+   "vocals": {
+    "sdr": 10.5276,
+    "si_sdr": 10.0421,
+    "l1_freq": 36.9262,
+    "log_wmse": 13.6923,
+    "aura_stft": 7.5703,
+    "aura_mrstft": 9.6569,
+    "bleedless": 27.665,
+    "fullness": 16.1589
+   }
+  }
+ },
+ "mbr_inst_1652_essid.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10584",
+  "fetched_at": "2026-09-08T14:03:03.791242+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.8445,
+    "si_sdr": 15.7277,
+    "l1_freq": 36.9014,
+    "log_wmse": 12.7947,
+    "aura_stft": 12.4211,
+    "aura_mrstft": 15.1534,
+    "bleedless": 39.8197,
+    "fullness": 27.6485
+   },
+   "vocals": {
+    "sdr": 9.5366,
+    "si_sdr": 8.8111,
+    "l1_freq": 35.2936,
+    "log_wmse": 12.7943,
+    "aura_stft": 7.5415,
+    "aura_mrstft": 9.0432,
+    "bleedless": 27.4063,
+    "fullness": 15.0427
+   }
+  }
+ },
+ "mbr_inst_1681_essid.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10585",
+  "fetched_at": "2026-09-08T14:03:04.420465+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.1081,
+    "si_sdr": 15.998,
+    "l1_freq": 37.625,
+    "log_wmse": 13.0307,
+    "aura_stft": 12.5317,
+    "aura_mrstft": 15.3535,
+    "bleedless": 42.0827,
+    "fullness": 27.3138
+   },
+   "vocals": {
+    "sdr": 9.8004,
+    "si_sdr": 9.071,
+    "l1_freq": 35.9907,
+    "log_wmse": 13.0305,
+    "aura_stft": 7.5694,
+    "aura_mrstft": 9.078,
+    "bleedless": 29.8474,
+    "fullness": 14.8008
+   }
+  }
+ },
+ "mbr_inst_becruily.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10586",
+  "fetched_at": "2026-09-08T14:17:43.325172+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4385,
+    "si_sdr": 16.326,
+    "l1_freq": 38.7039,
+    "log_wmse": 13.3389,
+    "aura_stft": 14.7288,
+    "aura_mrstft": 20.3141,
+    "bleedless": 39.3064,
+    "fullness": 34.5615
+   },
+   "vocals": {
+    "sdr": 10.1308,
+    "si_sdr": 9.6048,
+    "l1_freq": 35.7739,
+    "log_wmse": 13.3386,
+    "aura_stft": 8.2725,
+    "aura_mrstft": 9.3498,
+    "bleedless": 26.6886,
+    "fullness": 15.6256
+   }
+  }
+ },
+ "mbr_inst_metal_prev_meskvlla33.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10521",
+  "fetched_at": "2026-09-08T14:17:43.816515+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.3295,
+    "si_sdr": 16.2101,
+    "l1_freq": 37.8114,
+    "log_wmse": 13.2409,
+    "aura_stft": 13.9514,
+    "aura_mrstft": 17.8436,
+    "bleedless": 38.1529,
+    "fullness": 31.7487
+   },
+   "vocals": {
+    "sdr": 10.022,
+    "si_sdr": 9.4134,
+    "l1_freq": 36.2882,
+    "log_wmse": 13.2408,
+    "aura_stft": 8.9331,
+    "aura_mrstft": 10.8984,
+    "bleedless": 25.6842,
+    "fullness": 17.573
+   }
+  }
+ },
+ "mbr_inst_rifforge_meskvlla33.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10522",
+  "fetched_at": "2026-09-08T14:17:44.256975+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.6783,
+    "si_sdr": 16.564,
+    "l1_freq": 38.3171,
+    "log_wmse": 13.5653,
+    "aura_stft": 12.8629,
+    "aura_mrstft": 15.9566,
+    "bleedless": 46.3114,
+    "fullness": 26.5451
+   },
+   "vocals": {
+    "sdr": 10.3707,
+    "si_sdr": 9.8542,
+    "l1_freq": 37.4063,
+    "log_wmse": 13.5652,
+    "aura_stft": 8.776,
+    "aura_mrstft": 10.3684,
+    "bleedless": 28.1774,
+    "fullness": 16.4353
+   }
+  }
+ },
+ "mbr_instbv1_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10523",
+  "fetched_at": "2026-09-08T14:17:44.766469+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4755,
+    "si_sdr": 16.3646,
+    "l1_freq": 38.7904,
+    "log_wmse": 13.3762,
+    "aura_stft": 15.6246,
+    "aura_mrstft": 20.7904,
+    "bleedless": 38.1736,
+    "fullness": 35.6396
+   },
+   "vocals": {
+    "sdr": 10.1679,
+    "si_sdr": 9.6538,
+    "l1_freq": 35.7565,
+    "log_wmse": 13.376,
+    "aura_stft": 8.2112,
+    "aura_mrstft": 9.3247,
+    "bleedless": 26.0787,
+    "fullness": 15.6638
+   }
+  }
+ },
+ "mbr_instbv2_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10524",
+  "fetched_at": "2026-09-08T14:17:45.293157+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4211,
+    "si_sdr": 16.3102,
+    "l1_freq": 38.6721,
+    "log_wmse": 13.3322,
+    "aura_stft": 15.8765,
+    "aura_mrstft": 20.5153,
+    "bleedless": 37.4517,
+    "fullness": 35.6341
+   },
+   "vocals": {
+    "sdr": 10.1135,
+    "si_sdr": 9.5941,
+    "l1_freq": 35.6294,
+    "log_wmse": 13.3321,
+    "aura_stft": 8.0014,
+    "aura_mrstft": 9.1301,
+    "bleedless": 25.5892,
+    "fullness": 15.3847
+   }
+  }
+ },
+ "mbr_instbv3_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10525",
+  "fetched_at": "2026-09-08T14:17:45.784333+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.5833,
+    "si_sdr": 16.4706,
+    "l1_freq": 38.856,
+    "log_wmse": 13.4826,
+    "aura_stft": 14.8218,
+    "aura_mrstft": 19.3157,
+    "bleedless": 40.8412,
+    "fullness": 32.6077
+   },
+   "vocals": {
+    "sdr": 10.2756,
+    "si_sdr": 9.7665,
+    "l1_freq": 36.4265,
+    "log_wmse": 13.4825,
+    "aura_stft": 8.4866,
+    "aura_mrstft": 9.7261,
+    "bleedless": 28.2477,
+    "fullness": 15.6908
+   }
+  }
+ },
+ "mbr_instflowersv10_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10526",
+  "fetched_at": "2026-09-08T14:17:46.375592+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.9319,
+    "si_sdr": 16.8236,
+    "l1_freq": 38.793,
+    "log_wmse": 13.7332,
+    "aura_stft": 16.8216,
+    "aura_mrstft": 22.4567,
+    "bleedless": 36.3264,
+    "fullness": 37.2331
+   },
+   "vocals": {
+    "sdr": 10.6246,
+    "si_sdr": 10.1733,
+    "l1_freq": 35.9275,
+    "log_wmse": 13.7332,
+    "aura_stft": 7.265,
+    "aura_mrstft": 9.2653,
+    "bleedless": 23.4403,
+    "fullness": 15.8453
+   }
+  }
+ },
+ "mbr_instfv10_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10544",
+  "fetched_at": "2026-09-08T14:17:46.830654+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.6041,
+    "si_sdr": 16.4904,
+    "l1_freq": 38.827,
+    "log_wmse": 13.5044,
+    "aura_stft": 14.8832,
+    "aura_mrstft": 18.9963,
+    "bleedless": 39.6963,
+    "fullness": 32.9751
+   },
+   "vocals": {
+    "sdr": 10.2965,
+    "si_sdr": 9.7899,
+    "l1_freq": 36.5493,
+    "log_wmse": 13.5043,
+    "aura_stft": 8.4346,
+    "aura_mrstft": 9.7486,
+    "bleedless": 27.9912,
+    "fullness": 15.6821
+   }
+  }
+ },
+ "mbr_instfv1_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10527",
+  "fetched_at": "2026-09-08T14:17:47.371797+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4514,
+    "si_sdr": 16.3385,
+    "l1_freq": 38.6213,
+    "log_wmse": 13.3595,
+    "aura_stft": 16.7205,
+    "aura_mrstft": 22.0512,
+    "bleedless": 35.8095,
+    "fullness": 38.3564
+   },
+   "vocals": {
+    "sdr": 10.1438,
+    "si_sdr": 9.6471,
+    "l1_freq": 35.2164,
+    "log_wmse": 13.3593,
+    "aura_stft": 7.2983,
+    "aura_mrstft": 8.9195,
+    "bleedless": 24.1429,
+    "fullness": 15.2845
+   }
+  }
+ },
+ "mbr_instfv2_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10528",
+  "fetched_at": "2026-09-08T14:17:47.771824+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4425,
+    "si_sdr": 16.3286,
+    "l1_freq": 38.5122,
+    "log_wmse": 13.3481,
+    "aura_stft": 16.6772,
+    "aura_mrstft": 22.0517,
+    "bleedless": 35.5854,
+    "fullness": 38.7202
+   },
+   "vocals": {
+    "sdr": 10.1348,
+    "si_sdr": 9.6435,
+    "l1_freq": 35.0027,
+    "log_wmse": 13.3478,
+    "aura_stft": 7.2269,
+    "aura_mrstft": 8.8882,
+    "bleedless": 23.1283,
+    "fullness": 15.3334
+   }
+  }
+ },
+ "mbr_instfv3_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10529",
+  "fetched_at": "2026-09-08T14:17:48.193328+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4163,
+    "si_sdr": 16.3027,
+    "l1_freq": 38.4254,
+    "log_wmse": 13.3222,
+    "aura_stft": 16.587,
+    "aura_mrstft": 21.9727,
+    "bleedless": 34.9063,
+    "fullness": 39.4812
+   },
+   "vocals": {
+    "sdr": 10.1086,
+    "si_sdr": 9.6177,
+    "l1_freq": 34.7559,
+    "log_wmse": 13.3218,
+    "aura_stft": 7.0508,
+    "aura_mrstft": 8.731,
+    "bleedless": 23.2794,
+    "fullness": 15.0964
+   }
+  }
+ },
+ "mbr_instfv4_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10530",
+  "fetched_at": "2026-09-08T14:17:48.602010+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.2054,
+    "si_sdr": 16.0989,
+    "l1_freq": 37.6851,
+    "log_wmse": 13.1386,
+    "aura_stft": 15.7649,
+    "aura_mrstft": 20.1697,
+    "bleedless": 41.9902,
+    "fullness": 31.3523
+   },
+   "vocals": {
+    "sdr": 9.8967,
+    "si_sdr": 9.3635,
+    "l1_freq": 35.1577,
+    "log_wmse": 13.1375,
+    "aura_stft": 7.9083,
+    "aura_mrstft": 9.8111,
+    "bleedless": 19.0917,
+    "fullness": 17.3239
+   }
+  }
+ },
+ "mbr_instfv4n_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10531",
+  "fetched_at": "2026-09-08T14:17:49.007496+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.2577,
+    "si_sdr": 15.7226,
+    "l1_freq": 34.4238,
+    "log_wmse": 13.0995,
+    "aura_stft": 14.9378,
+    "aura_mrstft": 19.9704,
+    "bleedless": 28.5796,
+    "fullness": 40.3624
+   },
+   "vocals": {
+    "sdr": 8.9502,
+    "si_sdr": 8.277,
+    "l1_freq": 31.571,
+    "log_wmse": 13.0995,
+    "aura_stft": 6.8012,
+    "aura_mrstft": 8.31,
+    "bleedless": 12.5813,
+    "fullness": 15.3858
+   }
+  }
+ },
+ "mbr_instfv5_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10532",
+  "fetched_at": "2026-09-08T14:17:49.408777+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4486,
+    "si_sdr": 16.3378,
+    "l1_freq": 38.4227,
+    "log_wmse": 13.3772,
+    "aura_stft": 16.6242,
+    "aura_mrstft": 21.8654,
+    "bleedless": 33.5447,
+    "fullness": 39.4638
+   },
+   "vocals": {
+    "sdr": 10.1411,
+    "si_sdr": 9.638,
+    "l1_freq": 35.2571,
+    "log_wmse": 13.3772,
+    "aura_stft": 7.6542,
+    "aura_mrstft": 9.0479,
+    "bleedless": 19.7045,
+    "fullness": 15.7704
+   }
+  }
+ },
+ "mbr_instfv5n_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10533",
+  "fetched_at": "2026-09-08T14:17:49.816947+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4203,
+    "si_sdr": 16.3173,
+    "l1_freq": 38.1593,
+    "log_wmse": 13.3664,
+    "aura_stft": 16.5909,
+    "aura_mrstft": 21.9325,
+    "bleedless": 32.7139,
+    "fullness": 40.4981
+   },
+   "vocals": {
+    "sdr": 10.1128,
+    "si_sdr": 9.6124,
+    "l1_freq": 34.8795,
+    "log_wmse": 13.3664,
+    "aura_stft": 7.3574,
+    "aura_mrstft": 8.9024,
+    "bleedless": 18.2575,
+    "fullness": 15.7109
+   }
+  }
+ },
+ "mbr_instfv6_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10534",
+  "fetched_at": "2026-09-08T14:17:50.220553+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.446,
+    "si_sdr": 16.3315,
+    "l1_freq": 38.6566,
+    "log_wmse": 13.3568,
+    "aura_stft": 16.2177,
+    "aura_mrstft": 21.0619,
+    "bleedless": 34.9797,
+    "fullness": 37.7115
+   },
+   "vocals": {
+    "sdr": 10.1385,
+    "si_sdr": 9.6274,
+    "l1_freq": 35.5682,
+    "log_wmse": 13.3568,
+    "aura_stft": 7.8994,
+    "aura_mrstft": 9.1074,
+    "bleedless": 23.2468,
+    "fullness": 15.5438
+   }
+  }
+ },
+ "mbr_instfv6n_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10535",
+  "fetched_at": "2026-09-08T14:17:50.637080+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.3783,
+    "si_sdr": 16.2621,
+    "l1_freq": 38.2918,
+    "log_wmse": 13.287,
+    "aura_stft": 16.479,
+    "aura_mrstft": 21.8578,
+    "bleedless": 32.5992,
+    "fullness": 41.7329
+   },
+   "vocals": {
+    "sdr": 10.0708,
+    "si_sdr": 9.5789,
+    "l1_freq": 34.4808,
+    "log_wmse": 13.2869,
+    "aura_stft": 6.9379,
+    "aura_mrstft": 8.5862,
+    "bleedless": 21.8668,
+    "fullness": 14.9467
+   }
+  }
+ },
+ "mbr_instfv7+_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10537",
+  "fetched_at": "2026-09-08T14:17:51.072524+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4852,
+    "si_sdr": 16.4288,
+    "l1_freq": 37.6088,
+    "log_wmse": 13.5187,
+    "aura_stft": 13.4438,
+    "aura_mrstft": 16.6984,
+    "bleedless": 39.2072,
+    "fullness": 29.8096
+   },
+   "vocals": {
+    "sdr": 10.1777,
+    "si_sdr": 9.6434,
+    "l1_freq": 36.8239,
+    "log_wmse": 13.5187,
+    "aura_stft": 8.6201,
+    "aura_mrstft": 10.4009,
+    "bleedless": 23.3319,
+    "fullness": 16.8827
+   }
+  }
+ },
+ "mbr_instfv7_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10536",
+  "fetched_at": "2026-09-08T14:17:51.477649+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4661,
+    "si_sdr": 16.352,
+    "l1_freq": 38.7021,
+    "log_wmse": 13.3713,
+    "aura_stft": 16.5155,
+    "aura_mrstft": 21.6488,
+    "bleedless": 34.773,
+    "fullness": 38.6491
+   },
+   "vocals": {
+    "sdr": 10.1585,
+    "si_sdr": 9.6557,
+    "l1_freq": 35.474,
+    "log_wmse": 13.3713,
+    "aura_stft": 7.7439,
+    "aura_mrstft": 9.0706,
+    "bleedless": 23.2014,
+    "fullness": 15.539
+   }
+  }
+ },
+ "mbr_instfv7n_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10538",
+  "fetched_at": "2026-09-08T14:17:51.885161+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4365,
+    "si_sdr": 16.3217,
+    "l1_freq": 38.5755,
+    "log_wmse": 13.3428,
+    "aura_stft": 16.7508,
+    "aura_mrstft": 22.1869,
+    "bleedless": 33.8526,
+    "fullness": 40.2604
+   },
+   "vocals": {
+    "sdr": 10.129,
+    "si_sdr": 9.6339,
+    "l1_freq": 35.0467,
+    "log_wmse": 13.3428,
+    "aura_stft": 7.3314,
+    "aura_mrstft": 8.8752,
+    "bleedless": 22.5223,
+    "fullness": 15.2882
+   }
+  }
+ },
+ "mbr_instfv7z_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10539",
+  "fetched_at": "2026-09-08T14:17:52.298416+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.6188,
+    "si_sdr": 16.5128,
+    "l1_freq": 38.6459,
+    "log_wmse": 13.5225,
+    "aura_stft": 14.4746,
+    "aura_mrstft": 18.3083,
+    "bleedless": 44.9,
+    "fullness": 29.3627
+   },
+   "vocals": {
+    "sdr": 10.3108,
+    "si_sdr": 9.7975,
+    "l1_freq": 36.8051,
+    "log_wmse": 13.5222,
+    "aura_stft": 8.6689,
+    "aura_mrstft": 10.1981,
+    "bleedless": 25.9035,
+    "fullness": 16.2984
+   }
+  }
+ },
+ "mbr_instfv8_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10540",
+  "fetched_at": "2026-09-08T14:17:52.741075+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.5576,
+    "si_sdr": 16.4453,
+    "l1_freq": 38.8632,
+    "log_wmse": 13.4562,
+    "aura_stft": 15.0789,
+    "aura_mrstft": 19.8487,
+    "bleedless": 39.9826,
+    "fullness": 33.5869
+   },
+   "vocals": {
+    "sdr": 10.2499,
+    "si_sdr": 9.7403,
+    "l1_freq": 36.2312,
+    "log_wmse": 13.456,
+    "aura_stft": 8.4149,
+    "aura_mrstft": 9.6133,
+    "bleedless": 27.8799,
+    "fullness": 15.6152
+   }
+  }
+ },
+ "mbr_instfv8b_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10541",
+  "fetched_at": "2026-09-08T14:17:53.154234+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.5856,
+    "si_sdr": 16.4715,
+    "l1_freq": 38.832,
+    "log_wmse": 13.4864,
+    "aura_stft": 15.0742,
+    "aura_mrstft": 19.3822,
+    "bleedless": 36.7627,
+    "fullness": 34.9938
+   },
+   "vocals": {
+    "sdr": 10.278,
+    "si_sdr": 9.7707,
+    "l1_freq": 36.4078,
+    "log_wmse": 13.4862,
+    "aura_stft": 8.3991,
+    "aura_mrstft": 9.6649,
+    "bleedless": 27.5464,
+    "fullness": 15.6322
+   }
+  }
+ },
+ "mbr_instfv9_2_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10542",
+  "fetched_at": "2026-09-08T14:17:53.564750+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.5567,
+    "si_sdr": 16.4438,
+    "l1_freq": 38.3251,
+    "log_wmse": 13.4404,
+    "aura_stft": 16.7633,
+    "aura_mrstft": 21.9414,
+    "bleedless": 35.945,
+    "fullness": 37.3638
+   },
+   "vocals": {
+    "sdr": 10.249,
+    "si_sdr": 9.7483,
+    "l1_freq": 35.4591,
+    "log_wmse": 13.4403,
+    "aura_stft": 7.421,
+    "aura_mrstft": 9.5425,
+    "bleedless": 19.898,
+    "fullness": 16.533
+   }
+  }
+ },
+ "mbr_instfv9_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10543",
+  "fetched_at": "2026-09-08T14:17:53.984682+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.6202,
+    "si_sdr": 16.519,
+    "l1_freq": 38.5155,
+    "log_wmse": 13.5299,
+    "aura_stft": 14.2751,
+    "aura_mrstft": 17.9718,
+    "bleedless": 45.1704,
+    "fullness": 28.8987
+   },
+   "vocals": {
+    "sdr": 10.312,
+    "si_sdr": 9.7965,
+    "l1_freq": 36.8938,
+    "log_wmse": 13.5295,
+    "aura_stft": 8.7545,
+    "aura_mrstft": 10.3568,
+    "bleedless": 25.1956,
+    "fullness": 16.5319
+   }
+  }
+ },
+ "mbr_instfvx_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10545",
+  "fetched_at": "2026-09-08T14:17:54.397304+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.476,
+    "si_sdr": 16.3627,
+    "l1_freq": 38.7346,
+    "log_wmse": 13.3796,
+    "aura_stft": 16.3974,
+    "aura_mrstft": 21.4984,
+    "bleedless": 35.2895,
+    "fullness": 38.1417
+   },
+   "vocals": {
+    "sdr": 10.1685,
+    "si_sdr": 9.6652,
+    "l1_freq": 35.5616,
+    "log_wmse": 13.3796,
+    "aura_stft": 7.8437,
+    "aura_mrstft": 9.1283,
+    "bleedless": 23.7452,
+    "fullness": 15.5918
+   }
+  }
+ },
+ "mbr_instvoc_duality1_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10592",
+  "fetched_at": "2026-09-08T14:17:54.810478+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.6675,
+    "si_sdr": 16.5492,
+    "l1_freq": 38.3853,
+    "log_wmse": 13.5555,
+    "aura_stft": 15.1722,
+    "aura_mrstft": 18.2056,
+    "bleedless": 43.1446,
+    "fullness": 29.0705
+   },
+   "vocals": {
+    "sdr": 10.9209,
+    "si_sdr": 10.4723,
+    "l1_freq": 38.8477,
+    "log_wmse": 14.0354,
+    "aura_stft": 9.4121,
+    "aura_mrstft": 11.5641,
+    "bleedless": 33.6954,
+    "fullness": 18.1144
+   }
+  }
+ },
+ "mbr_instvoc_duality2_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10593",
+  "fetched_at": "2026-09-08T14:17:55.220228+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.6829,
+    "si_sdr": 16.5646,
+    "l1_freq": 38.3404,
+    "log_wmse": 13.5696,
+    "aura_stft": 15.0032,
+    "aura_mrstft": 17.6155,
+    "bleedless": 44.1343,
+    "fullness": 28.0076
+   },
+   "vocals": {
+    "sdr": 10.9301,
+    "si_sdr": 10.4818,
+    "l1_freq": 38.8355,
+    "log_wmse": 14.045,
+    "aura_stft": 9.4942,
+    "aura_mrstft": 11.1671,
+    "bleedless": 35.741,
+    "fullness": 16.9302
+   }
+  }
+ },
+ "mbr_kimft1_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10546",
+  "fetched_at": "2026-09-08T14:17:55.662659+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.0929,
+    "si_sdr": 15.9643,
+    "l1_freq": 36.7001,
+    "log_wmse": 13.0073,
+    "aura_stft": 11.6131,
+    "aura_mrstft": 14.2805,
+    "bleedless": 44.0837,
+    "fullness": 26.1892
+   },
+   "vocals": {
+    "sdr": 9.7854,
+    "si_sdr": 9.1774,
+    "l1_freq": 36.1478,
+    "log_wmse": 13.0073,
+    "aura_stft": 8.6521,
+    "aura_mrstft": 9.9571,
+    "bleedless": 31.0847,
+    "fullness": 16.6246
+   }
+  }
+ },
+ "mbr_kimft1_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10594",
+  "fetched_at": "2026-09-08T14:17:56.081760+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.2793,
+    "si_sdr": 17.1763,
+    "l1_freq": 39.8098,
+    "log_wmse": 14.0864,
+    "aura_stft": 14.5066,
+    "aura_mrstft": 17.8174,
+    "bleedless": 45.122,
+    "fullness": 29.0287
+   },
+   "vocals": {
+    "sdr": 10.9719,
+    "si_sdr": 10.52,
+    "l1_freq": 38.5607,
+    "log_wmse": 14.0864,
+    "aura_stft": 8.0848,
+    "aura_mrstft": 9.926,
+    "bleedless": 36.0774,
+    "fullness": 16.5588
+   }
+  }
+ },
+ "mbr_kimft2_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10547",
+  "fetched_at": "2026-09-08T14:17:56.524304+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.2776,
+    "si_sdr": 16.1628,
+    "l1_freq": 37.839,
+    "log_wmse": 13.177,
+    "aura_stft": 12.2601,
+    "aura_mrstft": 15.7734,
+    "bleedless": 41.8833,
+    "fullness": 28.5018
+   },
+   "vocals": {
+    "sdr": 9.9701,
+    "si_sdr": 9.346,
+    "l1_freq": 36.1054,
+    "log_wmse": 13.177,
+    "aura_stft": 8.2116,
+    "aura_mrstft": 9.1285,
+    "bleedless": 35.4913,
+    "fullness": 15.1006
+   }
+  }
+ },
+ "mbr_kimft2_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10595",
+  "fetched_at": "2026-09-08T14:17:56.923665+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.3624,
+    "si_sdr": 17.2601,
+    "l1_freq": 39.917,
+    "log_wmse": 14.1544,
+    "aura_stft": 13.5671,
+    "aura_mrstft": 16.8981,
+    "bleedless": 45.7228,
+    "fullness": 28.3653
+   },
+   "vocals": {
+    "sdr": 11.0549,
+    "si_sdr": 10.6104,
+    "l1_freq": 38.9546,
+    "log_wmse": 14.1544,
+    "aura_stft": 8.2547,
+    "aura_mrstft": 10.0771,
+    "bleedless": 37.0655,
+    "fullness": 16.6008
+   }
+  }
+ },
+ "mbr_kimft2b_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10596",
+  "fetched_at": "2026-09-08T14:17:57.330303+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.3587,
+    "si_sdr": 17.2575,
+    "l1_freq": 39.92,
+    "log_wmse": 14.1537,
+    "aura_stft": 13.3976,
+    "aura_mrstft": 16.6427,
+    "bleedless": 46.3538,
+    "fullness": 27.7838
+   },
+   "vocals": {
+    "sdr": 11.0513,
+    "si_sdr": 10.6005,
+    "l1_freq": 38.9938,
+    "log_wmse": 14.1537,
+    "aura_stft": 8.1639,
+    "aura_mrstft": 10.0193,
+    "bleedless": 39.3096,
+    "fullness": 15.7614
+   }
+  }
+ },
+ "mbr_kimft2f_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10548",
+  "fetched_at": "2026-09-08T14:17:57.738732+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.0385,
+    "si_sdr": 15.917,
+    "l1_freq": 36.9515,
+    "log_wmse": 12.9574,
+    "aura_stft": 11.6703,
+    "aura_mrstft": 14.4737,
+    "bleedless": 42.1916,
+    "fullness": 26.9194
+   },
+   "vocals": {
+    "sdr": 9.731,
+    "si_sdr": 8.9778,
+    "l1_freq": 35.8794,
+    "log_wmse": 12.9574,
+    "aura_stft": 8.2026,
+    "aura_mrstft": 9.3696,
+    "bleedless": 34.24,
+    "fullness": 15.0713
+   }
+  }
+ },
+ "mbr_kimft3_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10549",
+  "fetched_at": "2026-09-08T14:17:58.150713+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.2761,
+    "si_sdr": 16.164,
+    "l1_freq": 37.9763,
+    "log_wmse": 13.1744,
+    "aura_stft": 12.6859,
+    "aura_mrstft": 16.2975,
+    "bleedless": 40.9759,
+    "fullness": 29.5046
+   },
+   "vocals": {
+    "sdr": 9.9686,
+    "si_sdr": 9.2979,
+    "l1_freq": 35.9633,
+    "log_wmse": 13.1743,
+    "aura_stft": 7.927,
+    "aura_mrstft": 8.8498,
+    "bleedless": 34.2178,
+    "fullness": 15.2131
+   }
+  }
+ },
+ "mbr_kimft3_prev_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10597",
+  "fetched_at": "2026-09-08T14:17:58.557766+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.3618,
+    "si_sdr": 17.2592,
+    "l1_freq": 39.7946,
+    "log_wmse": 14.1549,
+    "aura_stft": 13.3233,
+    "aura_mrstft": 16.5992,
+    "bleedless": 46.7322,
+    "fullness": 27.5565
+   },
+   "vocals": {
+    "sdr": 11.0544,
+    "si_sdr": 10.6058,
+    "l1_freq": 39.0738,
+    "log_wmse": 14.1549,
+    "aura_stft": 8.3099,
+    "aura_mrstft": 10.288,
+    "bleedless": 36.8938,
+    "fullness": 16.4056
+   }
+  }
+ },
+ "mbr_small_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10550",
+  "fetched_at": "2026-09-08T14:17:58.968511+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "l1_freq": 7.0764,
+    "log_wmse": 0.4356,
+    "aura_stft": 2.0687,
+    "aura_mrstft": 2.6239,
+    "bleedless": 8.3213,
+    "fullness": 4.9083
+   },
+   "vocals": {
+    "sdr": 10.6685,
+    "si_sdr": 10.1974,
+    "l1_freq": 38.0196,
+    "log_wmse": 13.8056,
+    "aura_stft": 8.8446,
+    "aura_mrstft": 10.2142,
+    "bleedless": 36.6027,
+    "fullness": 15.7568
+   }
+  }
+ },
+ "mbr_small_unwa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10598",
+  "fetched_at": "2026-09-08T14:17:59.395826+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.0602,
+    "si_sdr": 16.9494,
+    "l1_freq": 39.0736,
+    "log_wmse": 13.8786,
+    "aura_stft": 12.5097,
+    "aura_mrstft": 15.9932,
+    "bleedless": 46.1599,
+    "fullness": 27.0767
+   },
+   "vocals": {
+    "sdr": 10.7528,
+    "si_sdr": 10.2897,
+    "l1_freq": 38.3779,
+    "log_wmse": 13.8786,
+    "aura_stft": 8.9532,
+    "aura_mrstft": 10.5277,
+    "bleedless": 35.7539,
+    "fullness": 16.3086
+   }
+  }
+ },
+ "mbr_speech_alicen.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10551",
+  "fetched_at": "2026-09-08T14:17:59.802478+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 9.53,
+    "si_sdr": 9.4368,
+    "l1_freq": 24.0134,
+    "log_wmse": 6.9486,
+    "aura_stft": 9.7455,
+    "aura_mrstft": 10.7391,
+    "bleedless": 20.5635,
+    "fullness": 45.5944
+   },
+   "vocals": {
+    "sdr": 3.2952,
+    "l1_freq": 20.2859,
+    "log_wmse": 6.998,
+    "aura_stft": 2.7992,
+    "aura_mrstft": 2.7623,
+    "bleedless": 35.1595,
+    "fullness": 6.3233
+   }
+  }
+ },
+ "mbr_syhft1.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10554",
+  "fetched_at": "2026-09-08T14:18:00.230794+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.5609,
+    "si_sdr": 15.4397,
+    "l1_freq": 35.8983,
+    "log_wmse": 12.5377,
+    "aura_stft": 10.7844,
+    "aura_mrstft": 13.8574,
+    "bleedless": 37.9394,
+    "fullness": 26.0717
+   },
+   "vocals": {
+    "sdr": 9.2534,
+    "si_sdr": 8.4019,
+    "l1_freq": 34.9492,
+    "log_wmse": 12.5377,
+    "aura_stft": 7.8223,
+    "aura_mrstft": 9.3186,
+    "bleedless": 32.4082,
+    "fullness": 14.3596
+   }
+  }
+ },
+ "mbr_syhft2.5.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10556",
+  "fetched_at": "2026-09-08T14:18:00.635917+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.9501,
+    "si_sdr": 15.8425,
+    "l1_freq": 37.3785,
+    "log_wmse": 12.8769,
+    "aura_stft": 12.1147,
+    "aura_mrstft": 15.2492,
+    "bleedless": 40.2078,
+    "fullness": 28.5825
+   },
+   "vocals": {
+    "sdr": 9.6425,
+    "si_sdr": 8.8221,
+    "l1_freq": 35.5577,
+    "log_wmse": 12.8767,
+    "aura_stft": 7.4862,
+    "aura_mrstft": 9.1006,
+    "bleedless": 32.6043,
+    "fullness": 15.447
+   }
+  }
+ },
+ "mbr_syhft2.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10555",
+  "fetched_at": "2026-09-08T14:18:01.037893+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.9097,
+    "si_sdr": 15.7937,
+    "l1_freq": 36.8284,
+    "log_wmse": 12.8367,
+    "aura_stft": 11.7302,
+    "aura_mrstft": 14.2583,
+    "bleedless": 42.0283,
+    "fullness": 27.1952
+   },
+   "vocals": {
+    "sdr": 9.6022,
+    "si_sdr": 8.6198,
+    "l1_freq": 35.7447,
+    "log_wmse": 12.8366,
+    "aura_stft": 7.4665,
+    "aura_mrstft": 9.2466,
+    "bleedless": 33.5505,
+    "fullness": 15.2687
+   }
+  }
+ },
+ "mbr_syhft3.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10557",
+  "fetched_at": "2026-09-08T14:18:01.447829+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.1982,
+    "si_sdr": 17.0937,
+    "l1_freq": 39.6806,
+    "log_wmse": 14.0135,
+    "aura_stft": 13.1461,
+    "aura_mrstft": 16.7088,
+    "bleedless": 45.2894,
+    "fullness": 27.9026
+   },
+   "vocals": {
+    "sdr": 10.8907,
+    "si_sdr": 10.4309,
+    "l1_freq": 38.5709,
+    "log_wmse": 14.0135,
+    "aura_stft": 8.9526,
+    "aura_mrstft": 10.2726,
+    "bleedless": 37.4334,
+    "fullness": 16.0846
+   }
+  }
+ },
+ "mbr_syhft_4stem.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10552",
+  "fetched_at": "2026-09-08T14:18:01.861276+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.1826,
+    "si_sdr": 8.4296,
+    "l1_freq": 34.6039,
+    "log_wmse": 12.4408,
+    "aura_stft": 7.6153,
+    "aura_mrstft": 8.2607,
+    "bleedless": 32.8544,
+    "fullness": 13.6662
+   },
+   "bass": {
+    "sdr": 9.925,
+    "si_sdr": 8.7052,
+    "l1_freq": 49.4221,
+    "log_wmse": 15.6064,
+    "aura_stft": 5.1473,
+    "aura_mrstft": 3.8994,
+    "bleedless": 41.5703,
+    "fullness": 13.2414
+   },
+   "drums": {
+    "sdr": 10.1206,
+    "si_sdr": 9.2987,
+    "l1_freq": 35.6379,
+    "log_wmse": 14.7648,
+    "aura_stft": 6.6698,
+    "aura_mrstft": 5.8176,
+    "bleedless": 33.8443,
+    "fullness": 12.6742
+   },
+   "other": {
+    "sdr": 5.7844,
+    "si_sdr": 4.6121,
+    "l1_freq": 32.005,
+    "log_wmse": 10.9185,
+    "aura_stft": 4.7297,
+    "aura_mrstft": 6.7529,
+    "bleedless": 21.6363,
+    "fullness": 13.9561
+   }
+  }
+ },
+ "mbr_syhft_4stem2.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10553",
+  "fetched_at": "2026-09-08T14:18:02.263238+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.0553,
+    "si_sdr": 8.3297,
+    "l1_freq": 34.734,
+    "log_wmse": 12.3238,
+    "aura_stft": 8.0416,
+    "aura_mrstft": 8.9686,
+    "bleedless": 27.2553,
+    "fullness": 15.4302
+   },
+   "bass": {
+    "sdr": 9.9802,
+    "si_sdr": 8.897,
+    "l1_freq": 49.8592,
+    "log_wmse": 15.6542,
+    "aura_stft": 5.3458,
+    "aura_mrstft": 4.406,
+    "bleedless": 46.2575,
+    "fullness": 11.5327
+   },
+   "drums": {
+    "sdr": 10.0251,
+    "si_sdr": 9.2772,
+    "l1_freq": 34.9373,
+    "log_wmse": 14.7336,
+    "aura_stft": 6.253,
+    "aura_mrstft": 5.3745,
+    "bleedless": 30.1588,
+    "fullness": 13.1344
+   },
+   "other": {
+    "sdr": 5.8085,
+    "si_sdr": 4.4401,
+    "l1_freq": 31.2188,
+    "log_wmse": 10.8707,
+    "aura_stft": 4.3679,
+    "aura_mrstft": 5.9531,
+    "bleedless": 20.6523,
+    "fullness": 12.9239
+   }
+  }
+ },
+ "mbr_syhftb1_1.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10558",
+  "fetched_at": "2026-09-08T14:18:02.668136+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.1855,
+    "si_sdr": 17.0827,
+    "l1_freq": 39.7251,
+    "log_wmse": 14.0091,
+    "aura_stft": 13.2133,
+    "aura_mrstft": 16.7932,
+    "bleedless": 45.3052,
+    "fullness": 28.2123
+   },
+   "vocals": {
+    "sdr": 10.878,
+    "si_sdr": 10.4196,
+    "l1_freq": 38.5104,
+    "log_wmse": 14.0091,
+    "aura_stft": 8.9849,
+    "aura_mrstft": 10.2152,
+    "bleedless": 36.3016,
+    "fullness": 16.4172
+   }
+  }
+ },
+ "mbr_syhftb1_2.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10559",
+  "fetched_at": "2026-09-08T14:18:03.069306+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.1902,
+    "si_sdr": 17.0866,
+    "l1_freq": 39.7182,
+    "log_wmse": 14.0127,
+    "aura_stft": 13.1704,
+    "aura_mrstft": 16.6977,
+    "bleedless": 45.3937,
+    "fullness": 28.0806
+   },
+   "vocals": {
+    "sdr": 10.8828,
+    "si_sdr": 10.4271,
+    "l1_freq": 38.4932,
+    "log_wmse": 14.0127,
+    "aura_stft": 8.9649,
+    "aura_mrstft": 10.2039,
+    "bleedless": 36.4356,
+    "fullness": 16.3744
+   }
+  }
+ },
+ "mbr_syhftb1_3.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10560",
+  "fetched_at": "2026-09-08T14:18:03.476559+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.1739,
+    "si_sdr": 17.0662,
+    "l1_freq": 39.5419,
+    "log_wmse": 13.9937,
+    "aura_stft": 13.0184,
+    "aura_mrstft": 16.4871,
+    "bleedless": 45.3382,
+    "fullness": 27.8025
+   },
+   "vocals": {
+    "sdr": 10.8664,
+    "si_sdr": 10.436,
+    "l1_freq": 38.7088,
+    "log_wmse": 13.9937,
+    "aura_stft": 8.9145,
+    "aura_mrstft": 10.2806,
+    "bleedless": 40.0122,
+    "fullness": 15.3645
+   }
+  }
+ },
+ "mbr_syhftbeta1.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10561",
+  "fetched_at": "2026-09-08T14:18:03.890354+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.212,
+    "si_sdr": 17.1071,
+    "l1_freq": 39.6405,
+    "log_wmse": 14.0265,
+    "aura_stft": 12.8843,
+    "aura_mrstft": 16.1984,
+    "bleedless": 45.9333,
+    "fullness": 27.6054
+   },
+   "vocals": {
+    "sdr": 10.9045,
+    "si_sdr": 10.4449,
+    "l1_freq": 38.8003,
+    "log_wmse": 14.0265,
+    "aura_stft": 9.1029,
+    "aura_mrstft": 10.4865,
+    "bleedless": 37.4137,
+    "fullness": 16.2887
+   }
+  }
+ },
+ "mbr_vocals_becruily.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10599",
+  "fetched_at": "2026-09-08T14:18:04.307907+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.8212,
+    "si_sdr": 16.7125,
+    "l1_freq": 38.1968,
+    "log_wmse": 13.6718,
+    "aura_stft": 12.7106,
+    "aura_mrstft": 15.3119,
+    "bleedless": 41.2256,
+    "fullness": 27.8718
+   },
+   "vocals": {
+    "sdr": 10.5138,
+    "si_sdr": 9.9996,
+    "l1_freq": 38.7382,
+    "log_wmse": 13.6718,
+    "aura_stft": 9.9622,
+    "aura_mrstft": 12.6294,
+    "bleedless": 31.5106,
+    "fullness": 20.3884
+   }
+  }
+ },
+ "mbr_vocals_kim.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10600",
+  "fetched_at": "2026-09-08T14:18:04.729010+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.2848,
+    "si_sdr": 17.1791,
+    "l1_freq": 39.7175,
+    "log_wmse": 14.0853,
+    "aura_stft": 13.1782,
+    "aura_mrstft": 16.3903,
+    "bleedless": 46.5343,
+    "fullness": 27.3643
+   },
+   "vocals": {
+    "sdr": 10.9774,
+    "si_sdr": 10.5335,
+    "l1_freq": 38.9127,
+    "log_wmse": 14.0853,
+    "aura_stft": 8.6993,
+    "aura_mrstft": 10.2338,
+    "bleedless": 36.9926,
+    "fullness": 16.2194
+   }
+  }
+ },
+ "mbr_vocals_viperx.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10562",
+  "fetched_at": "2026-09-08T14:18:05.135972+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.9899,
+    "si_sdr": 15.8647,
+    "l1_freq": 36.9045,
+    "log_wmse": 12.9032,
+    "aura_stft": 11.4746,
+    "aura_mrstft": 14.2415,
+    "bleedless": 42.2012,
+    "fullness": 25.5885
+   },
+   "vocals": {
+    "sdr": 9.6824,
+    "si_sdr": 8.9928,
+    "l1_freq": 35.7392,
+    "log_wmse": 12.9032,
+    "aura_stft": 6.9673,
+    "aura_mrstft": 8.4651,
+    "bleedless": 33.2164,
+    "fullness": 14.2895
+   }
+  }
+ },
+ "mbr_vocals_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10563",
+  "fetched_at": "2026-09-08T14:18:05.534758+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 12.087,
+    "si_sdr": 11.8954,
+    "l1_freq": 28.4861,
+    "log_wmse": 9.373,
+    "aura_stft": 11.656,
+    "aura_mrstft": 13.0293,
+    "bleedless": 25.4204,
+    "fullness": 32.1608
+   },
+   "vocals": {
+    "sdr": 5.7795,
+    "si_sdr": 4.2667,
+    "l1_freq": 24.8979,
+    "log_wmse": 9.373,
+    "aura_stft": 4.1137,
+    "aura_mrstft": 5.1385,
+    "bleedless": 22.1365,
+    "fullness": 10.3847
+   }
+  }
+ },
+ "mbr_vocalsf_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10564",
+  "fetched_at": "2026-09-08T14:18:05.937694+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.0647,
+    "si_sdr": 16.9608,
+    "l1_freq": 37.3642,
+    "log_wmse": 13.887,
+    "aura_stft": 11.103,
+    "aura_mrstft": 13.4592,
+    "bleedless": 45.789,
+    "fullness": 23.8047
+   },
+   "vocals": {
+    "sdr": 10.7572,
+    "si_sdr": 10.2849,
+    "l1_freq": 39.0498,
+    "log_wmse": 13.887,
+    "aura_stft": 10.8507,
+    "aura_mrstft": 13.4307,
+    "bleedless": 31.5976,
+    "fullness": 19.8728
+   }
+  }
+ },
+ "mbr_vocalsfv1_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10566",
+  "fetched_at": "2026-09-08T14:18:06.347025+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.1367,
+    "si_sdr": 17.0323,
+    "l1_freq": 39.1332,
+    "log_wmse": 13.9566,
+    "aura_stft": 13.0156,
+    "aura_mrstft": 15.9301,
+    "bleedless": 43.9472,
+    "fullness": 27.9722
+   },
+   "vocals": {
+    "sdr": 10.8292,
+    "si_sdr": 10.3551,
+    "l1_freq": 39.0993,
+    "log_wmse": 13.9566,
+    "aura_stft": 9.4601,
+    "aura_mrstft": 11.657,
+    "bleedless": 34.7249,
+    "fullness": 18.5984
+   }
+  }
+ },
+ "mbr_vocalsfv2_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10567",
+  "fetched_at": "2026-09-08T14:18:06.761336+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.0127,
+    "si_sdr": 16.9067,
+    "l1_freq": 38.7783,
+    "log_wmse": 13.8452,
+    "aura_stft": 12.8833,
+    "aura_mrstft": 15.6725,
+    "bleedless": 42.8183,
+    "fullness": 27.9403
+   },
+   "vocals": {
+    "sdr": 10.7052,
+    "si_sdr": 10.2149,
+    "l1_freq": 38.9761,
+    "log_wmse": 13.8452,
+    "aura_stft": 9.6958,
+    "aura_mrstft": 12.0628,
+    "bleedless": 33.543,
+    "fullness": 19.2863
+   }
+  }
+ },
+ "mbr_vocalsfv3_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10568",
+  "fetched_at": "2026-09-08T14:18:07.177198+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.9158,
+    "si_sdr": 16.8084,
+    "l1_freq": 38.4938,
+    "log_wmse": 13.7574,
+    "aura_stft": 12.7982,
+    "aura_mrstft": 15.4907,
+    "bleedless": 42.0562,
+    "fullness": 27.895
+   },
+   "vocals": {
+    "sdr": 10.6083,
+    "si_sdr": 10.1061,
+    "l1_freq": 38.8599,
+    "log_wmse": 13.7574,
+    "aura_stft": 9.827,
+    "aura_mrstft": 12.3408,
+    "bleedless": 32.2899,
+    "fullness": 19.9499
+   }
+  }
+ },
+ "mbr_vocalsfv4_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10569",
+  "fetched_at": "2026-09-08T14:18:07.588283+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.8851,
+    "si_sdr": 16.7787,
+    "l1_freq": 38.1894,
+    "log_wmse": 13.7287,
+    "aura_stft": 13.3846,
+    "aura_mrstft": 15.8655,
+    "bleedless": 40.8281,
+    "fullness": 28.0786
+   },
+   "vocals": {
+    "sdr": 10.5776,
+    "si_sdr": 10.0692,
+    "l1_freq": 38.7516,
+    "log_wmse": 13.7287,
+    "aura_stft": 9.9572,
+    "aura_mrstft": 12.5935,
+    "bleedless": 29.1255,
+    "fullness": 21.2804
+   }
+  }
+ },
+ "mbr_vocalsfv5_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10570",
+  "fetched_at": "2026-09-08T14:18:07.993626+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.0543,
+    "si_sdr": 16.9506,
+    "l1_freq": 38.3469,
+    "log_wmse": 13.8803,
+    "aura_stft": 12.8185,
+    "aura_mrstft": 15.3417,
+    "bleedless": 43.0675,
+    "fullness": 26.9224
+   },
+   "vocals": {
+    "sdr": 10.7468,
+    "si_sdr": 10.2652,
+    "l1_freq": 39.1063,
+    "log_wmse": 13.8803,
+    "aura_stft": 10.147,
+    "aura_mrstft": 12.617,
+    "bleedless": 30.282,
+    "fullness": 20.8886
+   }
+  }
+ },
+ "mbr_vocalsfv6_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10571",
+  "fetched_at": "2026-09-08T14:18:08.438861+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.9248,
+    "si_sdr": 16.8228,
+    "l1_freq": 37.4014,
+    "log_wmse": 13.7611,
+    "aura_stft": 12.2375,
+    "aura_mrstft": 14.1155,
+    "bleedless": 42.4023,
+    "fullness": 25.8027
+   },
+   "vocals": {
+    "sdr": 10.6174,
+    "si_sdr": 10.1521,
+    "l1_freq": 39.3817,
+    "log_wmse": 13.7611,
+    "aura_stft": 10.4523,
+    "aura_mrstft": 14.5025,
+    "bleedless": 27.4974,
+    "fullness": 24.2788
+   }
+  }
+ },
+ "mbr_vocalsfv7_beta1_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10572",
+  "fetched_at": "2026-09-08T14:18:08.850344+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.1675,
+    "si_sdr": 17.0624,
+    "l1_freq": 37.6395,
+    "log_wmse": 13.9633,
+    "aura_stft": 11.6653,
+    "aura_mrstft": 14.0096,
+    "bleedless": 48.4007,
+    "fullness": 23.8188
+   },
+   "vocals": {
+    "sdr": 10.86,
+    "si_sdr": 10.4416,
+    "l1_freq": 39.5138,
+    "log_wmse": 13.9633,
+    "aura_stft": 10.8786,
+    "aura_mrstft": 14.1604,
+    "bleedless": 31.2166,
+    "fullness": 20.7589
+   }
+  }
+ },
+ "mbr_vocalsfv7_beta2_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10573",
+  "fetched_at": "2026-09-08T14:18:09.278714+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.2675,
+    "si_sdr": 17.1644,
+    "l1_freq": 38.773,
+    "log_wmse": 14.0682,
+    "aura_stft": 12.3592,
+    "aura_mrstft": 14.9439,
+    "bleedless": 46.2518,
+    "fullness": 26.1509
+   },
+   "vocals": {
+    "sdr": 10.96,
+    "si_sdr": 10.5137,
+    "l1_freq": 39.6859,
+    "log_wmse": 14.0682,
+    "aura_stft": 10.1119,
+    "aura_mrstft": 12.8317,
+    "bleedless": 31.719,
+    "fullness": 20.6914
+   }
+  }
+ },
+ "mbr_vocalsfv7_beta3_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10574",
+  "fetched_at": "2026-09-08T14:18:09.711986+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.1427,
+    "si_sdr": 17.0406,
+    "l1_freq": 37.8792,
+    "log_wmse": 13.9495,
+    "aura_stft": 11.8493,
+    "aura_mrstft": 14.0119,
+    "bleedless": 46.1142,
+    "fullness": 25.0051
+   },
+   "vocals": {
+    "sdr": 10.8352,
+    "si_sdr": 10.3983,
+    "l1_freq": 39.7046,
+    "log_wmse": 13.9495,
+    "aura_stft": 10.6004,
+    "aura_mrstft": 14.221,
+    "bleedless": 30.9254,
+    "fullness": 21.8983
+   }
+  }
+ },
+ "mbr_vocalsfv7_gabox.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10575",
+  "fetched_at": "2026-09-08T14:18:10.125461+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.4757,
+    "si_sdr": 17.3754,
+    "l1_freq": 39.5629,
+    "log_wmse": 14.2217,
+    "aura_stft": 13.7938,
+    "aura_mrstft": 17.0738,
+    "bleedless": 45.5329,
+    "fullness": 28.0207
+   },
+   "vocals": {
+    "sdr": 11.1684,
+    "si_sdr": 10.7544,
+    "l1_freq": 39.0914,
+    "log_wmse": 14.2219,
+    "aura_stft": 8.7202,
+    "aura_mrstft": 11.3568,
+    "bleedless": 34.1188,
+    "fullness": 17.978
+   }
+  }
+ },
+ "mbr_wsa.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10601",
+  "fetched_at": "2026-09-08T14:18:10.531039+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.0653,
+    "si_sdr": 15.9318,
+    "l1_freq": 37.1627,
+    "log_wmse": 12.9944,
+    "aura_stft": 13.09,
+    "aura_mrstft": 15.7638,
+    "bleedless": 40.5607,
+    "fullness": 28.1563
+   },
+   "vocals": {
+    "sdr": 9.7578,
+    "si_sdr": 9.1518,
+    "l1_freq": 36.2541,
+    "log_wmse": 12.9944,
+    "aura_stft": 8.2532,
+    "aura_mrstft": 9.7393,
+    "bleedless": 32.0685,
+    "fullness": 16.0475
+   }
+  }
+ },
+ "mbr_xeno.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10565",
+  "fetched_at": "2026-09-08T14:18:10.948399+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 17.166,
+    "si_sdr": 17.0651,
+    "l1_freq": 39.7117,
+    "log_wmse": 13.9908,
+    "aura_stft": 12.3181,
+    "aura_mrstft": 16.5124,
+    "bleedless": 45.0369,
+    "fullness": 28.2016
+   },
+   "vocals": {
+    "sdr": 10.8585,
+    "si_sdr": 10.3819,
+    "l1_freq": 38.4434,
+    "log_wmse": 13.9908,
+    "aura_stft": 8.4314,
+    "aura_mrstft": 9.7892,
+    "bleedless": 38.7014,
+    "fullness": 15.395
+   }
+  }
+ },
+ "mdx23c_4stem_kuielab.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10445",
+  "fetched_at": "2026-09-08T14:18:11.353686+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.2535,
+    "si_sdr": 7.354,
+    "l1_freq": 29.8641,
+    "log_wmse": 11.5929,
+    "aura_stft": 6.9903,
+    "aura_mrstft": 8.2131,
+    "bleedless": 17.0517,
+    "fullness": 14.6774
+   },
+   "bass": {
+    "sdr": 9.4058,
+    "si_sdr": 8.1884,
+    "l1_freq": 47.6276,
+    "log_wmse": 15.4421,
+    "aura_stft": 4.8423,
+    "aura_mrstft": 4.3594,
+    "bleedless": 19.3053,
+    "fullness": 19.8899
+   },
+   "drums": {
+    "sdr": 9.0321,
+    "si_sdr": 8.14,
+    "l1_freq": 30.7954,
+    "log_wmse": 13.8342,
+    "aura_stft": 6.5816,
+    "aura_mrstft": 6.2919,
+    "bleedless": 19.0181,
+    "fullness": 13.461
+   },
+   "other": {
+    "sdr": 4.7212,
+    "si_sdr": 3.488,
+    "l1_freq": 27.9523,
+    "log_wmse": 10.2524,
+    "aura_stft": 5.353,
+    "aura_mrstft": 7.87,
+    "bleedless": 12.8928,
+    "fullness": 18.0832
+   }
+  }
+ },
+ "mdx23c_4stem_small_kuielab.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10446",
+  "fetched_at": "2026-09-08T14:18:11.775663+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.2604,
+    "si_sdr": 7.3857,
+    "l1_freq": 30.2716,
+    "log_wmse": 11.5983,
+    "aura_stft": 7.2769,
+    "aura_mrstft": 8.3935,
+    "bleedless": 16.3633,
+    "fullness": 15.1126
+   },
+   "bass": {
+    "sdr": 9.5555,
+    "si_sdr": 8.6967,
+    "l1_freq": 47.8625,
+    "log_wmse": 15.4736,
+    "aura_stft": 4.9113,
+    "aura_mrstft": 4.3727,
+    "bleedless": 19.1705,
+    "fullness": 20.0531
+   },
+   "drums": {
+    "sdr": 9.1443,
+    "si_sdr": 8.3423,
+    "l1_freq": 31.8045,
+    "log_wmse": 13.8622,
+    "aura_stft": 7.1748,
+    "aura_mrstft": 6.7524,
+    "bleedless": 16.9803,
+    "fullness": 15.4196
+   },
+   "other": {
+    "sdr": 5.2945,
+    "si_sdr": 4.0218,
+    "l1_freq": 29.8224,
+    "log_wmse": 10.4765,
+    "aura_stft": 5.7838,
+    "aura_mrstft": 8.1979,
+    "bleedless": 15.4243,
+    "fullness": 16.5426
+   }
+  }
+ },
+ "mdx23c_4stem_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10447",
+  "fetched_at": "2026-09-08T14:18:12.196566+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 7.3489,
+    "si_sdr": 6.2551,
+    "l1_freq": 27.6403,
+    "log_wmse": 10.7529,
+    "aura_stft": 6.3638,
+    "aura_mrstft": 7.6501,
+    "bleedless": 14.3342,
+    "fullness": 14.6769
+   },
+   "bass": {
+    "sdr": 8.3619,
+    "si_sdr": 7.6542,
+    "l1_freq": 45.0241,
+    "log_wmse": 14.7332,
+    "aura_stft": 4.742,
+    "aura_mrstft": 4.1248,
+    "bleedless": 16.2755,
+    "fullness": 18.6401
+   },
+   "drums": {
+    "sdr": 7.6911,
+    "si_sdr": 6.4752,
+    "l1_freq": 28.2507,
+    "log_wmse": 12.8426,
+    "aura_stft": 6.0842,
+    "aura_mrstft": 5.7168,
+    "bleedless": 15.4091,
+    "fullness": 13.8456
+   },
+   "other": {
+    "sdr": 4.5512,
+    "si_sdr": 2.9999,
+    "l1_freq": 27.7895,
+    "log_wmse": 9.7106,
+    "aura_stft": 5.2928,
+    "aura_mrstft": 7.6485,
+    "bleedless": 13.9143,
+    "fullness": 16.4281
+   }
+  }
+ },
+ "mdx23c_d1581.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10448",
+  "fetched_at": "2026-09-08T14:18:12.598463+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.7494,
+    "si_sdr": 15.6068,
+    "l1_freq": 32.7369,
+    "log_wmse": 12.743,
+    "aura_stft": 5.2919,
+    "aura_mrstft": 11.9466,
+    "bleedless": 32.5174,
+    "fullness": 24.757
+   },
+   "vocals": {
+    "sdr": 9.5286,
+    "si_sdr": 8.9174,
+    "l1_freq": 33.3231,
+    "log_wmse": 12.7468,
+    "aura_stft": 4.9741,
+    "aura_mrstft": 8.8605,
+    "bleedless": 21.4988,
+    "fullness": 16.6204
+   }
+  }
+ },
+ "mdx23c_instvoc_hq1.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10449",
+  "fetched_at": "2026-09-08T14:18:13.003056+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4355,
+    "si_sdr": 16.3152,
+    "l1_freq": 36.6137,
+    "log_wmse": 13.3015,
+    "aura_stft": 13.4393,
+    "aura_mrstft": 16.6879,
+    "bleedless": 38.2482,
+    "fullness": 27.8789
+   },
+   "vocals": {
+    "sdr": 10.128,
+    "si_sdr": 9.5635,
+    "l1_freq": 35.8604,
+    "log_wmse": 13.3015,
+    "aura_stft": 8.8799,
+    "aura_mrstft": 10.688,
+    "bleedless": 26.0955,
+    "fullness": 16.8812
+   }
+  }
+ },
+ "mdx23c_instvoc_hq2.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10450",
+  "fetched_at": "2026-09-08T14:18:13.404325+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4047,
+    "si_sdr": 16.2859,
+    "l1_freq": 36.2653,
+    "log_wmse": 13.2807,
+    "aura_stft": 12.9984,
+    "aura_mrstft": 16.2892,
+    "bleedless": 41.3307,
+    "fullness": 25.7167
+   },
+   "vocals": {
+    "sdr": 10.0949,
+    "si_sdr": 9.5368,
+    "l1_freq": 35.696,
+    "log_wmse": 13.2799,
+    "aura_stft": 8.7505,
+    "aura_mrstft": 10.6132,
+    "bleedless": 23.874,
+    "fullness": 17.0902
+   }
+  }
+ },
+ "mdx23c_instvoc_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10451",
+  "fetched_at": "2026-09-08T14:18:13.820952+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 16.4355,
+    "si_sdr": 16.3152,
+    "l1_freq": 36.6137,
+    "log_wmse": 13.3015,
+    "aura_stft": 13.4393,
+    "aura_mrstft": 16.6879,
+    "bleedless": 38.2543,
+    "fullness": 27.8411
+   },
+   "vocals": {
+    "sdr": 10.128,
+    "si_sdr": 9.5635,
+    "l1_freq": 35.8604,
+    "log_wmse": 13.3015,
+    "aura_stft": 8.8799,
+    "aura_mrstft": 10.688,
+    "bleedless": 26.0953,
+    "fullness": 16.8812
+   }
+  }
+ },
+ "mdx23c_vocals_kuielab.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10452",
+  "fetched_at": "2026-09-08T14:18:14.229472+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.6903,
+    "si_sdr": 14.5508,
+    "l1_freq": 32.1924,
+    "log_wmse": 11.7073,
+    "aura_stft": 12.2901,
+    "aura_mrstft": 14.9011,
+    "bleedless": 24.7811,
+    "fullness": 33.6069
+   },
+   "vocals": {
+    "sdr": 8.3827,
+    "si_sdr": 7.4965,
+    "l1_freq": 29.6144,
+    "log_wmse": 11.7072,
+    "aura_stft": 4.4953,
+    "aura_mrstft": 7.0106,
+    "bleedless": 20.545,
+    "fullness": 12.8827
+   }
+  }
+ },
+ "mdx_1_9703.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10455",
+  "fetched_at": "2026-09-08T14:18:14.647789+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.9965,
+    "si_sdr": 14.8284,
+    "l1_freq": 33.116,
+    "log_wmse": 12.0226,
+    "aura_stft": 11.8815,
+    "aura_mrstft": 13.6804,
+    "bleedless": 32.5961,
+    "fullness": 25.6284
+   },
+   "vocals": {
+    "sdr": 8.689,
+    "si_sdr": 8.0173,
+    "l1_freq": 33.0139,
+    "log_wmse": 12.0226,
+    "aura_stft": 4.8754,
+    "aura_mrstft": 8.7035,
+    "bleedless": 23.4936,
+    "fullness": 15.9171
+   }
+  }
+ },
+ "mdx_2_9682.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10456",
+  "fetched_at": "2026-09-08T14:18:15.050239+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.0269,
+    "si_sdr": 14.8643,
+    "l1_freq": 33.4211,
+    "log_wmse": 12.0655,
+    "aura_stft": 11.895,
+    "aura_mrstft": 14.1942,
+    "bleedless": 30.7488,
+    "fullness": 27.6396
+   },
+   "vocals": {
+    "sdr": 8.7194,
+    "si_sdr": 7.9712,
+    "l1_freq": 32.4397,
+    "log_wmse": 12.0655,
+    "aura_stft": 4.7352,
+    "aura_mrstft": 8.1957,
+    "bleedless": 25.1888,
+    "fullness": 14.4754
+   }
+  }
+ },
+ "mdx_3_9662.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10457",
+  "fetched_at": "2026-09-08T14:18:15.463711+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.0285,
+    "si_sdr": 14.8651,
+    "l1_freq": 33.5173,
+    "log_wmse": 12.0713,
+    "aura_stft": 12.0247,
+    "aura_mrstft": 14.14,
+    "bleedless": 31.8947,
+    "fullness": 26.5048
+   },
+   "vocals": {
+    "sdr": 8.721,
+    "si_sdr": 8.0435,
+    "l1_freq": 32.7881,
+    "log_wmse": 12.0713,
+    "aura_stft": 4.825,
+    "aura_mrstft": 8.4144,
+    "bleedless": 27.4932,
+    "fullness": 13.7306
+   }
+  }
+ },
+ "mdx_9482.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10458",
+  "fetched_at": "2026-09-08T14:18:15.885914+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.9623,
+    "si_sdr": 14.797,
+    "l1_freq": 33.2984,
+    "log_wmse": 11.9985,
+    "aura_stft": 11.8958,
+    "aura_mrstft": 14.2517,
+    "bleedless": 30.8817,
+    "fullness": 27.4662
+   },
+   "vocals": {
+    "sdr": 8.6548,
+    "si_sdr": 7.9064,
+    "l1_freq": 32.2811,
+    "log_wmse": 11.9985,
+    "aura_stft": 4.7354,
+    "aura_mrstft": 8.0303,
+    "bleedless": 23.2991,
+    "fullness": 14.7191
+   }
+  }
+ },
+ "mdx_inst1.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10469",
+  "fetched_at": "2026-09-08T14:18:16.289783+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.4767,
+    "si_sdr": 15.3294,
+    "l1_freq": 33.9833,
+    "log_wmse": 12.4816,
+    "aura_stft": 6.8142,
+    "aura_mrstft": 13.215,
+    "bleedless": 32.7975,
+    "fullness": 26.0294
+   },
+   "vocals": {
+    "sdr": 9.1697,
+    "si_sdr": 8.5152,
+    "l1_freq": 33.9105,
+    "log_wmse": 12.482,
+    "aura_stft": 7.9357,
+    "aura_mrstft": 10.166,
+    "bleedless": 19.4676,
+    "fullness": 18.3053
+   }
+  }
+ },
+ "mdx_inst2.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10470",
+  "fetched_at": "2026-09-08T14:18:16.724665+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.4271,
+    "si_sdr": 15.2801,
+    "l1_freq": 34.1638,
+    "log_wmse": 12.4383,
+    "aura_stft": 6.8391,
+    "aura_mrstft": 13.6271,
+    "bleedless": 38.3837,
+    "fullness": 24.2602
+   },
+   "vocals": {
+    "sdr": 9.1201,
+    "si_sdr": 8.4514,
+    "l1_freq": 33.4756,
+    "log_wmse": 12.4386,
+    "aura_stft": 7.7286,
+    "aura_mrstft": 9.6644,
+    "bleedless": 20.3165,
+    "fullness": 16.6746
+   }
+  }
+ },
+ "mdx_inst3.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10471",
+  "fetched_at": "2026-09-08T14:18:17.138016+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.4674,
+    "si_sdr": 15.3192,
+    "l1_freq": 34.0328,
+    "log_wmse": 12.4761,
+    "aura_stft": 6.8564,
+    "aura_mrstft": 13.4526,
+    "bleedless": 33.9035,
+    "fullness": 25.96
+   },
+   "vocals": {
+    "sdr": 9.1603,
+    "si_sdr": 8.502,
+    "l1_freq": 33.6852,
+    "log_wmse": 12.4764,
+    "aura_stft": 7.8537,
+    "aura_mrstft": 10.0156,
+    "bleedless": 19.286,
+    "fullness": 17.9257
+   }
+  }
+ },
+ "mdx_inst_187_beta.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10461",
+  "fetched_at": "2026-09-08T14:18:17.545306+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.919,
+    "si_sdr": 14.9849,
+    "l1_freq": 31.3856,
+    "log_wmse": 12.1282,
+    "aura_stft": 6.6944,
+    "aura_mrstft": 12.7661,
+    "bleedless": 25.5407,
+    "fullness": 27.4688
+   },
+   "vocals": {
+    "sdr": 8.6116,
+    "si_sdr": 7.9015,
+    "l1_freq": 31.9469,
+    "log_wmse": 12.1282,
+    "aura_stft": 7.5605,
+    "aura_mrstft": 9.5008,
+    "bleedless": 15.0134,
+    "fullness": 19.0704
+   }
+  }
+ },
+ "mdx_inst_82_beta.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10459",
+  "fetched_at": "2026-09-08T14:18:17.985439+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.7689,
+    "si_sdr": 14.6159,
+    "l1_freq": 31.9091,
+    "log_wmse": 11.8728,
+    "aura_stft": 6.5643,
+    "aura_mrstft": 12.7162,
+    "bleedless": 26.0484,
+    "fullness": 27.2104
+   },
+   "vocals": {
+    "sdr": 8.4614,
+    "si_sdr": 7.6763,
+    "l1_freq": 31.2877,
+    "log_wmse": 11.8728,
+    "aura_stft": 7.2321,
+    "aura_mrstft": 8.98,
+    "bleedless": 16.1965,
+    "fullness": 17.1665
+   }
+  }
+ },
+ "mdx_inst_90_beta.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10460",
+  "fetched_at": "2026-09-08T14:18:18.391233+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 14.521,
+    "si_sdr": 14.5351,
+    "l1_freq": 30.2722,
+    "log_wmse": 11.7257,
+    "aura_stft": 6.5227,
+    "aura_mrstft": 12.0877,
+    "bleedless": 24.2034,
+    "fullness": 26.6812
+   },
+   "vocals": {
+    "sdr": 8.2136,
+    "si_sdr": 7.4472,
+    "l1_freq": 30.7109,
+    "log_wmse": 11.7257,
+    "aura_stft": 7.2443,
+    "aura_mrstft": 9.0639,
+    "bleedless": 13.9821,
+    "fullness": 19.2052
+   }
+  }
+ },
+ "mdx_inst_full_292.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10462",
+  "fetched_at": "2026-09-08T14:18:18.816924+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.1459,
+    "si_sdr": 14.9848,
+    "l1_freq": 33.7216,
+    "log_wmse": 12.1681,
+    "aura_stft": 10.8376,
+    "aura_mrstft": 13.8067,
+    "bleedless": 35.4554,
+    "fullness": 25.6417
+   },
+   "vocals": {
+    "sdr": 8.8385,
+    "si_sdr": 8.1767,
+    "l1_freq": 33.8054,
+    "log_wmse": 12.1681,
+    "aura_stft": 7.7912,
+    "aura_mrstft": 10.1733,
+    "bleedless": 19.1242,
+    "fullness": 18.8849
+   }
+  }
+ },
+ "mdx_inst_hq1.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10463",
+  "fetched_at": "2026-09-08T14:18:19.229303+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.4434,
+    "si_sdr": 15.3004,
+    "l1_freq": 35.0133,
+    "log_wmse": 12.4334,
+    "aura_stft": 11.4245,
+    "aura_mrstft": 15.5013,
+    "bleedless": 38.2516,
+    "fullness": 26.3797
+   },
+   "vocals": {
+    "sdr": 9.1359,
+    "si_sdr": 8.4548,
+    "l1_freq": 33.6381,
+    "log_wmse": 12.4333,
+    "aura_stft": 7.3436,
+    "aura_mrstft": 9.2951,
+    "bleedless": 19.9604,
+    "fullness": 16.2153
+   }
+  }
+ },
+ "mdx_inst_hq2.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10464",
+  "fetched_at": "2026-09-08T14:18:19.634205+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.4856,
+    "si_sdr": 15.3381,
+    "l1_freq": 34.8128,
+    "log_wmse": 12.4763,
+    "aura_stft": 11.1817,
+    "aura_mrstft": 14.6241,
+    "bleedless": 35.2644,
+    "fullness": 26.9611
+   },
+   "vocals": {
+    "sdr": 9.1781,
+    "si_sdr": 8.5194,
+    "l1_freq": 34.3778,
+    "log_wmse": 12.4763,
+    "aura_stft": 7.7548,
+    "aura_mrstft": 10.1299,
+    "bleedless": 20.3745,
+    "fullness": 17.9733
+   }
+  }
+ },
+ "mdx_inst_hq3.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10465",
+  "fetched_at": "2026-09-08T14:18:20.041088+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.655,
+    "si_sdr": 15.5112,
+    "l1_freq": 34.9875,
+    "log_wmse": 12.6298,
+    "aura_stft": 11.3448,
+    "aura_mrstft": 14.67,
+    "bleedless": 37.3595,
+    "fullness": 26.0157
+   },
+   "vocals": {
+    "sdr": 9.3475,
+    "si_sdr": 8.7144,
+    "l1_freq": 34.7738,
+    "log_wmse": 12.6298,
+    "aura_stft": 7.7844,
+    "aura_mrstft": 10.262,
+    "bleedless": 20.509,
+    "fullness": 18.2347
+   }
+  }
+ },
+ "mdx_inst_hq4.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10466",
+  "fetched_at": "2026-09-08T14:18:20.450151+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.9365,
+    "si_sdr": 15.8026,
+    "l1_freq": 35.9033,
+    "log_wmse": 12.9043,
+    "aura_stft": 11.9469,
+    "aura_mrstft": 15.6668,
+    "bleedless": 41.0717,
+    "fullness": 25.6918
+   },
+   "vocals": {
+    "sdr": 9.6291,
+    "si_sdr": 9.0273,
+    "l1_freq": 35.4558,
+    "log_wmse": 12.9043,
+    "aura_stft": 8.195,
+    "aura_mrstft": 10.4526,
+    "bleedless": 20.1782,
+    "fullness": 18.4733
+   }
+  }
+ },
+ "mdx_inst_hq5.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10467",
+  "fetched_at": "2026-09-08T14:18:20.852184+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.7756,
+    "si_sdr": 15.6354,
+    "l1_freq": 35.4677,
+    "log_wmse": 12.7549,
+    "aura_stft": 11.5751,
+    "aura_mrstft": 14.9592,
+    "bleedless": 33.9371,
+    "fullness": 27.8763
+   },
+   "vocals": {
+    "sdr": 9.4682,
+    "si_sdr": 8.8605,
+    "l1_freq": 35.206,
+    "log_wmse": 12.7549,
+    "aura_stft": 8.3439,
+    "aura_mrstft": 10.6323,
+    "bleedless": 20.5517,
+    "fullness": 18.8871
+   }
+  }
+ },
+ "mdx_inst_main.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10468",
+  "fetched_at": "2026-09-08T14:18:21.264080+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.3795,
+    "si_sdr": 15.2265,
+    "l1_freq": 33.9776,
+    "log_wmse": 12.4268,
+    "aura_stft": 6.9078,
+    "aura_mrstft": 13.7162,
+    "bleedless": 34.893,
+    "fullness": 26.2064
+   },
+   "vocals": {
+    "sdr": 9.0725,
+    "si_sdr": 8.4013,
+    "l1_freq": 33.4275,
+    "log_wmse": 12.4271,
+    "aura_stft": 7.7596,
+    "aura_mrstft": 9.735,
+    "bleedless": 19.2081,
+    "fullness": 17.1358
+   }
+  }
+ },
+ "mdx_kim_inst.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10472",
+  "fetched_at": "2026-09-08T14:18:21.667195+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.5558,
+    "si_sdr": 15.41,
+    "l1_freq": 34.2617,
+    "log_wmse": 12.5474,
+    "aura_stft": 6.8948,
+    "aura_mrstft": 13.6708,
+    "bleedless": 34.356,
+    "fullness": 26.5141
+   },
+   "vocals": {
+    "sdr": 9.2488,
+    "si_sdr": 8.5907,
+    "l1_freq": 33.8694,
+    "log_wmse": 12.5477,
+    "aura_stft": 7.8604,
+    "aura_mrstft": 9.961,
+    "bleedless": 19.9252,
+    "fullness": 17.355
+   }
+  }
+ },
+ "mdx_kim_vocal1.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10473",
+  "fetched_at": "2026-09-08T14:18:22.065171+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.7936,
+    "si_sdr": 15.6549,
+    "l1_freq": 35.7674,
+    "log_wmse": 12.7375,
+    "aura_stft": 12.5579,
+    "aura_mrstft": 15.3577,
+    "bleedless": 35.4407,
+    "fullness": 28.0624
+   },
+   "vocals": {
+    "sdr": 9.4861,
+    "si_sdr": 8.8646,
+    "l1_freq": 34.7476,
+    "log_wmse": 12.7375,
+    "aura_stft": 6.1234,
+    "aura_mrstft": 9.4626,
+    "bleedless": 28.893,
+    "fullness": 15.0745
+   }
+  }
+ },
+ "mdx_kim_vocal2.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10474",
+  "fetched_at": "2026-09-08T14:18:22.477473+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.8155,
+    "si_sdr": 15.6711,
+    "l1_freq": 35.4029,
+    "log_wmse": 12.7522,
+    "aura_stft": 12.5369,
+    "aura_mrstft": 14.8968,
+    "bleedless": 37.5475,
+    "fullness": 26.5216
+   },
+   "vocals": {
+    "sdr": 9.508,
+    "si_sdr": 8.9093,
+    "l1_freq": 35.1557,
+    "log_wmse": 12.7522,
+    "aura_stft": 6.2618,
+    "aura_mrstft": 10.0419,
+    "bleedless": 26.6932,
+    "fullness": 16.4776
+   }
+  }
+ },
+ "mdx_main.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10475",
+  "fetched_at": "2026-09-08T14:18:22.886937+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.3279,
+    "si_sdr": 15.1671,
+    "l1_freq": 34.3348,
+    "log_wmse": 12.3141,
+    "aura_stft": 12.1022,
+    "aura_mrstft": 13.9834,
+    "bleedless": 37.9009,
+    "fullness": 25.0802
+   },
+   "vocals": {
+    "sdr": 9.0205,
+    "si_sdr": 8.3907,
+    "l1_freq": 34.3749,
+    "log_wmse": 12.3141,
+    "aura_stft": 6.1322,
+    "aura_mrstft": 9.9033,
+    "bleedless": 24.8699,
+    "fullness": 16.671
+   }
+  }
+ },
+ "mdx_main_340.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10476",
+  "fetched_at": "2026-09-08T14:18:23.297703+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.45,
+    "si_sdr": 15.2959,
+    "l1_freq": 35.0727,
+    "log_wmse": 12.4207,
+    "aura_stft": 12.4424,
+    "aura_mrstft": 15.0343,
+    "bleedless": 35.1065,
+    "fullness": 27.3492
+   },
+   "vocals": {
+    "sdr": 9.1426,
+    "si_sdr": 8.5103,
+    "l1_freq": 34.0656,
+    "log_wmse": 12.4207,
+    "aura_stft": 5.9477,
+    "aura_mrstft": 9.2896,
+    "bleedless": 30.419,
+    "fullness": 14.0422
+   }
+  }
+ },
+ "mdx_main_390.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10477",
+  "fetched_at": "2026-09-08T14:18:23.705131+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 8.3257,
+    "si_sdr": 7.8886,
+    "l1_freq": 21.0601,
+    "log_wmse": 5.8094,
+    "aura_stft": 8.7713,
+    "aura_mrstft": 9.0795,
+    "bleedless": 15.3922,
+    "fullness": 26.3388
+   },
+   "vocals": {
+    "sdr": 2.3813,
+    "si_sdr": 8.5746,
+    "l1_freq": 18.183,
+    "log_wmse": 6.1469,
+    "aura_stft": 5.3243,
+    "aura_mrstft": 7.7301,
+    "bleedless": 16.5195,
+    "fullness": 13.6515
+   }
+  }
+ },
+ "mdx_main_406.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10478",
+  "fetched_at": "2026-09-08T14:18:24.120609+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.4496,
+    "si_sdr": 15.2982,
+    "l1_freq": 34.4979,
+    "log_wmse": 12.4146,
+    "aura_stft": 11.8832,
+    "aura_mrstft": 14.0209,
+    "bleedless": 35.178,
+    "fullness": 25.1506
+   },
+   "vocals": {
+    "sdr": 9.1421,
+    "si_sdr": 8.6362,
+    "l1_freq": 34.2285,
+    "log_wmse": 12.4146,
+    "aura_stft": 6.183,
+    "aura_mrstft": 10.0424,
+    "bleedless": 29.1437,
+    "fullness": 14.1387
+   }
+  }
+ },
+ "mdx_main_427.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10479",
+  "fetched_at": "2026-09-08T14:18:24.533016+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.6616,
+    "si_sdr": 15.5183,
+    "l1_freq": 35.2609,
+    "log_wmse": 12.6165,
+    "aura_stft": 12.3129,
+    "aura_mrstft": 14.7426,
+    "bleedless": 36.3385,
+    "fullness": 26.465
+   },
+   "vocals": {
+    "sdr": 9.3541,
+    "si_sdr": 8.7176,
+    "l1_freq": 34.8594,
+    "log_wmse": 12.6165,
+    "aura_stft": 6.1847,
+    "aura_mrstft": 9.9104,
+    "bleedless": 25.4325,
+    "fullness": 16.7431
+   }
+  }
+ },
+ "mdx_main_438.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10480",
+  "fetched_at": "2026-09-08T14:18:24.950431+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.5363,
+    "si_sdr": 15.3857,
+    "l1_freq": 34.9389,
+    "log_wmse": 12.501,
+    "aura_stft": 12.2789,
+    "aura_mrstft": 14.6446,
+    "bleedless": 35.4711,
+    "fullness": 27.0049
+   },
+   "vocals": {
+    "sdr": 9.2289,
+    "si_sdr": 8.5927,
+    "l1_freq": 34.6362,
+    "log_wmse": 12.501,
+    "aura_stft": 6.1788,
+    "aura_mrstft": 9.953,
+    "bleedless": 24.1035,
+    "fullness": 17.1306
+   }
+  }
+ },
+ "mdx_vocft.onnx": {
+  "url": "https://mvsep.com/quality_checker/entry/10481",
+  "fetched_at": "2026-09-08T14:18:25.356592+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 15.8928,
+    "si_sdr": 15.7524,
+    "l1_freq": 35.8087,
+    "log_wmse": 12.826,
+    "aura_stft": 12.6004,
+    "aura_mrstft": 15.2679,
+    "bleedless": 36.7815,
+    "fullness": 27.3255
+   },
+   "vocals": {
+    "sdr": 9.5853,
+    "si_sdr": 8.9825,
+    "l1_freq": 35.1342,
+    "log_wmse": 12.826,
+    "aura_stft": 6.215,
+    "aura_mrstft": 9.773,
+    "bleedless": 27.8588,
+    "fullness": 15.8286
+   }
+  }
+ },
+ "mgm_highend_v4.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10507",
+  "fetched_at": "2026-09-08T14:18:25.769281+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 12.3669,
+    "si_sdr": 12.101,
+    "l1_freq": 29.9831,
+    "log_wmse": 9.6916,
+    "aura_stft": 12.6199,
+    "aura_mrstft": 13.6678,
+    "bleedless": 28.1047,
+    "fullness": 29.5403
+   },
+   "vocals": {
+    "sdr": 6.087,
+    "si_sdr": 4.7126,
+    "l1_freq": 27.1082,
+    "log_wmse": 9.6988,
+    "aura_stft": 5.3172,
+    "aura_mrstft": 6.0269,
+    "bleedless": 17.5804,
+    "fullness": 12.4207
+   }
+  }
+ },
+ "mgm_lowend_a_v4.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10508",
+  "fetched_at": "2026-09-08T14:18:26.184582+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 12.2248,
+    "si_sdr": 11.9955,
+    "l1_freq": 30.4119,
+    "log_wmse": 9.5777,
+    "aura_stft": 12.3202,
+    "aura_mrstft": 14.1767,
+    "bleedless": 27.9281,
+    "fullness": 31.7984
+   },
+   "vocals": {
+    "sdr": 5.9319,
+    "si_sdr": 4.4838,
+    "l1_freq": 26.5935,
+    "log_wmse": 9.5818,
+    "aura_stft": 4.9618,
+    "aura_mrstft": 5.1685,
+    "bleedless": 20.4382,
+    "fullness": 10.8558
+   }
+  }
+ },
+ "mgm_lowend_b_v4.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10509",
+  "fetched_at": "2026-09-08T14:18:26.606904+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 12.1521,
+    "si_sdr": 11.8814,
+    "l1_freq": 29.4977,
+    "log_wmse": 9.5031,
+    "aura_stft": 11.5497,
+    "aura_mrstft": 12.34,
+    "bleedless": 29.3818,
+    "fullness": 26.8102
+   },
+   "vocals": {
+    "sdr": 5.8513,
+    "si_sdr": 4.3727,
+    "l1_freq": 27.3333,
+    "log_wmse": 9.5056,
+    "aura_stft": 5.407,
+    "aura_mrstft": 5.867,
+    "bleedless": 21.5698,
+    "fullness": 11.6194
+   }
+  }
+ },
+ "mgm_main_v4.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10510",
+  "fetched_at": "2026-09-08T14:18:27.018167+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 12.5732,
+    "si_sdr": 12.3329,
+    "l1_freq": 30.9017,
+    "log_wmse": 9.8769,
+    "aura_stft": 12.5898,
+    "aura_mrstft": 14.1334,
+    "bleedless": 29.3401,
+    "fullness": 29.2914
+   },
+   "vocals": {
+    "sdr": 6.281,
+    "si_sdr": 5.0321,
+    "l1_freq": 27.6246,
+    "log_wmse": 9.8813,
+    "aura_stft": 5.6762,
+    "aura_mrstft": 5.9775,
+    "bleedless": 20.3145,
+    "fullness": 12.0376
+   }
+  }
+ },
+ "scnet_4stem_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10483",
+  "fetched_at": "2026-09-08T14:18:27.426899+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.9942,
+    "si_sdr": 8.1576,
+    "l1_freq": 32.6943,
+    "log_wmse": 12.1763,
+    "aura_stft": 7.8673,
+    "aura_mrstft": 8.8568,
+    "bleedless": 22.5885,
+    "fullness": 15.0587
+   },
+   "bass": {
+    "sdr": 11.2151,
+    "si_sdr": 10.238,
+    "l1_freq": 51.7574,
+    "log_wmse": 16.3809,
+    "aura_stft": 5.508,
+    "aura_mrstft": 4.6912,
+    "bleedless": 23.1738,
+    "fullness": 20.5562
+   },
+   "drums": {
+    "sdr": 11.1529,
+    "si_sdr": 10.3661,
+    "l1_freq": 35.4178,
+    "log_wmse": 14.9054,
+    "aura_stft": 7.645,
+    "aura_mrstft": 7.0893,
+    "bleedless": 25.6829,
+    "fullness": 14.0744
+   },
+   "other": {
+    "sdr": 5.5045,
+    "si_sdr": 4.5313,
+    "l1_freq": 30.743,
+    "log_wmse": 10.6943,
+    "aura_stft": 6.2034,
+    "aura_mrstft": 8.8556,
+    "bleedless": 16.6381,
+    "fullness": 17.5884
+   }
+  }
+ },
+ "scnet_huge_4stem1.2_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10488",
+  "fetched_at": "2026-09-08T14:18:27.842116+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.6074,
+    "si_sdr": 8.9353,
+    "l1_freq": 34.1459,
+    "log_wmse": 12.7707,
+    "aura_stft": 7.8041,
+    "aura_mrstft": 10.2441,
+    "bleedless": 21.0516,
+    "fullness": 18.076
+   },
+   "bass": {
+    "sdr": 12.0639,
+    "si_sdr": 11.1689,
+    "l1_freq": 50.5151,
+    "log_wmse": 16.9423,
+    "aura_stft": 4.26,
+    "aura_mrstft": 3.8705,
+    "bleedless": 12.7968,
+    "fullness": 24.3862
+   },
+   "drums": {
+    "sdr": 11.7424,
+    "si_sdr": 11.1932,
+    "l1_freq": 36.2148,
+    "log_wmse": 15.3775,
+    "aura_stft": 7.4501,
+    "aura_mrstft": 8.0812,
+    "bleedless": 18.5617,
+    "fullness": 18.3743
+   },
+   "other": {
+    "sdr": 6.6488,
+    "si_sdr": 5.6677,
+    "l1_freq": 31.6148,
+    "log_wmse": 11.5165,
+    "aura_stft": 5.0282,
+    "aura_mrstft": 8.035,
+    "bleedless": 14.0172,
+    "fullness": 18.0529
+   }
+  }
+ },
+ "scnet_huge_4stem_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10484",
+  "fetched_at": "2026-09-08T14:18:28.257981+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.5829,
+    "si_sdr": 8.8773,
+    "l1_freq": 33.9478,
+    "log_wmse": 12.7446,
+    "aura_stft": 8.0987,
+    "aura_mrstft": 9.432,
+    "bleedless": 24.9675,
+    "fullness": 15.5288
+   },
+   "bass": {
+    "sdr": 12.1006,
+    "si_sdr": 11.0638,
+    "l1_freq": 53.631,
+    "log_wmse": 17.013,
+    "aura_stft": 5.824,
+    "aura_mrstft": 4.9449,
+    "bleedless": 22.0644,
+    "fullness": 21.8362
+   },
+   "drums": {
+    "sdr": 11.8388,
+    "si_sdr": 11.2475,
+    "l1_freq": 36.8473,
+    "log_wmse": 15.4949,
+    "aura_stft": 8.1416,
+    "aura_mrstft": 7.7418,
+    "bleedless": 27.0178,
+    "fullness": 14.6895
+   },
+   "other": {
+    "sdr": 6.6046,
+    "si_sdr": 5.6876,
+    "l1_freq": 32.9034,
+    "log_wmse": 11.4574,
+    "aura_stft": 6.5478,
+    "aura_mrstft": 9.5617,
+    "bleedless": 17.2981,
+    "fullness": 19.1288
+   }
+  }
+ },
+ "scnet_huge_4stem_bleedless_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10485",
+  "fetched_at": "2026-09-08T14:18:28.672367+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.582,
+    "si_sdr": 8.8765,
+    "l1_freq": 33.9944,
+    "log_wmse": 12.7437,
+    "aura_stft": 7.9161,
+    "aura_mrstft": 9.3698,
+    "bleedless": 25.4552,
+    "fullness": 15.4597
+   },
+   "bass": {
+    "sdr": 12.1006,
+    "si_sdr": 11.0633,
+    "l1_freq": 53.7168,
+    "log_wmse": 17.0279,
+    "aura_stft": 5.8056,
+    "aura_mrstft": 5.069,
+    "bleedless": 22.0634,
+    "fullness": 22.128
+   },
+   "drums": {
+    "sdr": 11.8222,
+    "si_sdr": 11.2513,
+    "l1_freq": 37.0053,
+    "log_wmse": 15.4783,
+    "aura_stft": 7.9732,
+    "aura_mrstft": 7.9041,
+    "bleedless": 25.6097,
+    "fullness": 15.4891
+   },
+   "other": {
+    "sdr": 6.6704,
+    "si_sdr": 5.7281,
+    "l1_freq": 33.0239,
+    "log_wmse": 11.518,
+    "aura_stft": 6.429,
+    "aura_mrstft": 9.4442,
+    "bleedless": 17.7754,
+    "fullness": 18.5832
+   }
+  }
+ },
+ "scnet_huge_4stem_fullness_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10486",
+  "fetched_at": "2026-09-08T14:18:29.077310+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.4911,
+    "si_sdr": 8.7654,
+    "l1_freq": 32.7615,
+    "log_wmse": 12.6778,
+    "aura_stft": 7.9127,
+    "aura_mrstft": 9.5761,
+    "bleedless": 22.7836,
+    "fullness": 15.7576
+   },
+   "bass": {
+    "sdr": 12.1261,
+    "si_sdr": 11.204,
+    "l1_freq": 53.5866,
+    "log_wmse": 17.0329,
+    "aura_stft": 5.6912,
+    "aura_mrstft": 4.8192,
+    "bleedless": 20.9162,
+    "fullness": 21.8948
+   },
+   "drums": {
+    "sdr": 11.7636,
+    "si_sdr": 11.1753,
+    "l1_freq": 35.9496,
+    "log_wmse": 15.4194,
+    "aura_stft": 7.873,
+    "aura_mrstft": 7.8291,
+    "bleedless": 25.2003,
+    "fullness": 14.8988
+   },
+   "other": {
+    "sdr": 6.6303,
+    "si_sdr": 5.7014,
+    "l1_freq": 32.7731,
+    "log_wmse": 11.4789,
+    "aura_stft": 6.3084,
+    "aura_mrstft": 9.3578,
+    "bleedless": 16.6284,
+    "fullness": 19.2672
+   }
+  }
+ },
+ "scnet_huge_4stem_str_fullness_aname.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10487",
+  "fetched_at": "2026-09-08T14:18:29.496288+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.4261,
+    "si_sdr": 8.6885,
+    "l1_freq": 32.2877,
+    "log_wmse": 12.6327,
+    "aura_stft": 7.6246,
+    "aura_mrstft": 9.5325,
+    "bleedless": 22.0052,
+    "fullness": 15.7883
+   },
+   "bass": {
+    "sdr": 12.1317,
+    "si_sdr": 11.2516,
+    "l1_freq": 53.3502,
+    "log_wmse": 17.0329,
+    "aura_stft": 5.4777,
+    "aura_mrstft": 4.6578,
+    "bleedless": 20.0006,
+    "fullness": 21.5164
+   },
+   "drums": {
+    "sdr": 11.7666,
+    "si_sdr": 11.1869,
+    "l1_freq": 35.9483,
+    "log_wmse": 15.4219,
+    "aura_stft": 7.6593,
+    "aura_mrstft": 7.9149,
+    "bleedless": 23.7896,
+    "fullness": 15.4579
+   },
+   "other": {
+    "sdr": 6.6402,
+    "si_sdr": 5.7037,
+    "l1_freq": 32.5913,
+    "log_wmse": 11.4865,
+    "aura_stft": 5.8584,
+    "aura_mrstft": 9.017,
+    "bleedless": 16.3378,
+    "fullness": 19.0365
+   }
+  }
+ },
+ "scnet_masked_small_4stem_zftrubo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10489",
+  "fetched_at": "2026-09-08T14:18:29.923601+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.2844,
+    "si_sdr": 7.3387,
+    "l1_freq": 31.0156,
+    "log_wmse": 11.5396,
+    "aura_stft": 7.353,
+    "aura_mrstft": 8.1127,
+    "bleedless": 21.3952,
+    "fullness": 14.0047
+   },
+   "bass": {
+    "sdr": 10.9349,
+    "si_sdr": 9.928,
+    "l1_freq": 51.0505,
+    "log_wmse": 16.0644,
+    "aura_stft": 5.5748,
+    "aura_mrstft": 4.9094,
+    "bleedless": 24.6487,
+    "fullness": 20.5792
+   },
+   "drums": {
+    "sdr": 10.4918,
+    "si_sdr": 9.8371,
+    "l1_freq": 34.2052,
+    "log_wmse": 14.3693,
+    "aura_stft": 7.3338,
+    "aura_mrstft": 6.9218,
+    "bleedless": 21.1003,
+    "fullness": 15.0448
+   },
+   "other": {
+    "sdr": 5.4602,
+    "si_sdr": 4.1394,
+    "l1_freq": 30.1635,
+    "log_wmse": 10.4428,
+    "aura_stft": 5.8519,
+    "aura_mrstft": 8.0544,
+    "bleedless": 16.5106,
+    "fullness": 16.0915
+   }
+  }
+ },
+ "scnet_masked_xl_ihf_4stem_zftrubo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10490",
+  "fetched_at": "2026-09-08T14:18:30.333037+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.3285,
+    "si_sdr": 8.6065,
+    "l1_freq": 34.1469,
+    "log_wmse": 12.515,
+    "aura_stft": 8.3459,
+    "aura_mrstft": 9.5323,
+    "bleedless": 23.8063,
+    "fullness": 16.0861
+   },
+   "bass": {
+    "sdr": 11.4976,
+    "si_sdr": 10.642,
+    "l1_freq": 52.5048,
+    "log_wmse": 16.5702,
+    "aura_stft": 5.5745,
+    "aura_mrstft": 4.9377,
+    "bleedless": 23.6077,
+    "fullness": 21.4618
+   },
+   "drums": {
+    "sdr": 11.2926,
+    "si_sdr": 10.468,
+    "l1_freq": 36.5334,
+    "log_wmse": 15.1891,
+    "aura_stft": 7.7024,
+    "aura_mrstft": 7.386,
+    "bleedless": 23.3633,
+    "fullness": 15.688
+   },
+   "other": {
+    "sdr": 6.1995,
+    "si_sdr": 5.0571,
+    "l1_freq": 32.251,
+    "log_wmse": 11.1991,
+    "aura_stft": 6.0029,
+    "aura_mrstft": 8.5575,
+    "bleedless": 18.4678,
+    "fullness": 16.4836
+   }
+  }
+ },
+ "scnet_tran_4stem_zftrubo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10491",
+  "fetched_at": "2026-09-08T14:18:30.750222+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.4272,
+    "si_sdr": 7.4724,
+    "l1_freq": 31.0975,
+    "log_wmse": 11.6613,
+    "aura_stft": 7.4209,
+    "aura_mrstft": 8.5854,
+    "bleedless": 18.7054,
+    "fullness": 15.2977
+   },
+   "bass": {
+    "sdr": 10.9922,
+    "si_sdr": 9.9402,
+    "l1_freq": 50.0546,
+    "log_wmse": 16.179,
+    "aura_stft": 4.625,
+    "aura_mrstft": 4.1136,
+    "bleedless": 19.7172,
+    "fullness": 18.9583
+   },
+   "drums": {
+    "sdr": 10.8707,
+    "si_sdr": 10.2297,
+    "l1_freq": 34.3471,
+    "log_wmse": 14.6969,
+    "aura_stft": 7.3184,
+    "aura_mrstft": 6.9923,
+    "bleedless": 21.1676,
+    "fullness": 14.737
+   },
+   "other": {
+    "sdr": 5.6387,
+    "si_sdr": 4.4018,
+    "l1_freq": 30.2603,
+    "log_wmse": 10.5945,
+    "aura_stft": 5.8246,
+    "aura_mrstft": 8.199,
+    "bleedless": 15.4909,
+    "fullness": 16.9248
+   }
+  }
+ },
+ "scnet_xl_4stem_starrytong.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10492",
+  "fetched_at": "2026-09-08T14:18:31.163248+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.2472,
+    "si_sdr": 8.4732,
+    "l1_freq": 33.1377,
+    "log_wmse": 12.4146,
+    "aura_stft": 7.8962,
+    "aura_mrstft": 9.1093,
+    "bleedless": 22.0994,
+    "fullness": 15.3939
+   },
+   "bass": {
+    "sdr": 11.7727,
+    "si_sdr": 10.8418,
+    "l1_freq": 52.6178,
+    "log_wmse": 16.7593,
+    "aura_stft": 5.1582,
+    "aura_mrstft": 4.5075,
+    "bleedless": 20.6749,
+    "fullness": 21.15
+   },
+   "drums": {
+    "sdr": 11.408,
+    "si_sdr": 10.7495,
+    "l1_freq": 36.0716,
+    "log_wmse": 15.1285,
+    "aura_stft": 7.8051,
+    "aura_mrstft": 7.4561,
+    "bleedless": 24.222,
+    "fullness": 15.0166
+   },
+   "other": {
+    "sdr": 6.0976,
+    "si_sdr": 5.1231,
+    "l1_freq": 31.8566,
+    "log_wmse": 11.093,
+    "aura_stft": 6.2457,
+    "aura_mrstft": 8.9585,
+    "bleedless": 16.6865,
+    "fullness": 17.6043
+   }
+  }
+ },
+ "scnet_xl_4stem_zftrubo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10493",
+  "fetched_at": "2026-09-08T14:18:31.592701+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 8.2252,
+    "si_sdr": 7.2851,
+    "l1_freq": 30.6691,
+    "log_wmse": 11.4776,
+    "aura_stft": 7.3273,
+    "aura_mrstft": 8.2106,
+    "bleedless": 19.5351,
+    "fullness": 14.4147
+   },
+   "bass": {
+    "sdr": 10.9957,
+    "si_sdr": 10.2392,
+    "l1_freq": 51.1545,
+    "log_wmse": 16.1402,
+    "aura_stft": 5.7088,
+    "aura_mrstft": 4.7064,
+    "bleedless": 24.4508,
+    "fullness": 18.7654
+   },
+   "drums": {
+    "sdr": 10.7211,
+    "si_sdr": 10.0359,
+    "l1_freq": 33.9186,
+    "log_wmse": 14.464,
+    "aura_stft": 7.3196,
+    "aura_mrstft": 6.6666,
+    "bleedless": 22.6688,
+    "fullness": 13.7085
+   },
+   "other": {
+    "sdr": 5.301,
+    "si_sdr": 4.1316,
+    "l1_freq": 29.7744,
+    "log_wmse": 10.3238,
+    "aura_stft": 5.7524,
+    "aura_mrstft": 8.2325,
+    "bleedless": 15.5143,
+    "fullness": 17.4109
+   }
+  }
+ },
+ "scnet_xl_ihf_4stem_zfturbo.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10494",
+  "fetched_at": "2026-09-08T14:18:32.005802+00:00",
+  "stems": [
+   "vocals",
+   "bass",
+   "drums",
+   "other"
+  ],
+  "metrics": {
+   "vocals": {
+    "sdr": 9.6059,
+    "si_sdr": 8.8898,
+    "l1_freq": 34.2028,
+    "log_wmse": 12.7632,
+    "aura_stft": 8.0204,
+    "aura_mrstft": 9.3183,
+    "bleedless": 22.8825,
+    "fullness": 15.8151
+   },
+   "bass": {
+    "sdr": 11.8338,
+    "si_sdr": 10.7928,
+    "l1_freq": 52.4411,
+    "log_wmse": 16.8092,
+    "aura_stft": 4.7566,
+    "aura_mrstft": 4.3756,
+    "bleedless": 22.6071,
+    "fullness": 19.88
+   },
+   "drums": {
+    "sdr": 11.5123,
+    "si_sdr": 10.7408,
+    "l1_freq": 37.0148,
+    "log_wmse": 15.2509,
+    "aura_stft": 8.1992,
+    "aura_mrstft": 8.0258,
+    "bleedless": 23.7472,
+    "fullness": 16.0942
+   },
+   "other": {
+    "sdr": 6.3845,
+    "si_sdr": 5.3037,
+    "l1_freq": 32.5447,
+    "log_wmse": 11.3652,
+    "aura_stft": 6.1996,
+    "aura_mrstft": 8.6673,
+    "bleedless": 18.8564,
+    "fullness": 16.2606
+   }
+  }
+ },
+ "vr6_last_baseline_tsurumeso.ckpt": {
+  "url": "https://mvsep.com/quality_checker/entry/10511",
+  "fetched_at": "2026-09-08T14:18:32.421091+00:00",
+  "stems": [
+   "instrum",
+   "vocals"
+  ],
+  "metrics": {
+   "instrum": {
+    "sdr": 11.7856,
+    "si_sdr": 11.5804,
+    "l1_freq": 29.2246,
+    "log_wmse": 9.1455,
+    "aura_stft": 12.0038,
+    "aura_mrstft": 13.4719,
+    "bleedless": 24.8576,
+    "fullness": 34.0263
+   },
+   "vocals": {
+    "sdr": 5.9492,
+    "si_sdr": 4.3454,
+    "l1_freq": 27.726,
+    "log_wmse": 9.567,
+    "aura_stft": 6.5161,
+    "aura_mrstft": 7.5138,
+    "bleedless": 17.8049,
+    "fullness": 14.9267
+   }
+  }
+ }
+}

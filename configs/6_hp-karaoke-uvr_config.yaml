@@ -1,0 +1,63 @@
+audio:
+  sample_rate: 44100
+inference:
+  aggression: 5
+  batch_size: 1
+  enable_post_process: false
+  high_end_process: false
+  post_process_threshold: 0.2
+  window_size: 512
+model:
+  is_vr5: false
+  model_params:
+    band:
+      1:
+        crop_start: 0
+        crop_stop: 187
+        hl: 108
+        lpf_start: 92
+        lpf_stop: 186
+        n_fft: 1024
+        res_type: polyphase
+        sr: 11025
+      2:
+        crop_start: 0
+        crop_stop: 212
+        hl: 216
+        hpf_start: 68
+        hpf_stop: 34
+        lpf_start: 174
+        lpf_stop: 209
+        n_fft: 768
+        res_type: polyphase
+        sr: 22050
+      3:
+        crop_start: 66
+        crop_stop: 307
+        hl: 432
+        hpf_start: 86
+        hpf_stop: 72
+        n_fft: 640
+        res_type: kaiser_fast
+        sr: 44100
+    bins: 640
+    mid_side: false
+    mid_side_b: false
+    mid_side_b2: true
+    pre_filter_start: 639
+    pre_filter_stop: 640
+    reduction_bins: 565
+    reverse: false
+    sr: 44100
+    stereo_n: false
+    stereo_w: false
+    unstable_bins: 7
+  nn_arch_size: 123812
+  nout: null
+  nout_lstm: null
+training:
+  instruments:
+  - Instrumental
+  - Vocals
+  target_instrument: null
+  use_amp: true

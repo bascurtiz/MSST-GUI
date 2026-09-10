@@ -1,11 +1,15 @@
 """ui/widgets/common.py — kept minimal for new dark-theme design."""
+import math
 import os, time
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
     QFileDialog, QSizePolicy, QLabel, QFrame, QTextEdit, QComboBox,
+    QGraphicsOpacityEffect,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QEvent
-from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QFont, QFontMetrics, QImage
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QRectF, QPointF, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import (
+    QTextCursor, QPainter, QPen, QColor, QFont, QFontMetrics, QImage, QPixmap,
+)
 from ui.theme import theme_manager, FONT_FAMILY as FONT_FAMILY_DEFAULT
 from backend.version import APP_VERSION
 
@@ -811,4 +815,157 @@ class ProcessingStatusPanel(QWidget):
 
     def reapply_theme(self):
         self.setStyleSheet(f"background:{theme_manager.theme.bg_deep};")
+
+
+class SyncingLabel(QLabel):
+    """Muted two-line sync caption with a soft opacity pulse while active."""
+
+    _TEXT = "Syncing metrics...\nPlease wait..."
+
+    def __init__(self, parent=None):
+        super().__init__(self._TEXT, parent)
+        self.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        font = QFont("Montserrat", 9)
+        font.setWeight(QFont.Weight(600))
+        self.setFont(font)
+        self.setStyleSheet(
+            "font-family:'Montserrat';font-size:9px;font-weight:600;"
+            f"color:{theme_manager.theme.text_muted};background:transparent;"
+            "line-height:120%;")
+        fm = QFontMetrics(font)
+        lines = self._TEXT.split("\n")
+        w = max(fm.horizontalAdvance(line) for line in lines)
+        h = fm.lineSpacing() * len(lines)
+        self.setFixedSize(w, h)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self._effect)
+        self._effect.setOpacity(0.0)
+        self._anim = QPropertyAnimation(self._effect, b"opacity", self)
+        self._anim.setDuration(1800)
+        self._anim.setStartValue(0.35)
+        self._anim.setEndValue(1.0)
+        self._anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self._anim.setLoopCount(-1)
+
+    def start(self):
+        self._anim.start()
+
+    def stop(self):
+        self._anim.stop()
+        self._effect.setOpacity(0.0)
+
+
+class ScoresRefreshButton(QPushButton):
+    """Square sync icon — re-downloads mvsep score listings."""
+
+    # Material-style sync mark (24×24 viewBox) — rendered via SVG so it
+    # stays crisp at 28×28; hand-drawn arcs clipped or vanished at this size.
+    _SYNC_PATH = (
+        "M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6c0,1.01 -0.25,1.97 -0.7,2.8"
+        "l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8"
+        "m0,14c-3.31,0 -6,-2.69 -6,-6c0,-1.01 0.25,-1.97 0.7,-2.8"
+        "L5.24,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4l-4,-4v3z"
+    )
+    _ICON_PX = 16
+    _ICON_ROT = 90
+    _pix_cache = {}
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._hovered = False
+        self._busy = False
+        self._spin_deg = 0.0
+        self.setFixedSize(28, 28)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(
+            "Refresh mvsep Quality Checker scores\n"
+            "(new models, updated links).")
+        self._spin_timer = QTimer(self)
+        self._spin_timer.setInterval(40)
+        self._spin_timer.timeout.connect(self._tick_spin)
+        self._apply_style()
+
+    def _apply_style(self):
+        t = theme_manager.theme
+        # Match Check For Updates / GitHub header buttons.
+        self.setStyleSheet(
+            f"QPushButton{{background:{t.surface};"
+            f"color:{t.text_dim};"
+            f"border:1px solid {t.border_dim};border-radius:4px;}}"
+            + add_button_hover()
+            + f"QPushButton:disabled{{color:{t.disabled_text};}}")
+
+    @classmethod
+    def _icon_pixmap(cls, color):
+        # Cache opaque glyphs; alpha comes from the theme token at paint time
+        # (SVG fill alpha is unreliable across Qt builds).
+        key = (color.red(), color.green(), color.blue())
+        pix = cls._pix_cache.get(key)
+        if pix is None:
+            from PySide6.QtCore import QByteArray
+            from PySide6.QtSvg import QSvgRenderer
+            svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+                f'<path fill="rgb({color.red()},{color.green()},{color.blue()})" '
+                f'd="{cls._SYNC_PATH}"/></svg>'
+            )
+            renderer = QSvgRenderer(QByteArray(svg.encode()))
+            img = QImage(64, 64, QImage.Format.Format_ARGB32)
+            img.fill(Qt.transparent)
+            painter = QPainter(img)
+            painter.setRenderHint(QPainter.Antialiasing)
+            renderer.render(painter)
+            painter.end()
+            pix = QPixmap.fromImage(img)
+            cls._pix_cache[key] = pix
+        return pix
+
+    def set_busy(self, busy: bool):
+        self._busy = bool(busy)
+        if self._busy:
+            self._spin_timer.start()
+        else:
+            self._spin_timer.stop()
+            self._spin_deg = 0.0
+        self.update()
+
+    def _tick_spin(self):
+        self._spin_deg = (self._spin_deg + 10.0) % 360.0
+        self.update()
+
+    def mousePressEvent(self, e):
+        if self._busy:
+            return
+        super().mousePressEvent(e)
+
+    def enterEvent(self, e):
+        if not self._busy:
+            self._hovered = True
+            self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(e)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        t = theme_manager.theme
+        if self._hovered and not self._busy:
+            color = css_color(t.text)
+        else:
+            color = css_color(t.text_dim)
+        icon = self._ICON_PX
+        x = (self.width() - icon) // 2
+        y = (self.height() - icon) // 2
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        p.translate(self.width() / 2.0, self.height() / 2.0)
+        p.rotate(self._ICON_ROT + (self._spin_deg if self._busy else 0.0))
+        p.translate(-self.width() / 2.0, -self.height() / 2.0)
+        p.setOpacity(color.alphaF())
+        p.drawPixmap(x, y, icon, icon, self._icon_pixmap(color))
+        p.end()
 
