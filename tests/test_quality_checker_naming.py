@@ -337,12 +337,20 @@ def main():
           f"row label reads 'Quality Checker Test', got {labels}")
     check(row.combo.count() == len(EXPECTED_DATASETS),
           f"dropdown lists all datasets, got {row.combo.count()}")
-    from backend.sdr_datasets import SDR_DATASET_URLS
+    from backend.sdr_datasets import (
+        SDR_DATASET_URLS, dataset_extract_path, dataset_folder_name,
+    )
     for ds_name in EXPECTED_DATASETS:
         check(ds_name in SDR_DATASET_URLS and SDR_DATASET_URLS[ds_name].startswith("https://"),
               f"{ds_name} has an mvsep download URL")
     check(len(SDR_DATASET_URLS) == len(EXPECTED_DATASETS),
           "every QC dataset has exactly one download URL")
+    strings_url = SDR_DATASET_URLS["Strings"]
+    check(dataset_folder_name(strings_url) == "strings_mixtures",
+          "strings zip extracts to strings_mixtures subfolder")
+    check(dataset_extract_path(r"D:\datasets", strings_url)
+          == r"D:\datasets\strings_mixtures",
+          "extract path is parent\\<zip_stem>")
     row.check.setChecked(False)
     app.processEvents()
     check(row.combo.isHidden() and row._arrow.isHidden(),

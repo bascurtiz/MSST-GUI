@@ -47,6 +47,16 @@ def dataset_download_url(display_name: str) -> Optional[str]:
     return SDR_DATASET_URLS.get(display_name)
 
 
+def dataset_folder_name(url: str) -> str:
+    """Subfolder name for a dataset zip (e.g. strings_mixtures.zip -> strings_mixtures)."""
+    return os.path.splitext(os.path.basename(url))[0]
+
+
+def dataset_extract_path(parent_dir: str, url: str) -> str:
+    """Full path where a dataset zip is extracted: parent_dir/<zip_stem>/."""
+    return os.path.join(parent_dir, dataset_folder_name(url))
+
+
 def download_and_extract_dataset(
     url: str,
     dest_dir: str,
@@ -55,13 +65,18 @@ def download_and_extract_dataset(
     status_callback: Optional[Callable[[str], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
 ) -> tuple[bool, str]:
-    """Download a validation zip to *dest_dir* and extract it there.
+    """Download a validation zip into *dest_dir* and extract to a subfolder.
 
-    Returns (ok, message). On success *message* is the destination folder path.
+    The user picks a parent folder; contents land in
+    ``dest_dir/<zip_basename_without_ext>/`` (e.g. ``D:\\datasets\\strings_mixtures``).
+
+    Returns (ok, message). On success *message* is the extract folder path.
     """
     from backend.download_utils import _make_session, parallel_download
 
     os.makedirs(dest_dir, exist_ok=True)
+    extract_dir = dataset_extract_path(dest_dir, url)
+    os.makedirs(extract_dir, exist_ok=True)
     zip_path = os.path.join(dest_dir, os.path.basename(url))
 
     if status_callback:
@@ -87,13 +102,13 @@ def download_and_extract_dataset(
 
     try:
         with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(dest_dir)
+            zf.extractall(extract_dir)
     except zipfile.BadZipFile as exc:
         return False, f"Downloaded file is not a valid zip: {exc}"
     except OSError as exc:
         return False, f"Could not extract archive: {exc}"
 
-    return True, dest_dir
+    return True, extract_dir
 
 
 _ACTIVE_DATASET_WORKERS: set["SdrDatasetDownloadWorker"] = set()

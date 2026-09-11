@@ -25,7 +25,12 @@ from backend.audio_names import (
     INFERENCE_FILENAME_TEMPLATE,
     SDR_FILENAME_TEMPLATE,
 )
-from backend.sdr_datasets import SdrDatasetDownloadWorker, dataset_download_url
+from backend.sdr_datasets import (
+    SdrDatasetDownloadWorker,
+    dataset_download_url,
+    dataset_extract_path,
+    dataset_folder_name,
+)
 from backend.mvsep_scores import (
     METRIC_LABELS as MVSEP_METRIC_LABELS,
     METRICS as MVSEP_METRICS,
@@ -1351,18 +1356,22 @@ class _SdrTestRow(QFrame):
 
         dest_dir = QFileDialog.getExistingDirectory(
             parent,
-            f"Save {name} dataset to…",
+            f"Choose folder for {name} dataset "
+            f"(will create .\\{dataset_folder_name(url)})…",
         )
         if not dest_dir:
             return
 
+        extract_dir = dataset_extract_path(dest_dir, url)
+        folder_name = dataset_folder_name(url)
         zip_path = os.path.join(dest_dir, zip_name)
-        if os.path.isfile(zip_path):
+        if os.path.isfile(zip_path) or os.path.isdir(extract_dir):
             overwrite = QMessageBox.question(
                 parent,
-                "File already exists",
-                f"{zip_name} already exists in the selected folder.\n"
-                "Download again and re-extract?",
+                "Already exists",
+                f"{folder_name} (or {zip_name}) already exists under the "
+                f"selected folder.\nDownload again and re-extract to "
+                f"{folder_name}?",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
