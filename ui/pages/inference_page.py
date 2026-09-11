@@ -1202,12 +1202,13 @@ class _SdrDatasetDownloadDialog(QDialog):
         root.addWidget(self._status)
 
         self._bar = QProgressBar()
-        self._bar.setFixedHeight(4)
+        self._bar.setFixedHeight(10)
+        self._bar.setTextVisible(False)
         self._bar.setStyleSheet(
             f"QProgressBar{{background:{theme_manager.theme.border};border:none;"
-            f"border-radius:2px;}}"
+            f"border-radius:5px;min-height:10px;max-height:10px;}}"
             f"QProgressBar::chunk{{background:{theme_manager.accent};"
-            f"border-radius:2px;}}"
+            f"border-radius:5px;}}"
         )
         root.addWidget(self._bar)
 

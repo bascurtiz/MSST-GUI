@@ -785,11 +785,13 @@ class _DownloadProgressDialog(QDialog):
         root.addSpacing(16)
 
         self._bar = QProgressBar()
-        self._bar.setFixedHeight(4)
+        self._bar.setFixedHeight(10)
+        self._bar.setTextVisible(False)
         self._bar.setStyleSheet(f"""
-            QProgressBar{{background:{theme_manager.theme.border};border:none;border-radius:2px;}}
+            QProgressBar{{background:{theme_manager.theme.border};border:none;
+            border-radius:5px;min-height:10px;max-height:10px;}}
             QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
-            stop:0 {theme_manager.accent},stop:1 {theme_manager.accent});border-radius:2px;}}
+            stop:0 {theme_manager.accent},stop:1 {theme_manager.accent});border-radius:5px;}}
         """)
         self._bar.setValue(0)
         root.addWidget(self._bar)
