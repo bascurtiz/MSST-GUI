@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
-    QDialogButtonBox, QMenu, QMessageBox, QCheckBox, QProgressBar,
+    QDialogButtonBox, QMenu, QMessageBox, QCheckBox,
 )
 from PySide6.QtGui import QCursor
 from PySide6.QtCore import (Qt, Signal, Property, QObject, QEasingCurve, QSize,
@@ -63,6 +63,7 @@ from ui.widgets.common import (
     _type_badge_ss, _custom_badge_ss, _blocked_badge_ss,
     _type_badge_color, _type_title,
 )
+from ui.widgets.smooth_bar import SmoothBar
 
 # mvsep quality-checker datasets (SDR-test mode): display name, stem
 # suffix map (config instrument name -> expected output suffix; "*" is a
@@ -1195,29 +1196,38 @@ class _SdrDatasetDownloadDialog(QDialog):
         )
         root.addWidget(title)
 
-        self._status = QLabel("Connecting…")
-        self._status.setStyleSheet(
-            f"font-size:11px;color:{theme_manager.theme.text_dim};"
-        )
-        root.addWidget(self._status)
-
-        self._bar = QProgressBar()
-        self._bar.setFixedHeight(10)
-        self._bar.setTextVisible(False)
-        self._bar.setStyleSheet(
-            f"QProgressBar{{background:{theme_manager.theme.border};border:none;"
-            f"border-radius:5px;min-height:10px;max-height:10px;}}"
-            f"QProgressBar::chunk{{background:{theme_manager.accent};"
-            f"border-radius:5px;}}"
-        )
+        self._bar = SmoothBar()
         root.addWidget(self._bar)
 
-        self._detail = QLabel("0%")
-        self._detail.setStyleSheet(
-            f"font-family:'Courier New',monospace;font-size:11px;"
-            f"color:{theme_manager.theme.text_muted};"
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.setSpacing(8)
+
+        acc = theme_manager.accent
+        dim = theme_manager.theme.text_dim
+        self._pct_lbl = QLabel("0%")
+        self._pct_lbl.setStyleSheet(
+            "background:transparent;border:none;"
+            f"font-weight:bold;font-size:11px;color:{acc};"
         )
-        root.addWidget(self._detail)
+        status_row.addWidget(self._pct_lbl)
+
+        self._detail = QLabel("")
+        self._detail.setStyleSheet(
+            "background:transparent;border:none;font-size:10px;"
+            f"color:{dim};"
+        )
+        status_row.addWidget(self._detail)
+
+        status_row.addStretch()
+
+        self._status = QLabel("Connecting…")
+        self._status.setStyleSheet(
+            "background:transparent;border:none;font-size:10px;"
+            f"color:{theme_manager.theme.text};"
+        )
+        status_row.addWidget(self._status)
+        root.addLayout(status_row)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -1235,22 +1245,25 @@ class _SdrDatasetDownloadDialog(QDialog):
         if total > 0:
             pct = int(downloaded / total * 100)
             self._bar.setValue(pct)
+            self._pct_lbl.setText(f"{pct}%")
             mb_dl = downloaded / (1024 * 1024)
             mb_total = total / (1024 * 1024)
-            self._detail.setText(f"{pct}%  ({mb_dl:.1f} / {mb_total:.1f} MB)")
+            self._detail.setText(f"({mb_dl:.1f} / {mb_total:.1f} MB)")
         else:
             mb_dl = downloaded / (1024 * 1024)
+            self._pct_lbl.setText("0%")
             self._detail.setText(f"{mb_dl:.1f} MB")
 
     def _on_finished(self, ok, msg):
         self._done = True
         self._cancel_btn.setEnabled(False)
         if ok:
-            self._bar.setValue(100)
-            self._status.setText("Download complete.")
+            self._bar.setValueImmediate(100)
+            self._pct_lbl.setText("100%")
+            self._status.setText("Complete")
             self._detail.setText(msg)
         else:
-            self._status.setText("Download failed.")
+            self._status.setText("Failed")
             self._detail.setText(msg)
         QTimer.singleShot(0, self.accept if ok else self.reject)
 

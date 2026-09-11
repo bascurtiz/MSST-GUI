@@ -12,7 +12,7 @@ from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
-    QScrollArea, QSizePolicy, QMessageBox, QProgressBar,
+    QScrollArea, QSizePolicy, QMessageBox,
     QDialog, QStackedWidget,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint, QEvent, QRectF, QUrl
@@ -27,6 +27,7 @@ from ui.widgets.common import (
     _custom_badge_ss,
     css_color as _css_color, DOWNLOAD_GLYPH, run_blurred_dialog,
 )
+from ui.widgets.smooth_bar import SmoothBar
 
 from backend.downloader import HuggingFaceDownloader
 from backend.yaml_analyzer import classify_model_type
@@ -775,52 +776,45 @@ class _DownloadProgressDialog(QDialog):
             f"color:{theme_manager.theme.text};background:transparent;"
         )
         root.addWidget(self._name_lbl)
-        root.addSpacing(8)
-
-        self._status_lbl = QLabel("Connecting to HuggingFace...")
-        self._status_lbl.setStyleSheet(
-            f"font-family:'Montserrat';font-size:11px;color:{theme_manager.theme.text_dim};background:transparent;"
-        )
-        root.addWidget(self._status_lbl)
         root.addSpacing(16)
 
-        self._bar = QProgressBar()
-        self._bar.setFixedHeight(10)
-        self._bar.setTextVisible(False)
-        self._bar.setStyleSheet(f"""
-            QProgressBar{{background:{theme_manager.theme.border};border:none;
-            border-radius:5px;min-height:10px;max-height:10px;}}
-            QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
-            stop:0 {theme_manager.accent},stop:1 {theme_manager.accent});border-radius:5px;}}
-        """)
-        self._bar.setValue(0)
+        self._bar = SmoothBar()
         root.addWidget(self._bar)
-        root.addSpacing(8)
+        root.addSpacing(6)
 
+        acc = theme_manager.accent
+        dim = theme_manager.theme.text_dim
         progress_row = QHBoxLayout()
         progress_row.setContentsMargins(0, 0, 0, 0)
-        progress_row.setSpacing(0)
+        progress_row.setSpacing(8)
 
         self._pct_lbl = QLabel("0%")
         self._pct_lbl.setStyleSheet(
-            f"font-family:'Courier New',monospace;font-size:11px;font-weight:bold;"
-            f"color:{theme_manager.accent};background:transparent;"
+            "background:transparent;border:none;"
+            f"font-weight:bold;font-size:11px;color:{acc};"
         )
         progress_row.addWidget(self._pct_lbl)
+
+        self._info_lbl = QLabel("")
+        self._info_lbl.setStyleSheet(
+            "background:transparent;border:none;font-size:10px;"
+            f"color:{dim};"
+        )
+        progress_row.addWidget(self._info_lbl)
+
         progress_row.addStretch()
-        self._speed_lbl = QLabel("")
-        self._speed_lbl.setStyleSheet(
-            f"font-family:'Courier New',monospace;font-size:11px;font-weight:bold;"
-            f"color:{theme_manager.theme.text_muted};background:transparent;"
+
+        self._status_lbl = QLabel("Connecting…")
+        self._status_lbl.setStyleSheet(
+            "background:transparent;border:none;font-size:10px;"
+            f"color:{theme_manager.theme.text};"
         )
-        progress_row.addWidget(self._speed_lbl)
-        progress_row.addSpacing(12)
-        self._size_lbl = QLabel("")
-        self._size_lbl.setStyleSheet(
-            f"font-family:'Montserrat';font-size:10px;color:{theme_manager.theme.text_muted};background:transparent;"
-        )
-        progress_row.addWidget(self._size_lbl)
+        progress_row.addWidget(self._status_lbl)
         root.addLayout(progress_row)
+
+        self._last_speed = ""
+        self._last_downloaded = 0
+        self._last_total = 0
 
         root.addStretch()
 
@@ -847,43 +841,54 @@ class _DownloadProgressDialog(QDialog):
         worker.finished.connect(self._on_finished)
         worker.error.connect(self._on_error)
 
+    def _refresh_info(self, downloaded, total):
+        if total > 0:
+            mb_dl = downloaded / (1024 * 1024)
+            mb_total = total / (1024 * 1024)
+            size_txt = f"({mb_dl:.1f} / {mb_total:.1f} MB)"
+        else:
+            mb_dl = downloaded / (1024 * 1024)
+            size_txt = f"{mb_dl:.1f} MB"
+        if self._last_speed:
+            self._info_lbl.setText(f"{size_txt}  ·  {self._last_speed}")
+        else:
+            self._info_lbl.setText(size_txt)
+
     def _on_progress(self, filename, downloaded, total):
-        pct = 0
+        self._last_downloaded = downloaded
+        self._last_total = total
         if total > 0:
             pct = int(downloaded / total * 100)
             self._bar.setValue(pct)
-            mb_dl = downloaded / (1024 * 1024)
-            mb_total = total / (1024 * 1024)
             self._pct_lbl.setText(f"{pct}%")
-            self._size_lbl.setText(f"{mb_dl:.1f} MB / {mb_total:.1f} MB")
         else:
-            mb_dl = downloaded / (1024 * 1024)
-            self._pct_lbl.setText(f"{mb_dl:.1f} MB")
-            self._size_lbl.setText("")
+            self._pct_lbl.setText("0%")
+        self._refresh_info(downloaded, total)
 
     def _on_status(self, msg):
         lower = msg.lower()
         if "connecting" in lower:
-            self._status_lbl.setText("Connecting to HuggingFace...")
+            self._status_lbl.setText("Connecting…")
         elif "downloading checkpoint" in lower:
-            self._status_lbl.setText("Downloading checkpoint...")
+            self._status_lbl.setText("Downloading…")
         elif "downloading config" in lower or "downloading yaml" in lower:
-            self._status_lbl.setText("Downloading configuration...")
+            self._status_lbl.setText("Downloading…")
         elif "downloading backend" in lower:
-            self._status_lbl.setText("Downloading backend script...")
+            self._status_lbl.setText("Downloading…")
         elif "backend script downloaded" in lower:
             pass
         elif "download complete" in lower:
-            self._status_lbl.setText("Verifying download...")
+            self._status_lbl.setText("Verifying…")
         else:
             self._status_lbl.setText(msg)
 
     def _on_speed(self, mbps: float):
         mbs = mbps / 8  # megabits -> megabytes
         if mbs < 1:
-            self._speed_lbl.setText(f"{mbs * 1024:.0f} KB/s")
+            self._last_speed = f"{mbs * 1024:.0f} KB/s"
         else:
-            self._speed_lbl.setText(f"{mbs:.2f} MB/s")
+            self._last_speed = f"{mbs:.2f} MB/s"
+        self._refresh_info(self._last_downloaded, self._last_total)
 
     def _on_finished(self, success, msg, file_info):
         if success:
@@ -897,13 +902,15 @@ class _DownloadProgressDialog(QDialog):
     def _show_final(self, ok, msg):
         self._completed = True
         if ok:
-            self._size_lbl.setText("Model registered successfully")
-            self._bar.setValue(100)
+            self._bar.setValueImmediate(100)
+            self._pct_lbl.setText("100%")
+            self._info_lbl.setText("Model registered successfully")
+            self._status_lbl.setText("Complete")
         self._action_btn.setEnabled(True)
         self._action_btn.setText("Close")
 
     def on_registered(self, ok=True):
-        self._status_lbl.setText("Registering model..." if ok else "Registration Failed")
+        self._status_lbl.setText("Registering…" if ok else "Failed")
         if ok:
             QTimer.singleShot(600, lambda: self._show_final(True, ""))
         else:
