@@ -62,6 +62,9 @@ SHEET_EXPORT_URL = (
 ENTRIES_CACHE_PATH = os.path.join(APP_DIR, "mvsep_quality_checker_cache.json")
 CACHE_PATH = os.path.join(APP_DIR, "mvsep_scores_cache.json")
 STALE_DAYS = 7
+# Bump when the HTML parser changes so existing disk/seed entries refetch.
+# v2: signed metric values (e.g. piano SI-SDR -1.75) were previously dropped.
+PARSER_VERSION = 2
 ENTRIES_STALE_DAYS = 1  # re-fetch the sheet URL list daily
 _FETCH_DELAY = 0.15  # politeness gap between page fetches
 
@@ -147,8 +150,10 @@ def _set_entries(entries: dict) -> dict:
         return old
 
 
-# "Metric sdr for vocals: 5.0231"
-_METRIC_RE = re.compile(r"Metric\s+([a-z0-9_]+)\s+for\s+([A-Za-z0-9 _\-]+?):\s*([0-9.]+)\s*$")
+# "Metric sdr for vocals: 5.0231" / "Metric si_sdr for piano: -1.74664"
+_METRIC_RE = re.compile(
+    r"Metric\s+([a-z0-9_]+)\s+for\s+([A-Za-z0-9 _\-]+?):\s*([-+]?\d+(?:\.\d+)?)\s*$"
+)
 
 
 def parse_entry_html(html: str) -> dict:
@@ -230,6 +235,8 @@ def _save_cache(cache: dict) -> None:
 
 
 def _is_stale(entry: dict, stale_days: int = STALE_DAYS) -> bool:
+    if entry.get("parser") != PARSER_VERSION:
+        return True
     try:
         fd = datetime.fromisoformat(entry.get("fetched_at", "")).replace(tzinfo=timezone.utc)
         return (datetime.now(timezone.utc) - fd).total_seconds() > stale_days * 86400
@@ -448,6 +455,7 @@ class ScoresStore(QObject):
             entry = {
                 "url": url,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "parser": PARSER_VERSION,
                 "stems": parsed["stems"],
                 "metrics": parsed["metrics"],
             }

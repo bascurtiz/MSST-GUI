@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
     QScrollArea, QSizePolicy, QSpacerItem, QDialog,
-    QDialogButtonBox, QMenu, QMessageBox, QCheckBox,
+    QDialogButtonBox, QMenu, QMessageBox, QCheckBox, QProgressBar,
 )
 from PySide6.QtGui import QCursor
 from PySide6.QtCore import (Qt, Signal, Property, QObject, QEasingCurve, QSize,
@@ -25,6 +25,7 @@ from backend.audio_names import (
     INFERENCE_FILENAME_TEMPLATE,
     SDR_FILENAME_TEMPLATE,
 )
+from backend.sdr_datasets import SdrDatasetDownloadWorker, dataset_download_url
 from backend.mvsep_scores import (
     METRIC_LABELS as MVSEP_METRIC_LABELS,
     METRICS as MVSEP_METRICS,
@@ -84,7 +85,9 @@ SDR_DATASETS = [
       "inst": "other", "accompaniment": "other", "accomp": "other"}, False),
     ("Medley Vox",
      {"vocals1": "vocals1", "vocals2": "vocals2", "vocal1": "vocals1",
-      "vocal2": "vocals2", "voice1": "vocals1", "voice2": "vocals2"}, False),
+      "vocal2": "vocals2", "voice1": "vocals1", "voice2": "vocals2",
+      "vox_1": "vocals1", "vox_2": "vocals2",
+      "vox1": "vocals1", "vox2": "vocals2"}, False),
     ("Strings",
      {"strings": "strings", "string": "strings", "other": "other",
       "instrumental": "other", "instrument": "other", "instr": "other",
@@ -1161,15 +1164,113 @@ def _sdr_check_ss():
     )
 
 
+class _SdrDatasetDownloadDialog(QDialog):
+    """Progress dialog for downloading an mvsep validation dataset zip."""
+
+    def __init__(self, worker: SdrDatasetDownloadWorker, dataset_name: str,
+                 parent=None):
+        super().__init__(parent)
+        self._worker = worker
+        self._done = False
+        self.setWindowTitle("Download validation dataset")
+        self.setModal(True)
+        self.setMinimumWidth(420)
+        self.setStyleSheet(
+            f"QDialog{{background:{theme_manager.theme.bg};}}"
+            f"QLabel{{background:transparent;color:{theme_manager.theme.text};}}"
+        )
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 20)
+        root.setSpacing(12)
+
+        title = QLabel(dataset_name)
+        title.setStyleSheet(
+            "font-family:'Montserrat',sans-serif;font-size:14px;font-weight:bold;"
+        )
+        root.addWidget(title)
+
+        self._status = QLabel("Connecting…")
+        self._status.setStyleSheet(
+            f"font-size:11px;color:{theme_manager.theme.text_dim};"
+        )
+        root.addWidget(self._status)
+
+        self._bar = QProgressBar()
+        self._bar.setFixedHeight(4)
+        self._bar.setStyleSheet(
+            f"QProgressBar{{background:{theme_manager.theme.border};border:none;"
+            f"border-radius:2px;}}"
+            f"QProgressBar::chunk{{background:{theme_manager.accent};"
+            f"border-radius:2px;}}"
+        )
+        root.addWidget(self._bar)
+
+        self._detail = QLabel("0%")
+        self._detail.setStyleSheet(
+            f"font-family:'Courier New',monospace;font-size:11px;"
+            f"color:{theme_manager.theme.text_muted};"
+        )
+        root.addWidget(self._detail)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setStyleSheet(outline_button_ss())
+        self._cancel_btn.clicked.connect(self._on_cancel)
+        btn_row.addWidget(self._cancel_btn)
+        root.addLayout(btn_row)
+
+        worker.progress.connect(self._on_progress)
+        worker.status.connect(self._status.setText)
+        worker.finished.connect(self._on_finished)
+
+    def _on_progress(self, _filename, downloaded, total):
+        if total > 0:
+            pct = int(downloaded / total * 100)
+            self._bar.setValue(pct)
+            mb_dl = downloaded / (1024 * 1024)
+            mb_total = total / (1024 * 1024)
+            self._detail.setText(f"{pct}%  ({mb_dl:.1f} / {mb_total:.1f} MB)")
+        else:
+            mb_dl = downloaded / (1024 * 1024)
+            self._detail.setText(f"{mb_dl:.1f} MB")
+
+    def _on_finished(self, ok, msg):
+        self._done = True
+        self._cancel_btn.setEnabled(False)
+        if ok:
+            self._bar.setValue(100)
+            self._status.setText("Download complete.")
+            self._detail.setText(msg)
+        else:
+            self._status.setText("Download failed.")
+            self._detail.setText(msg)
+        QTimer.singleShot(0, self.accept if ok else self.reject)
+
+    def _on_cancel(self):
+        if not self._done:
+            self._worker.cancel()
+        self.reject()
+
+    def closeEvent(self, event):
+        if not self._done:
+            self._worker.cancel()
+        super().closeEvent(event)
+
+
 class _SdrTestRow(QFrame):
     """CONFIGURATION row under DEVICE: a Quality Checker Test checkbox plus
     a dataset dropdown that appears only while enabled. When on, outputs are
     written with mvsep quality-checker naming for the selected dataset (the
     input's trailing "_mixture" is dropped and each stem is suffixed per
-    the dataset's expected names)."""
+    the dataset's expected names). Selecting a dataset offers to download
+    the mvsep validation mixtures for that benchmark."""
 
     def __init__(self, tooltip=""):
         super().__init__()
+        self._download_worker = None
+        self._download_dialog = None
         self.setObjectName("cfgRow")
         self.setFixedHeight(ROW_H)
         self.setStyleSheet(_row_ss())
@@ -1218,11 +1319,76 @@ class _SdrTestRow(QFrame):
         self.combo.popupClosed.connect(lambda: self._arrow.set_down(False))
 
         self.check.toggled.connect(self._sync_visibility)
+        self.combo.activated.connect(self._offer_dataset_download)
         self._sync_visibility(self.check.isChecked())
 
     def _sync_visibility(self, checked):
         self.combo.setVisible(bool(checked))
         self._arrow.setVisible(bool(checked))
+
+    def _offer_dataset_download(self, index: int):
+        """Prompt to download the mvsep validation zip for the chosen dataset."""
+        if self._download_worker and self._download_worker.is_running():
+            return
+
+        name = self.combo.itemText(index)
+        url = dataset_download_url(name)
+        if not url:
+            return
+
+        parent = self.window()
+        zip_name = os.path.basename(url)
+        reply = QMessageBox.question(
+            parent,
+            "Download validation dataset",
+            f"Download the {name} validation dataset from mvsep.com?\n\n"
+            f"File: {zip_name}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        dest_dir = QFileDialog.getExistingDirectory(
+            parent,
+            f"Save {name} dataset to…",
+        )
+        if not dest_dir:
+            return
+
+        zip_path = os.path.join(dest_dir, zip_name)
+        if os.path.isfile(zip_path):
+            overwrite = QMessageBox.question(
+                parent,
+                "File already exists",
+                f"{zip_name} already exists in the selected folder.\n"
+                "Download again and re-extract?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if overwrite != QMessageBox.Yes:
+                return
+
+        self._download_worker = SdrDatasetDownloadWorker(url, dest_dir)
+        self._download_dialog = _SdrDatasetDownloadDialog(
+            self._download_worker, name, parent)
+        self._download_worker.start()
+        ok = self._download_dialog.exec() == QDialog.Accepted
+        if ok:
+            QMessageBox.information(
+                parent,
+                "Dataset ready",
+                f"The {name} validation dataset was extracted to:\n\n"
+                f"{dest_dir}",
+            )
+        elif self._download_dialog._status.text() == "Download failed.":
+            QMessageBox.warning(
+                parent,
+                "Download failed",
+                self._download_dialog._detail.text(),
+            )
+        self._download_worker = None
+        self._download_dialog = None
 
 
 # ── Stem Selection Dialog ───────────────────────────────────────────────────

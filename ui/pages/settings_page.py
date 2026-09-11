@@ -1169,6 +1169,7 @@ class _FolderManagerWidget(QWidget):
         self._dot_timer.timeout.connect(self._tick_dots)
 
         self._expanded: set = set()
+        self._search_term: str = ""
         self._folder_meta: dict = {}
         self._folder_tree_dates: dict[str, str] = {}
         self._folder_file_dates: dict[str, str] = {}
@@ -1440,7 +1441,8 @@ class _FolderManagerWidget(QWidget):
     def set_search_text(self, text):
         """Filter folders by name (driven by the page-level search field,
         which sits on the same row as the REGISTER MODEL header)."""
-        self._render(text.lower().strip())
+        self._search_term = text.lower().strip()
+        self._render(self._search_term)
 
     # ──── Render ────
 
@@ -1468,7 +1470,7 @@ class _FolderManagerWidget(QWidget):
         # and the first folder.
         self._list_layout.insertWidget(self._list_layout.count() - 1, widget)
 
-    def _request_render(self, search_term=""):
+    def _request_render(self, search_term=None):
         """Rebuild the folder list, deferring while any modal dialog is open.
 
         A rebuild calls deleteLater() on every widget in the list — including
@@ -1485,6 +1487,8 @@ class _FolderManagerWidget(QWidget):
         index loaded, install accepted) must therefore wait until the modal
         is gone; the deferred request is coalesced to a single render.
         """
+        if search_term is None:
+            search_term = self._search_term
         from PySide6.QtWidgets import QApplication
         if QApplication.activeModalWidget() is not None:
             self._render_pending = (search_term,)
@@ -1504,7 +1508,9 @@ class _FolderManagerWidget(QWidget):
         if pending is not None:
             self._request_render(pending[0])
 
-    def _render(self, search_term=""):
+    def _render(self, search_term=None):
+        if search_term is None:
+            search_term = self._search_term
         self._clear()
         self._render_root(search_term)
 
@@ -1568,7 +1574,7 @@ class _FolderManagerWidget(QWidget):
             clo.addWidget(info_lbl)
 
             arrow = _ExpandArrow()
-            if fk in self._expanded:
+            if fk in self._expanded or bool(search_term):
                 arrow.set_angle(90.0)
             arrow.clicked.connect(lambda x=fk: self._toggle_folder(x))
             clo.addWidget(arrow, 0, Qt.AlignVCenter)

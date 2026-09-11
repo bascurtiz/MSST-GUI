@@ -149,6 +149,27 @@ Metric bleedless for other: 14.7484<br />
 Metric fullness for other: 15.9727<br />
 """
 
+# Real Quality Checker page for the MDX-NET piano model: negatives must
+# survive parse or the library card drops the piano column.
+HTML_PIANO = """<b>Metrics:</b><br />
+Metric sdr for piano: 3.55445<br />
+Metric si_sdr for piano: -1.74664<br />
+Metric l1_freq for piano: 46.28665<br />
+Metric log_wmse for piano: 14.15570<br />
+Metric aura_stft for piano: 3.81489<br />
+Metric aura_mrstft for piano: 3.67443<br />
+Metric bleedless for piano: -2.47199<br />
+Metric fullness for piano: 8.63941<br />
+Metric sdr for other: 15.83449<br />
+Metric si_sdr for other: 15.74595<br />
+Metric l1_freq for other: 51.28684<br />
+Metric log_wmse for other: 14.15626<br />
+Metric aura_stft for other: 3.21905<br />
+Metric aura_mrstft for other: 3.16467<br />
+Metric bleedless for other: 50.39771<br />
+Metric fullness for other: 55.03060<br />
+"""
+
 
 def test_parsing():
     p2 = ms.parse_entry_html(HTML_2STEM)
@@ -166,6 +187,16 @@ def test_parsing():
     check("4-stem sdr other", p4["metrics"]["other"]["sdr"] == 3.9940)
     check("4-stem l1_freq drums", p4["metrics"]["drums"]["l1_freq"] == 30.8083)
     check("8 metrics per stem", len(p4["metrics"]["vocals"]) == 8)
+
+    piano = ms.parse_entry_html(HTML_PIANO)
+    check("piano stems in page order", piano["stems"] == ["piano", "other"])
+    check("piano si_sdr negative kept",
+          piano["metrics"]["piano"]["si_sdr"] == -1.74664)
+    check("piano bleedless negative kept",
+          piano["metrics"]["piano"]["bleedless"] == -2.47199)
+    check("other si_sdr still parsed",
+          piano["metrics"]["other"]["si_sdr"] == 15.74595)
+    check("8 metrics on piano stem", len(piano["metrics"]["piano"]) == 8)
 
 
 def test_lines_and_keys():
@@ -191,6 +222,18 @@ def test_lines_and_keys():
     check("no scores -> no mean", ms.mean_metric(None, "sdr") is None)
     check("missing metric -> no mean",
           ms.mean_metric(p2, "does_not_exist") is None)
+
+    piano = ms.parse_entry_html(HTML_PIANO)
+    check("piano SI-SDR line keeps negative",
+          ms.metric_line(piano, "si_sdr") ==
+          "SI-SDR piano: -1.75 | other: 15.75")
+    check("piano bleedless line keeps negative",
+          ms.metric_line(piano, "bleedless") ==
+          "BLEEDLESS piano: -2.47 | other: 50.40")
+    mean_si = ms.mean_metric(piano, "si_sdr")
+    check("piano mean si_sdr includes negative",
+          mean_si is not None
+          and abs(mean_si - ((-1.74664 + 15.74595) / 2)) < 1e-6)
 
 
 def test_sheet_entries():
@@ -228,6 +271,7 @@ def test_cache():
         entry = {
             "url": "https://mvsep.com/quality_checker/entry/10412",
             "fetched_at": "2026-09-08T12:00:00+00:00",
+            "parser": ms.PARSER_VERSION,
             "stems": ["vocals", "bass"],
             "metrics": {"vocals": {"sdr": 5.02}, "bass": {"sdr": 7.45}},
         }
@@ -239,6 +283,12 @@ def test_cache():
         stale = dict(entry, fetched_at="2020-01-01T00:00:00+00:00")
         check("old entry stale", ms._is_stale(stale))
         check("broken date stale", ms._is_stale({"fetched_at": "nope"}))
+        check("missing parser version is stale",
+              ms._is_stale(dict(entry, parser=None)))
+        no_parser = {k: v for k, v in entry.items() if k != "parser"}
+        check("pre-v2 cache entry is stale", ms._is_stale(no_parser))
+        check("older parser version is stale",
+              ms._is_stale(dict(entry, parser=1)))
     finally:
         ms.CACHE_PATH = old
 
@@ -390,6 +440,28 @@ def test_score_lookup_keys_friendly():
           "bs_leap_xe_voc_unwa.ckpt" in keys2)
 
 
+def test_negative_metric_display():
+    """Library row keeps the piano column when SI-SDR is negative."""
+    app = QApplication.instance() or QApplication([])
+    theme_manager.init_app(app)
+    piano = ms.parse_entry_html(HTML_PIANO)
+    item = _ModelItem("mdx23c_6s_piano_anvuew.onnx", scores=piano)
+    item.set_metric("si_sdr")
+    check("negative si-sdr metric label",
+          item._scores_lbl._metric_lbl.text() == "si-sdr")
+    check("piano stem kept next to other",
+          [lbl.text() for lbl in item._scores_lbl._labels] ==
+          ["PIANO", "OTHER"])
+    check("piano si-sdr shows -1.75",
+          item._scores_lbl._values[0].text() == "-1.75")
+    check("other si-sdr still shown",
+          item._scores_lbl._values[1].text() == "15.75")
+    item.set_metric("bleedless")
+    check("piano bleedless shows -2.47",
+          item._scores_lbl._values[0].text() == "-2.47")
+    item.deleteLater()
+
+
 def test_l1_freq_row_height():
     """Metric block uses dynamic height and shows l1-freq per-stem values."""
     app = QApplication.instance() or QApplication([])
@@ -473,6 +545,7 @@ def test_worker_refetches_when_url_changes():
             key: {
                 "url": old_url,
                 "fetched_at": "2026-09-08T12:00:00+00:00",
+                "parser": ms.PARSER_VERSION,
                 "stems": ["instrum"],
                 "metrics": {"instrum": {"sdr": 1.0}},
             }
@@ -519,6 +592,7 @@ def test_request_queues_cached_refresh():
         entry = {
             "url": "https://mvsep.com/quality_checker/entry/10412",
             "fetched_at": "2026-09-08T12:00:00+00:00",
+            "parser": ms.PARSER_VERSION,
             "stems": ["instrum", "vocals"],
             "metrics": {"instrum": {"sdr": 14.63}, "vocals": {"sdr": 8.32}},
         }
@@ -576,6 +650,7 @@ def main():
     test_library_row_and_sort()
     test_score_lookup_keys_ckpt_suffix()
     test_score_lookup_keys_friendly()
+    test_negative_metric_display()
     test_l1_freq_row_height()
     test_attach_cached_scores_without_signal()
     test_sort_combo_options()

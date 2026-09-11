@@ -196,7 +196,9 @@ def main():
         ("Piano", [("Piano", "piano"), ("pianos", "piano"),
                     ("instr", "other")]),
         ("Medley Vox", [("vocals1", "vocals1"), ("vocal2", "vocals2"),
-                         ("Voice1", "vocals1")]),
+                         ("Voice1", "vocals1"), ("vox_1", "vocals1"),
+                         ("vox_2", "vocals2"), ("Vox_1", "vocals1"),
+                         ("vox1", "vocals1"), ("vox2", "vocals2")]),
         ("Strings", [("Strings", "strings"), ("string", "strings"),
                       ("Instrument", "other")]),
         ("Wind", [("Wind", "wind"), ("brass", "wind"),
@@ -317,6 +319,13 @@ def main():
     check(qc_name("melody_086_mixture", "vocals", multisong_map)
           == "melody_086_vocals",
           "Multisong unaffected: still writes _vocals not _lead")
+    medley_map, _ = ip._sdr_dataset("Medley Vox")
+    check(qc_name("medley_000_mixture", "vox_1", medley_map)
+          == "medley_000_vocals1",
+          "Medley Vox naming: medley_000_vocals1 from vox_1")
+    check(qc_name("medley_000_mixture", "vox_2", medley_map)
+          == "medley_000_vocals2",
+          "Medley Vox naming: medley_000_vocals2 from vox_2")
     check(parse_stem_suffix_map(ip._sdr_map_text(dnr_map))
           == dnr_map, "map text round-trips through the engine parser")
 
@@ -328,6 +337,12 @@ def main():
           f"row label reads 'Quality Checker Test', got {labels}")
     check(row.combo.count() == len(EXPECTED_DATASETS),
           f"dropdown lists all datasets, got {row.combo.count()}")
+    from backend.sdr_datasets import SDR_DATASET_URLS
+    for ds_name in EXPECTED_DATASETS:
+        check(ds_name in SDR_DATASET_URLS and SDR_DATASET_URLS[ds_name].startswith("https://"),
+              f"{ds_name} has an mvsep download URL")
+    check(len(SDR_DATASET_URLS) == len(EXPECTED_DATASETS),
+          "every QC dataset has exactly one download URL")
     row.check.setChecked(False)
     app.processEvents()
     check(row.combo.isHidden() and row._arrow.isHidden(),
@@ -478,6 +493,17 @@ def main():
     keep = resample_to_native(mono, 48000, 48000, 10, target_channels=1)
     check(keep.shape == (1, 10) and np.allclose(keep, expect, atol=1e-6),
           "matching channel count passes through unchanged")
+
+    # Medley Vox regression: stereo at the mixture's own rate/length must
+    # still downmix when the reference is mono (QC always calls the helper).
+    medley_stereo = np.stack([
+        np.ones(101077, dtype=np.float32),
+        np.ones(101077, dtype=np.float32) * 0.99,
+    ])
+    medley_mono = resample_to_native(
+        medley_stereo, 44100, 44100, 101077, target_channels=1)
+    check(medley_mono.shape == (1, 101077),
+          "stereo stem at mixture rate/length downmixes to mono for mvsep")
 
     if FAILURES:
         print(f"FAILED ({len(FAILURES)}):")

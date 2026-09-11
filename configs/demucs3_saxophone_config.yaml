@@ -1,0 +1,69 @@
+audio:
+  chunk_size: 485100
+  min_mean_abs: 0.001
+  hop_length: 1024
+training:
+  batch_size: 8
+  gradient_accumulation_steps: 1
+  grad_clip: 0
+  segment: 24
+  shift: 1
+  samplerate: 44100
+  channels: 2
+  normalize: true
+  instruments:
+    - saxophone
+    - other
+  target_instrument: null
+  num_epochs: 1000
+  num_steps: 1000
+  optimizer: adam
+  lr: 9.0e-05
+  patience: 2
+  reduce_factor: 0.95
+  q: 0.95
+  coarse_loss_clip: true
+  ema_momentum: 0.999
+  other_fix: false
+  use_amp: true
+augmentations:
+  enable: true
+  loudness: true
+  loudness_min: 0.5
+  loudness_max: 1.5
+inference:
+  num_overlap: 4
+  batch_size: 1
+model: hdemucs
+hdemucs:
+  cac: true
+  channels: 32
+  channels_time: null
+  context: 1
+  context_enc: 0
+  dconv_attn: 4
+  dconv_comp: 4
+  dconv_depth: 2
+  dconv_init: 0.001
+  dconv_lstm: 4
+  dconv_mode: 1
+  depth: 6
+  emb_scale: 10
+  emb_smooth: true
+  end_iters: 0
+  freq_emb: 0.2
+  growth: 2
+  hybrid: true
+  hybrid_old: false
+  kernel_size: 8
+  multi_freqs: []
+  multi_freqs_depth: 3
+  nfft: 4096
+  norm_groups: 4
+  norm_starts: 4
+  rescale: 0.1
+  rewrite: true
+  stride: 4
+  time_stride: 2
+  wiener_iters: 0
+  wiener_residual: false

@@ -232,19 +232,23 @@ def run_folder(
                 if config.inference["normalize"] is True:
                     estimates = denormalize_audio(estimates, norm_params)
 
-            # mvsep quality-checker mode: write the stem at the input
+            # mvsep quality-checker mode: always write the stem at the input
             # mixture's native sample rate, exact frame count and channel
             # layout so the checker needs no server-side conversion (which
-            # can add a sample and fail its shape comparison). No-op when
-            # everything already matches.
+            # can add a sample and fail its shape comparison). Always run
+            # resample_to_native here (not only when sr/len differ): a model
+            # that already matches the mixture rate and length can still emit
+            # stereo stems from a num_channels:2 config, and skipping the
+            # helper in that case leaves mono mixtures with 2-channel outputs.
             sr_out = sr
             if qc_native is not None:
                 native_sr, native_len, native_ch = qc_native
-                if (native_sr != sr or estimates.shape[-1] != native_len
-                        or estimates.shape[0] != native_ch):
-                    estimates = resample_to_native(
-                        estimates, sr, native_sr, native_len, native_ch)
-                    sr_out = native_sr
+                pre_sr, pre_len, pre_ch = sr, estimates.shape[-1], estimates.shape[0]
+                estimates = resample_to_native(
+                    estimates, sr, native_sr, native_len, native_ch)
+                sr_out = native_sr
+                if (pre_sr != native_sr or pre_len != native_len
+                        or pre_ch != native_ch):
                     print(f"Note: quality-checker stem '{instr}' written at "
                           f"input rate {native_sr} Hz ({native_len} samples, "
                           f"{native_ch} ch) to match the mixture.")

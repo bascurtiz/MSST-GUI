@@ -30,7 +30,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
-from ui.pages.console_page import ConsolePage, _remove_files_with_retry  # noqa: E402
+from ui.pages.console_page import (  # noqa: E402
+    ConsolePage, _WaveformTrack, _remove_files_with_retry,
+)
 import ui.pages.console_page as cp  # noqa: E402
 
 FAILURES = []
@@ -83,7 +85,17 @@ def main():
 
     base = tempfile.mkdtemp(prefix="msst_del_")
 
-    # 1. Helper: normal delete + nonexistent paths are skipped quietly.
+    # 1. Waveform preview must not open QMediaPlayer sources eagerly — that
+    #    kept output files locked on Windows after a run finished.
+    f_wave = os.path.join(base, "wave.flac")
+    with open(f_wave, "wb") as f:
+        f.write(b"fLaC" + b"\0" * 64)
+    track = _WaveformTrack("Vocals", "#ffffff", "#000000")
+    track.load_audio(f_wave, samples=[0.0, 0.5, 1.0])
+    check(track._player is None,
+          "load_audio paints the envelope without opening QMediaPlayer")
+
+    # 2. Helper: normal delete + nonexistent paths are skipped quietly.
     f_plain = os.path.join(base, "plain.wav")
     with open(f_plain, "wb") as f:
         f.write(b"\0" * 16)
@@ -91,7 +103,7 @@ def main():
     check(failed == [], f"helper reported failures: {failed}")
     check(not os.path.exists(f_plain), "helper deleted the plain file")
 
-    # 2. Helper: read-only file is cleared and then deleted.
+    # 3. Helper: read-only file is cleared and then deleted.
     f_ro = os.path.join(base, "readonly.txt")
     with open(f_ro, "w") as f:
         f.write("x")
@@ -100,7 +112,7 @@ def main():
     check(failed == [], f"read-only file not deleted: {failed}")
     check(not os.path.exists(f_ro), "read-only file deleted")
 
-    # 3. Full page flow (what the card menu and trash button both route to):
+    # 4. Full page flow (what the card menu and trash button both route to):
     #    files vanish from disk and the card entry is removed, no warning.
     outdir = os.path.join(base, "m_model")
     os.makedirs(outdir)
@@ -125,7 +137,7 @@ def main():
     check(not os.path.isdir(outdir),
           "now-empty output directory removed too")
 
-    # 4. Failure path: when a file cannot be deleted, the card is KEPT with
+    # 5. Failure path: when a file cannot be deleted, the card is KEPT with
     #    the surviving paths and the user is warned — the entry never lies
     #    about what is still on disk.
     outdir2 = os.path.join(base, "locked_model")
@@ -150,7 +162,7 @@ def main():
     finally:
         cp._remove_files_with_retry = orig_helper
 
-    # 5. Declining the confirmation deletes nothing.
+    # 6. Declining the confirmation deletes nothing.
     outdir3 = os.path.join(base, "keep_model")
     os.makedirs(outdir3)
     page3 = ConsolePage()

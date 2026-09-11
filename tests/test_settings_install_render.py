@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtCore import QTimer  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 
 import ui.pages.settings_page as sp  # noqa: E402
 import backend.settings as bs  # noqa: E402
@@ -39,6 +39,16 @@ def check(name, cond):
 
 def _canned_models():
     return [
+        ModelInfo(
+            key="piano_demo", full_name="Demo Piano Model",
+            arch="BS Roformer Architecture", stem_type="keys",
+            category="keys", model_type="bs_roformer",
+            stems=["piano", "other"], target_instrument="piano",
+            checkpoint_url=("https://huggingface.co/demo/resolve/main/"
+                            "piano_demo.ckpt"),
+            config_url=("https://huggingface.co/demo/resolve/main/"
+                        "piano_demo.yaml"),
+        ),
         ModelInfo(
             key="vocals_demo", full_name="Demo Vocal Model",
             arch="BS Roformer Architecture", stem_type="vocals",
@@ -142,6 +152,35 @@ def main():
     QTest.qWait(200)
     check("install: no duplicate renders from stray timers",
           len(render_calls) == before)
+
+    # ── 4. Active search survives post-install re-render ──
+    widget.set_search_text("piano")
+    check("search: term stored on manager",
+          widget._search_term == "piano")
+    visible_before = sum(
+        1 for i in range(widget._list_layout.count() - 1)
+        if widget._list_layout.itemAt(i)
+        and widget._list_layout.itemAt(i).widget()
+        and widget._list_layout.itemAt(i).widget().findChildren(QPushButton)
+    )
+    check("search: matching model rows visible before install",
+          visible_before >= 1)
+
+    render_calls.clear()
+    widget._install(_install_info())
+    QTest.qWait(60)
+    check("search: deferred re-render ran after filtered install",
+          len(render_calls) == 1)
+    check("search: term preserved after install",
+          widget._search_term == "piano")
+    visible_after = sum(
+        1 for i in range(widget._list_layout.count() - 1)
+        if widget._list_layout.itemAt(i)
+        and widget._list_layout.itemAt(i).widget()
+        and widget._list_layout.itemAt(i).widget().findChildren(QPushButton)
+    )
+    check("search: matching model rows still visible after install",
+          visible_after >= 1)
 
     widget.deleteLater()
     app.processEvents()

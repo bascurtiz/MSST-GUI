@@ -862,6 +862,20 @@ def _fmt_time(ms):
     return f"{m:02d}:{s:02d}"
 
 
+def _audio_duration_ms(path):
+    """Length of an audio file in ms without opening a QMediaPlayer handle."""
+    if not path or not os.path.isfile(path):
+        return 0
+    try:
+        import soundfile as sf
+        info = sf.info(path)
+        if info.samplerate <= 0:
+            return 0
+        return int(round(info.frames / info.samplerate * 1000))
+    except Exception:
+        return 0
+
+
 _ENVELOPE_CACHE = {}
 _ENVELOPE_CACHE_MAX = 500
 
@@ -1049,8 +1063,8 @@ class _WaveformTrack(QWidget):
             self._player.positionChanged.connect(self._on_position)
             self._player.durationChanged.connect(self._on_duration)
             self._player.playbackStateChanged.connect(self._on_state)
-            if self._path:
-                self._player.setSource(QUrl.fromLocalFile(self._path))
+        if self._path and self._player.source().isEmpty():
+            self._player.setSource(QUrl.fromLocalFile(self._path))
         return self._player
 
     def _on_btn_clicked(self):
@@ -1097,13 +1111,25 @@ class _WaveformTrack(QWidget):
         p.play()
 
     def pause(self):
-        if self._player is not None and self._player.playbackState() == QMediaPlayer.PlayingState:
+        if self._player is None:
+            return
+        if self._player.playbackState() == QMediaPlayer.PlayingState:
             self._player.pause()
+        self._release_player_source()
+
+    def _release_player_source(self):
+        """Drop the QMediaPlayer source so Windows releases the file handle."""
+        if self._player is None:
+            return
+        self._player.stop()
+        self._player.setSource(QUrl())
+        if self._playing:
+            self._playing = False
+            self._apply_play_style()
+            self.play_toggled.emit(self, False)
 
     def stop_and_unload(self):
-        if self._player is not None:
-            self._player.stop()
-            self._player.setSource(QUrl())
+        self._release_player_source()
 
     def is_playing(self):
         return self._player is not None and self._player.playbackState() == QMediaPlayer.PlayingState
@@ -1122,6 +1148,13 @@ class _WaveformTrack(QWidget):
                 self._playback_progress = 0.0
                 self._time_bubble_text = ""
                 self.update()
+            # Playback finished (or was stopped): release WMF's file handle.
+            if self._player is not None and not self._player.source().isEmpty():
+                self._player.setSource(QUrl())
+                if self._playing:
+                    self._playing = False
+                    self._apply_play_style()
+                    self.play_toggled.emit(self, False)
 
     def _on_position(self, pos):
         h = self._host()
@@ -1164,13 +1197,13 @@ class _WaveformTrack(QWidget):
         (windowed-max envelope, normalized to its own peak) — the standalone
         fallback.
         """
+        if path != self._path:
+            self._release_player_source()
         self._path = path
-        # Ensure every track has a player (and thus a loaded duration) even
-        # before it is ever played, so its playhead can follow the shared
-        # position from the very first playback of any stem.
-        self._ensure_player()
-        if self._player is not None:
-            self._player.setSource(QUrl.fromLocalFile(self._path))
+        # Waveform paint uses the decoded envelope only; do not open a
+        # QMediaPlayer source here — on Windows WMF keeps the file locked
+        # until the source is cleared, which blocked rename/move after a run.
+        self._duration_ms = _audio_duration_ms(path)
         if samples is _LAZY:
             # Cold file: the async loader is computing its envelope. Leave
             # _samples as-is (None paints an empty track) — the loader will
@@ -1431,6 +1464,7 @@ class _WaveformContainer(QFrame):
                 self._track_layout.addWidget(track)
         for i in range(len(tracks), old_count):
             self._tracks[i].setVisible(False)
+            self._tracks[i].stop_and_unload()
         self._kick_loader(tracks)
 
     def refresh_tracks(self, card_ref):
@@ -1463,6 +1497,7 @@ class _WaveformContainer(QFrame):
                 self._track_layout.addWidget(track)
         for i in range(len(tracks), old_count):
             self._tracks[i].setVisible(False)
+            self._tracks[i].stop_and_unload()
         if any(_envelope_cached(p) is None for p in tracks):
             self._kick_loader(tracks)
 
@@ -2558,7 +2593,7 @@ class _DetailView(QFrame):
             self._show_empty()
             return
 
-        self._waveform.pause()
+        self._waveform.stop_and_unload()
 
         for w in (self._icon, self._name_lbl, self._path_lbl, self._elapsed_lbl,
                   self._sep, self._status_lbl, self._wf_lbl, self._view_stack):
@@ -2637,6 +2672,7 @@ class _DetailView(QFrame):
             self._waveform.setVisible(True)
 
     def _show_empty(self):
+        self._waveform.stop_and_unload()
         self._spinner.stop()
         for w in (self._icon, self._name_lbl, self._path_lbl, self._elapsed_lbl,
                   self._sep, self._status_lbl, self._wf_lbl, self._view_stack):

@@ -385,6 +385,10 @@ def build_medley_vox(config):
     seconds at the model sample rate) is the natural chunk length.
     """
     model = MedleyVoxModel(config)
+    # Medley-Vox is trained and inferred mono; without this the engine treats
+    # it as stereo (model.stereo defaults True) and keeps duplicated 2-channel
+    # stems when a yaml sets audio.num_channels: 2 on mono mixtures.
+    model.stereo = False
 
     sample_rate = int(config.audio.sample_rate)
     seq_dur = float(getattr(config.model, "seq_dur", 3.0))
