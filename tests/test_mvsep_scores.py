@@ -619,6 +619,57 @@ def test_request_queues_cached_refresh():
         ms._ENTRIES = None
 
 
+def test_lacks_validation_set_helper():
+    """Denoise and dereverb/deecho are the only types without a validation set."""
+    check("denoise lacks validation", ms.lacks_validation_set("denoise"))
+    check("dereverb/deecho lacks validation",
+          ms.lacks_validation_set("dereverb / deecho"))
+    check("case and padding ignored",
+          ms.lacks_validation_set("  Denoise  "))
+    check("vocals has validation", not ms.lacks_validation_set("vocals"))
+    check("instrumental has validation",
+          not ms.lacks_validation_set("instrumental"))
+    check("empty type has validation", not ms.lacks_validation_set(""))
+    check("none type has validation", not ms.lacks_validation_set(None))
+    check("label copy", ms.NO_VALIDATION_SET_LABEL == "No validation set available")
+
+
+def test_library_no_validation_note():
+    """Denoise / dereverb rows show the no-validation note instead of SDR."""
+    app = QApplication.instance() or QApplication([])
+    theme_manager.init_app(app)
+    p2 = ms.parse_entry_html(HTML_2STEM)
+
+    denoise = _ModelItem("denoise.ckpt", model_type="denoise", scores=p2)
+    check("denoise note visible",
+          not denoise._noval_lbl.isHidden()
+          and denoise._noval_lbl.text() == ms.NO_VALIDATION_SET_LABEL)
+    check("denoise hides metric columns", denoise._scores_lbl.isHidden())
+    check("denoise hides metric line", denoise._scores_line.isHidden())
+    check("denoise row taller than name-only", denoise.height() > 39)
+    denoise.set_scores(p2)
+    denoise.set_metric("si_sdr")
+    check("denoise note survives late scores",
+          not denoise._noval_lbl.isHidden()
+          and denoise._scores_lbl.isHidden())
+    denoise.deleteLater()
+
+    dereverb = _ModelItem("dereverb.ckpt", model_type="dereverb / deecho")
+    check("dereverb note visible",
+          not dereverb._noval_lbl.isHidden()
+          and dereverb._noval_lbl.text() == ms.NO_VALIDATION_SET_LABEL)
+    check("dereverb hides metric columns", dereverb._scores_lbl.isHidden())
+    check("dereverb row taller than name-only", dereverb.height() > 39)
+    dereverb.deleteLater()
+
+    vocals = _ModelItem("vocals.ckpt", model_type="vocals")
+    check("vocals unscored stays empty",
+          vocals._scores_lbl.isHidden()
+          and vocals._noval_lbl.isHidden()
+          and vocals.height() == 39)
+    vocals.deleteLater()
+
+
 def test_sort_combo_options():
     """Sort dropdown: metric options are lowercase (less width next to the
     search field) and an older save storing the uppercase label still
@@ -653,6 +704,8 @@ def main():
     test_negative_metric_display()
     test_l1_freq_row_height()
     test_attach_cached_scores_without_signal()
+    test_lacks_validation_set_helper()
+    test_library_no_validation_note()
     test_sort_combo_options()
     test_worker_refetches_when_url_changes()
     test_request_queues_cached_refresh()

@@ -30,6 +30,7 @@ from backend.audio_names import (
     strip_mixture_name,
     parse_stem_suffix_map,
     qc_suffix_map_for_model,
+    qc_hh_cymbals_waveform,
     stem_suffix_for,
     resample_to_native,
 )
@@ -226,12 +227,31 @@ def run_folder(
             if complement_name not in instruments:
                 instruments.append(complement_name)
 
-        for instr in instruments:
+        extra_qc_stems = {}
+        if _stem_suffix_map:
+            combo = qc_hh_cymbals_waveform(
+                waveforms_orig,
+                _stem_suffix_map,
+                list(getattr(config.training, "instruments", []) or []),
+            )
+            if combo is not None:
+                extra_qc_stems["hh-cymbals"] = combo
+
+        write_order = list(instruments)
+        for extra_name in extra_qc_stems:
+            if extra_name not in write_order:
+                write_order.append(extra_name)
+
+        for instr in write_order:
             # mvsep quality-checker naming: rename the stem to the dataset's
             # expected suffix (e.g. the config's "effects" -> "sfx" for DNR v3)
             # via the GUI-passed --stem_suffix_map.
-            out_instr = stem_suffix_for(instr, _stem_suffix_map)
-            estimates = waveforms_orig[instr]
+            if instr in extra_qc_stems:
+                estimates = extra_qc_stems[instr]
+                out_instr = instr
+            else:
+                out_instr = stem_suffix_for(instr, _stem_suffix_map)
+                estimates = waveforms_orig[instr]
 
             # Denormalize output audio if normalization was applied
             if "normalize" in config.inference:

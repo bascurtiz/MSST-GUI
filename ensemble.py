@@ -29,7 +29,8 @@ def istft(spec, hl, length):
 def absmax(a, *, axis):
     dims = list(a.shape)
     dims.pop(axis)
-    indices = np.ogrid[tuple(slice(0, d) for d in dims)]
+    # np.ogrid[...] returns a tuple on current NumPy; list() so insert() works.
+    indices = list(np.ogrid[tuple(slice(0, d) for d in dims)])
     argmax = np.abs(a).argmax(axis=axis)
     indices.insert((len(a.shape) + axis) % len(a.shape), argmax)
     return a[tuple(indices)]
@@ -38,7 +39,7 @@ def absmax(a, *, axis):
 def absmin(a, *, axis):
     dims = list(a.shape)
     dims.pop(axis)
-    indices = np.ogrid[tuple(slice(0, d) for d in dims)]
+    indices = list(np.ogrid[tuple(slice(0, d) for d in dims)])
     argmax = np.abs(a).argmin(axis=axis)
     indices.insert((len(a.shape) + axis) % len(a.shape), argmax)
     return a[tuple(indices)]
@@ -114,7 +115,7 @@ def average_waveforms(pred_track, weights, algorithm):
         pred_track = istft(pred_track, 1024, final_length)
     elif algorithm in ['max_fft']:
         pred_track = np.array(pred_track)
-        pred_track = absmax(pred_track, axis=0)
+        pred_track = lambda_max(pred_track, axis=0, key=np.abs)
         pred_track = istft(pred_track, 1024, final_length)
     elif algorithm in ['median_fft']:
         pred_track = np.array(pred_track)

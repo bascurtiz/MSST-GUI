@@ -8,9 +8,19 @@ from __future__ import annotations
 import os
 import threading
 import zipfile
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from PySide6.QtCore import QObject, Signal
+
+# Core per-kit stems scored on mvsep's Drums Separation (5 stems) benchmark.
+DRUMS_QC_CORE_SUFFIXES = frozenset({"kick", "snare", "toms", "hh", "cymbals"})
+
+# DrumSep models whose output stems align with the Drums QC naming rules.
+DRUMSEP_QC_RECOMMENDED_MODELS = (
+    "mdx23c_drumsep_5stem_aufr33_jarredou",
+    "mdx23c_drumsep_6stem_aufr33_jarredou",
+    "demucs4_drumsep_4stem_inagoy",
+)
 
 # Display names must match SDR_DATASETS entries in ui/pages/inference_page.py.
 SDR_DATASET_URLS: dict[str, str] = {
@@ -45,6 +55,49 @@ SDR_DATASET_URLS: dict[str, str] = {
 def dataset_download_url(display_name: str) -> Optional[str]:
     """Return the mvsep zip URL for a quality-checker dataset name."""
     return SDR_DATASET_URLS.get(display_name)
+
+
+def drums_qc_predicted_suffixes(
+    output_stems: Sequence[str],
+    stem_map: dict,
+    trained_instruments: Sequence[str],
+) -> set[str]:
+    """Output suffixes the model will write for Drums QC given its stems."""
+    from backend.audio_names import qc_suffix_map_for_model, stem_suffix_for
+
+    adj = qc_suffix_map_for_model(stem_map or {}, list(trained_instruments or []))
+    return {stem_suffix_for(s, adj) for s in (output_stems or [])}
+
+
+def drums_qc_incompatible_message(
+    output_stems: Sequence[str],
+    stem_map: dict,
+    trained_instruments: Sequence[str],
+) -> Optional[str]:
+    """Return a user-facing warning when the model cannot produce drum-kit stems.
+
+    Full-mix drum extractors (drums/other) are the common mismatch: they
+    separate drums from the rest of a song, while the Drums QC benchmark
+    expects intra-drum kit separation (kick, snare, toms, hh, cymbals).
+    """
+    if not output_stems or not stem_map:
+        return None
+    predicted = drums_qc_predicted_suffixes(
+        output_stems, stem_map, trained_instruments)
+    if predicted & DRUMS_QC_CORE_SUFFIXES:
+        return None
+    if "drums" in predicted or predicted <= {"drums", "other"}:
+        models = "\n".join(f"  • {m}" for m in DRUMSEP_QC_RECOMMENDED_MODELS)
+        return (
+            "The selected model outputs drums/other (full-mix drum extraction), "
+            "not per-kit drum stems.\n\n"
+            "The Drums QC benchmark expects kick, snare, toms, hh, and/or "
+            "cymbals.\n\n"
+            "Use a DrumSep model instead, for example:\n"
+            f"{models}\n\n"
+            "Continue anyway?"
+        )
+    return None
 
 
 def dataset_folder_name(url: str) -> str:

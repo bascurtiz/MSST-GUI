@@ -43,7 +43,9 @@ from ui.pages.inference_page import (
 from backend.mvsep_scores import (
     METRIC_LABELS as MVSEP_METRIC_LABELS,
     METRICS as MVSEP_METRICS,
+    NO_VALIDATION_SET_LABEL,
     get_scores_store,
+    lacks_validation_set,
     mean_metric,
     metric_line,
 )
@@ -1774,8 +1776,18 @@ class _FolderManagerWidget(QWidget):
                 os.path.basename(ckpt_name).lower())
                 if self._sort_metric else None)
             metric_text = metric_line(scores, self._sort_metric) if scores else ""
+            no_validation = (
+                bool(self._sort_metric) and lacks_validation_set(info.stem_type))
 
-            if metric_text:
+            if no_validation:
+                noval_lbl = QLabel(NO_VALIDATION_SET_LABEL)
+                noval_lbl.setStyleSheet(
+                    f"font-family:'Montserrat';font-size:10px;"
+                    f"color:{theme_manager.theme.text_dim};"
+                    "background:transparent;border:none;"
+                )
+                updated_row.addWidget(noval_lbl)
+            elif metric_text:
                 # Metric name on the left, one column per stem with the
                 # label above its value (dim labels, bright values), like
                 # the Model Library SDR rows.

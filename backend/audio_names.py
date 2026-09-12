@@ -85,6 +85,35 @@ def qc_suffix_map_for_model(suffix_map, trained_instruments):
     return adjusted if adjusted is not None else suffix_map
 
 
+def qc_hh_cymbals_waveform(waveforms, suffix_map, trained_instruments):
+    """Sum model stems mapped to hh and cymbals for the optional QC stem.
+
+    mvsep's Drums benchmark accepts an optional ``hh-cymbals`` file (hh +
+    cymbals combined). When the active suffix map targets that name and the
+    model produced both hh and cymbals sources (directly, or via ride/crash
+    aliases on a 6-stem DrumSep model), return their sum; otherwise None.
+    """
+    if not waveforms or not suffix_map:
+        return None
+    adj = qc_suffix_map_for_model(suffix_map, list(trained_instruments or []))
+    if "hh-cymbals" not in set(adj.values()):
+        return None
+
+    import numpy as np
+
+    hh_wavs = []
+    cym_wavs = []
+    for instr, wav in waveforms.items():
+        suf = stem_suffix_for(instr, adj)
+        if suf == "hh":
+            hh_wavs.append(np.asarray(wav))
+        elif suf == "cymbals":
+            cym_wavs.append(np.asarray(wav))
+    if not hh_wavs or not cym_wavs:
+        return None
+    return np.sum(hh_wavs, axis=0) + np.sum(cym_wavs, axis=0)
+
+
 def stem_suffix_for(instr, suffix_map):
     """The mvsep output suffix for a config stem name, honouring an
     explicit entry first and a "*" catch-all second; identity otherwise.

@@ -23,7 +23,9 @@ background thread and emits `scores_ready(filename)` as each one lands, so the
 Model Library and Model Manager can light up per-model once data arrives.
 
 No score entry (no URL in the sheet) simply means the model is not listed yet —
-the UI shows nothing extra for it.
+the UI shows nothing extra for it. Denoise and dereverb/deecho models have no
+public validation set at all; the library and manager show
+``NO_VALIDATION_SET_LABEL`` in the metric slot instead of a blank SDR line.
 """
 import csv
 import io
@@ -53,6 +55,16 @@ METRIC_LABELS = {
     "bleedless": "BLEEDLESS",
     "fullness": "FULLNESS",
 }
+
+# Denoise / dereverb-deecho models have no mvsep quality-checker validation
+# set, so the UI shows this note in the SDR / SI-SDR slot instead of nothing.
+NO_VALIDATION_STEM_TYPES = frozenset({"denoise", "dereverb / deecho"})
+NO_VALIDATION_SET_LABEL = "No validation set available"
+
+
+def lacks_validation_set(stem_type: str) -> bool:
+    """True for denoise and dereverb/deecho — no public SDR validation set."""
+    return (stem_type or "").strip().lower() in NO_VALIDATION_STEM_TYPES
 
 # Published Google Sheet (Filename, URL, Architecture columns).
 SHEET_EXPORT_URL = (

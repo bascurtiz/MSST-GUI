@@ -30,11 +30,14 @@ from backend.sdr_datasets import (
     dataset_download_url,
     dataset_extract_path,
     dataset_folder_name,
+    drums_qc_incompatible_message,
 )
 from backend.mvsep_scores import (
     METRIC_LABELS as MVSEP_METRIC_LABELS,
     METRICS as MVSEP_METRICS,
+    NO_VALIDATION_SET_LABEL,
     get_scores_store,
+    lacks_validation_set,
     mean_metric,
     metric_line,
     sdr_line,
@@ -2264,7 +2267,19 @@ class _ModelItem(QFrame):
                 if url:
                     self._scores_url = url
 
+    def _shows_no_validation(self):
+        return lacks_validation_set(self._type)
+
+    def _noval_ss(self):
+        return (
+            "font-family:'Montserrat';font-size:10px;"
+            f"color:{theme_manager.theme.text_dim};background:transparent;"
+            "border:none;padding-left:36px;padding-right:8px;"
+        )
+
     def _score_block_height(self):
+        if self._shows_no_validation() and getattr(self, "_noval_lbl", None):
+            return max(18, self._noval_lbl.sizeHint().height())
         if not self._scores:
             return 0
         if self._scores_lbl.has_content():
@@ -2276,7 +2291,31 @@ class _ModelItem(QFrame):
     def _total_height(self):
         return self._NAME_ROW_H + self._score_block_height() + self._DIVIDER_H
 
+    def _hide_score_widgets(self):
+        self._scores_lbl.setVisible(False)
+        self._scores_lbl.setMinimumHeight(0)
+        self._scores_lbl.setMaximumHeight(0)
+        self._scores_lbl.setFixedHeight(0)
+        self._scores_line.setVisible(False)
+        self._scores_line.setMinimumHeight(0)
+        self._scores_line.setMaximumHeight(0)
+        self._scores_line.setFixedHeight(0)
+
     def _sync_scores_block_height(self):
+        noval = getattr(self, "_noval_lbl", None)
+        if self._shows_no_validation() and noval is not None:
+            self._hide_score_widgets()
+            sh = max(18, noval.sizeHint().height())
+            noval.setVisible(True)
+            noval.setMinimumHeight(sh)
+            noval.setMaximumHeight(sh)
+            noval.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            return
+        if noval is not None:
+            noval.setVisible(False)
+            noval.setMinimumHeight(0)
+            noval.setMaximumHeight(0)
+            noval.setFixedHeight(0)
         if self._scores and self._scores_lbl.has_content():
             sh = max(self._SCORE_ROW_MIN_H, self._scores_lbl.sizeHint().height())
             self._scores_lbl.setMinimumHeight(sh)
@@ -2294,12 +2333,7 @@ class _ModelItem(QFrame):
             self._scores_lbl.setVisible(False)
             self._scores_lbl.setFixedHeight(0)
         else:
-            self._scores_lbl.setMinimumHeight(0)
-            self._scores_lbl.setMaximumHeight(0)
-            self._scores_lbl.setFixedHeight(0)
-            self._scores_line.setMinimumHeight(0)
-            self._scores_line.setMaximumHeight(0)
-            self._scores_line.setFixedHeight(0)
+            self._hide_score_widgets()
 
     def _refresh_parent_card_height(self):
         """Scores can land after a card was measured — reflow the arch card."""
@@ -2455,7 +2489,13 @@ class _ModelItem(QFrame):
             pixel=SORT_METRIC_FONT_PX, left=36, right=8)
         self._scores_line.setVisible(False)
         self._scores_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        if scores:
+        self._noval_lbl = QLabel(NO_VALIDATION_SET_LABEL)
+        self._noval_lbl.setStyleSheet(self._noval_ss())
+        self._noval_lbl.setVisible(False)
+        self._noval_lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        if self._shows_no_validation():
+            self._scores_lbl.setVisible(False)
+        elif scores:
             self._apply_scores_display(scores, "sdr")
         else:
             self._scores_lbl.setVisible(False)
@@ -2464,6 +2504,7 @@ class _ModelItem(QFrame):
         self._scores_lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         outer.addWidget(self._scores_lbl, 0, Qt.AlignLeft)
         outer.addWidget(self._scores_line, 0, Qt.AlignLeft)
+        outer.addWidget(self._noval_lbl, 0, Qt.AlignLeft)
 
         self._divider = QFrame()
         self._divider.setFixedHeight(1)
@@ -2475,6 +2516,11 @@ class _ModelItem(QFrame):
     def _apply_scores_display(self, scores, metric):
         """Show per-stem metrics under the name — column layout when it
         lays out cleanly, otherwise the painted single-line fallback."""
+        if self._shows_no_validation():
+            self._scores_lbl.setVisible(False)
+            self._scores_line.setVisible(False)
+            self._scores_line.clear()
+            return
         metric = metric if metric in MVSEP_METRICS else "sdr"
         self._scores_lbl.set_scores(scores, metric)
         line = metric_line(scores, metric)
@@ -2495,6 +2541,9 @@ class _ModelItem(QFrame):
         # quality sort shows its own metric.
         metric = metric if metric in MVSEP_METRICS else "sdr"
         self._score_metric = metric
+        if self._shows_no_validation():
+            self._update_row_height()
+            return
         if self._scores:
             self._apply_scores_display(self._scores, metric)
             self._update_row_height()
@@ -2504,7 +2553,11 @@ class _ModelItem(QFrame):
         """Attach mvsep scores after the fact (background fetch finished).
         Grows the row by the score-line height so the card list reflows."""
         self._scores = scores or None
-        if self._scores:
+        if self._shows_no_validation():
+            self._scores_lbl.setVisible(False)
+            self._scores_line.setVisible(False)
+            self._scores_line.clear()
+        elif self._scores:
             self._apply_scores_display(self._scores, self._score_metric)
         else:
             self._scores_lbl.setVisible(False)
@@ -3781,6 +3834,8 @@ class InferencePage(QWidget):
                 )
                 item._divider.setStyleSheet(f"background:{t.border};border:none;")
                 item._scores_lbl.reapply_theme()
+                if getattr(item, "_noval_lbl", None) is not None:
+                    item._noval_lbl.setStyleSheet(item._noval_ss())
                 if item._is_selected:
                     item.setStyleSheet(f"QFrame{{background:{t.border};border:none;}}")
                     item._lbl.setStyleSheet(
@@ -4821,6 +4876,45 @@ class InferencePage(QWidget):
         # the previous model's stems when runs were fast back-to-back (their
         # mtimes fell inside the scan window), leaking them onto this card.
         self._last_store_dir = store_dir
+
+        if getattr(self, "_sdr_check", None) is not None \
+                and self._sdr_check.isChecked() \
+                and self._sdr_combo.currentText() == "Drums":
+            stem_map, _ = _sdr_dataset("Drums")
+            try:
+                with open(yaml_path, "r", encoding="utf-8") as _yf:
+                    _run_cfg = yaml.load(_yf, Loader=yaml.FullLoader)
+                _trained = (_run_cfg.get("training", {}) or {}).get(
+                    "instruments", []) or []
+                _planned = plan_output_stems(
+                    _run_cfg, selected_stems, effective_save_rest, all_stems)
+                _warn = drums_qc_incompatible_message(
+                    _planned, stem_map, _trained)
+                if _warn:
+                    reply = QMessageBox.question(
+                        self,
+                        "Drums QC: incompatible model",
+                        _warn,
+                        QMessageBox.StandardButton.Ok
+                        | QMessageBox.StandardButton.Cancel,
+                        QMessageBox.StandardButton.Cancel,
+                    )
+                    if reply != QMessageBox.StandardButton.Ok:
+                        if self._tmp_input and os.path.isdir(self._tmp_input):
+                            try:
+                                shutil.rmtree(self._tmp_input)
+                            except OSError:
+                                pass
+                            self._tmp_input = None
+                        if self._tmp_yaml and os.path.isfile(self._tmp_yaml.name):
+                            try:
+                                os.unlink(self._tmp_yaml.name)
+                            except OSError:
+                                pass
+                            self._tmp_yaml = None
+                        return
+            except Exception:
+                pass
 
         cmd = [
             get_python_exe(), os.path.join(REPO_ROOT, "inference.py"),

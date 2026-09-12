@@ -34,7 +34,12 @@ import ui.pages.inference_page as ip  # noqa: E402
 import backend.settings as bs  # noqa: E402
 from backend.audio_names import (  # noqa: E402
     SDR_FILENAME_TEMPLATE, strip_mixture_name, parse_stem_suffix_map,
-    qc_suffix_map_for_model, stem_suffix_for, resample_to_native,
+    qc_suffix_map_for_model, qc_hh_cymbals_waveform, stem_suffix_for,
+    resample_to_native,
+)
+from backend.sdr_datasets import (  # noqa: E402
+    DRUMS_QC_CORE_SUFFIXES, drums_qc_incompatible_message,
+    drums_qc_predicted_suffixes,
 )
 from utils.model_utils import demucs_output_instruments  # noqa: E402
 import numpy as np  # noqa: E402
@@ -611,6 +616,43 @@ def main():
         medley_stereo, 44100, 44100, 101077, target_channels=1)
     check(medley_mono.shape == (1, 101077),
           "stereo stem at mixture rate/length downmixes to mono for mvsep")
+
+    # ── Drums QC: model compatibility + hh-cymbals combine ────────────
+    drums_map, _ = ip._sdr_dataset("Drums")
+    drumsep_stems = ["kick", "snare", "toms", "hh", "cymbals"]
+    bs_drums_stems = ["drums", "other"]
+    pred_drumsep = drums_qc_predicted_suffixes(
+        drumsep_stems, drums_map, drumsep_stems)
+    check(pred_drumsep == DRUMS_QC_CORE_SUFFIXES,
+          "DrumSep 5-stem model maps to all core Drums QC suffixes")
+    pred_bs = drums_qc_predicted_suffixes(
+        bs_drums_stems, drums_map, bs_drums_stems)
+    check(pred_bs == {"drums", "other"},
+          "bs_drums2 model maps to drums/other, not kit stems")
+    check(drums_qc_incompatible_message(
+        bs_drums_stems, drums_map, bs_drums_stems) is not None,
+          "bs_drums2 + Drums QC triggers incompatible-model warning")
+    check(drums_qc_incompatible_message(
+        drumsep_stems, drums_map, drumsep_stems) is None,
+          "DrumSep 5-stem + Drums QC is compatible (no warning)")
+
+    hh_wav = np.ones((2, 8), dtype=np.float32) * 0.3
+    cym_wav = np.ones((2, 8), dtype=np.float32) * 0.7
+    ride_wav = np.ones((2, 8), dtype=np.float32) * 0.4
+    crash_wav = np.ones((2, 8), dtype=np.float32) * 0.2
+    combo5 = qc_hh_cymbals_waveform(
+        {"hh": hh_wav, "cymbals": cym_wav}, drums_map, drumsep_stems)
+    check(combo5 is not None and combo5.shape == (2, 8)
+          and np.allclose(combo5, 1.0, atol=1e-6),
+          "5-stem DrumSep: hh + cymbals -> hh-cymbals sum")
+    combo6 = qc_hh_cymbals_waveform(
+        {"hh": hh_wav, "ride": ride_wav, "crash": crash_wav},
+        drums_map, ["kick", "snare", "toms", "hh", "ride", "crash"])
+    check(combo6 is not None and np.allclose(combo6, 0.9, atol=1e-6),
+          "6-stem DrumSep: hh + ride + crash -> hh-cymbals sum")
+    check(qc_hh_cymbals_waveform(
+        {"kick": hh_wav}, drums_map, ["kick"]) is None,
+          "hh-cymbals skipped when hh/cymbals sources missing")
 
     if FAILURES:
         print(f"FAILED ({len(FAILURES)}):")
