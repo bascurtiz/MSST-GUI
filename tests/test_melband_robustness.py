@@ -164,6 +164,105 @@ def main():
     check(model.saw_channels == 1,
           "stereo input to a stereo:false model must be downmixed to mono")
 
+    # --- HTDemucs / DnR QC: mono input must upmix to stereo for inference ---
+    from utils.audio_utils import expected_input_channels  # noqa: E402
+    from backend.audio_names import resample_to_native  # noqa: E402
+
+    class StereoFake(torch.nn.Module):
+        audio_channels = 2
+
+        def forward(self, x):
+            self.saw_channels = x.shape[1]
+            n_stems = 3
+            return torch.zeros(x.shape[0], n_stems, x.shape[1], x.shape[2])
+
+    htdemucs_cfg = ml_collections.ConfigDict()
+    htdemucs_cfg.inference = {"chunk_size": 64, "num_overlap": 2, "batch_size": 1,
+                              "normalize": False}
+    htdemucs_cfg.audio = {"chunk_size": 64}
+    htdemucs_cfg.training = {"instruments": ["dialog", "effect", "music"],
+                             "channels": 2, "samplerate": 44100, "segment": 11}
+    stereo_model = StereoFake()
+    check(expected_input_channels(htdemucs_cfg, stereo_model) == 2,
+          "HTDemucs config (training.channels:2) resolves to 2 input channels")
+
+    mono_mix = np.random.default_rng(2).random((1, 128)).astype(np.float32) * 0.5
+    demix(htdemucs_cfg, stereo_model, mono_mix, "cpu", "htdemucs")
+    check(stereo_model.saw_channels == 2,
+          "mono input to HTDemucs (audio_channels:2) must be upmixed to stereo")
+
+    # QC round-trip: stereo model output downmixes back to mono for DnR mixtures.
+    stereo_stem = np.stack([
+        np.arange(1, 11, dtype=np.float32),
+        np.arange(11, 21, dtype=np.float32),
+    ])
+    mono_out = resample_to_native(stereo_stem, 44100, 44100, 10, target_channels=1)
+    expect_mono = ((stereo_stem[0] + stereo_stem[1]) / 2.0).reshape(1, 10)
+    check(mono_out.shape == (1, 10) and np.allclose(mono_out, expect_mono, atol=1e-6),
+          "QC resample_to_native downmixes stereo stems to mono mixture layout")
+
+    # --- inference.run_folder: mono librosa shape (1,N) upmixes for HTDemucs ---
+    import types  # noqa: E402
+    import soundfile as sf  # noqa: E402
+    import inference as inf  # noqa: E402
+
+    class Flex:
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+
+        def __contains__(self, k):
+            return k in self.__dict__
+
+        def __getitem__(self, k):
+            return self.__dict__[k]
+
+    tmp = tempfile.mkdtemp(prefix="msst_mono_htdemucs_")
+    inp = os.path.join(tmp, "in")
+    out = os.path.join(tmp, "out")
+    os.makedirs(inp)
+    os.makedirs(out)
+    t = np.linspace(0, 0.25, int(44100 * 0.25), endpoint=False)
+    sf.write(os.path.join(inp, "song_dnr_000_mixture.flac"),
+             (0.25 * np.sin(2 * np.pi * 440 * t)).astype(np.float32), 44100)
+
+    inf_cfg = Flex(
+        audio=Flex(chunk_size=485100),
+        training=Flex(instruments=["dialog", "effect", "music"], channels=2),
+        inference={"normalize": False},
+    )
+    inf_args = types.SimpleNamespace(
+        input_folder=inp,
+        start_check_point="demucs4_cdx_zfturbo_1.ckpt",
+        store_dir=out,
+        model_type="htdemucs",
+        bigshifts=1,
+        use_tta=False,
+        extract_instrumental=False,
+        disable_detailed_pbar=True,
+        filename_template="{file_name}_{instr}",
+        pcm_type="FLOAT",
+        strip_mixture=True,
+        stem_suffix_map="",
+        draw_spectro=0,
+    )
+    saw_mix_ch = {}
+
+    def fake_bigshifts(config, model, mix, device, **kwargs):
+        saw_mix_ch["channels"] = mix.shape[0]
+        return {k: np.zeros((2, mix.shape[1]), dtype=np.float32)
+                for k in config.training.instruments}
+
+    real_bigshifts = inf.bigshifts_wrapper
+    inf.bigshifts_wrapper = fake_bigshifts
+    try:
+        inf.run_folder(
+            types.SimpleNamespace(eval=lambda: None, audio_channels=2),
+            inf_args, inf_cfg, torch.device("cpu"), verbose=False)
+    finally:
+        inf.bigshifts_wrapper = real_bigshifts
+    check(saw_mix_ch.get("channels") == 2,
+          "run_folder upmixes mono (1,N) DnR mixture to stereo for HTDemucs")
+
     if FAILURES:
         print(f"{len(FAILURES)}/{CHECKS} checks FAILED:")
         for f in FAILURES:

@@ -36,6 +36,7 @@ from backend.audio_names import (  # noqa: E402
     SDR_FILENAME_TEMPLATE, strip_mixture_name, parse_stem_suffix_map,
     qc_suffix_map_for_model, stem_suffix_for, resample_to_native,
 )
+from utils.model_utils import demucs_output_instruments  # noqa: E402
 import numpy as np  # noqa: E402
 from ui.pages.console_page import ConsolePage, _stem_label  # noqa: E402
 
@@ -178,6 +179,19 @@ def main():
           and stem_suffix_for("speech", dnr_map) == "speech"
           and stem_suffix_for("music", dnr_map) == "music",
           "DNR v3 maps effects->sfx and keeps speech/music")
+    # HTDemucs / demucs4_cdx_zfturbo_* emit dialog/effect/music
+    check(stem_suffix_for("dialog", dnr_map) == "speech"
+          and stem_suffix_for("Dialog", dnr_map) == "speech"
+          and stem_suffix_for("dialogue", dnr_map) == "speech"
+          and stem_suffix_for("voice", dnr_map) == "speech"
+          and stem_suffix_for("vocals", dnr_map) == "speech",
+          "DNR v3 maps HTDemucs dialog/voice/vocals -> speech")
+    check(stem_suffix_for("effect", dnr_map) == "sfx"
+          and stem_suffix_for("Effect", dnr_map) == "sfx"
+          and stem_suffix_for("soundfx", dnr_map) == "sfx"
+          and stem_suffix_for("sound_effects", dnr_map) == "sfx"
+          and stem_suffix_for("sound-effects", dnr_map) == "sfx",
+          "DNR v3 maps HTDemucs effect (singular) and soundfx aliases -> sfx")
 
     sr_map, _ = ip._sdr_dataset("Super Resolution")
     check(stem_suffix_for("anything", sr_map) == "restored",
@@ -198,7 +212,15 @@ def main():
         ("Medley Vox", [("vocals1", "vocals1"), ("vocal2", "vocals2"),
                          ("Voice1", "vocals1"), ("vox_1", "vocals1"),
                          ("vox_2", "vocals2"), ("Vox_1", "vocals1"),
-                         ("vox1", "vocals1"), ("vox2", "vocals2")]),
+                         ("vox1", "vocals1"), ("vox2", "vocals2"),
+                         ("vocals", "vocals1"), ("Voices", "vocals1"),
+                         ("voice", "vocals1"), ("vox", "vocals1"),
+                         ("other", "vocals2"), ("rest", "vocals2")]),
+        ("DNR v3", [("dialog", "speech"), ("Dialog", "speech"),
+                     ("dialogue", "speech"), ("Speech", "speech"),
+                     ("effect", "sfx"), ("Effect", "sfx"),
+                     ("effects", "sfx"), ("sfx", "sfx"),
+                     ("music", "music")]),
         ("Strings", [("Strings", "strings"), ("string", "strings"),
                       ("Instrument", "other")]),
         ("Wind", [("Wind", "wind"), ("brass", "wind"),
@@ -229,6 +251,39 @@ def main():
         for stem, expected in cases:
             check(stem_suffix_for(stem, ds_map) == expected,
                   f"{ds_name}: {stem!r} -> {expected!r}, "
+                  f"got {stem_suffix_for(stem, ds_map)!r}")
+
+    # Official mvsep suffixes must be reachable from the common model
+    # stem names used on each leaderboard (identity or an alias).
+    official_from_model = {
+        "Guitar": [("guitar", "guitar"), ("other", "other")],
+        "Piano": [("piano", "piano"), ("other", "other")],
+        "Strings": [("strings", "strings"), ("other", "other")],
+        "Wind": [("wind", "wind"), ("other", "other")],
+        "Medley Vox": [("vocals", "vocals1"), ("other", "vocals2")],
+        "DNR v3": [("dialog", "speech"), ("effect", "sfx"),
+                   ("music", "music")],
+        "Super Resolution": [("restored", "restored")],
+        "Lead/Back Vocals": [("lead", "lead"), ("back", "back"),
+                             ("instrum", "instrum"),
+                             ("back-instrum", "back-instrum")],
+        "Drums": [("kick", "kick"), ("snare", "snare"), ("toms", "toms"),
+                  ("hh", "hh"), ("cymbals", "cymbals"),
+                  ("hh-cymbals", "hh-cymbals")],
+        "Male/Female Vocals": [("male", "male"), ("female", "female")],
+        "Phantom Center": [("center", "center"), ("wide", "wide")],
+        "Synth Vocals 2026": [("vocals", "vocals"), ("other", "instrum")],
+        "Multisong": [("vocals", "vocals"), ("other", "instrum")],
+        "Synthetic": [("vocals", "vocals"), ("other", "instrum")],
+        "MUSDB18": [("vocals", "vocals"), ("drums", "drums"),
+                    ("bass", "bass"), ("other", "other"),
+                    ("instrumental", "instrum")],
+    }
+    for ds_name, cases in official_from_model.items():
+        ds_map, _ = ip._sdr_dataset(ds_name)
+        for stem, expected in cases:
+            check(stem_suffix_for(stem, ds_map) == expected,
+                  f"{ds_name} official: {stem!r} -> {expected!r}, "
                   f"got {stem_suffix_for(stem, ds_map)!r}")
 
     # Lead/Back Vocals: 2-stem karaoke (vocals + instrum) vs 3+ stems.
@@ -265,6 +320,44 @@ def main():
 
     check(qc_name("song_dnr_016_mixture", "effects", dnr_map)
           == "song_dnr_016_sfx", "DNR naming: song_dnr_016_mixture + effects")
+    check(qc_name("song_dnr_016_mixture", "dialog", dnr_map)
+          == "song_dnr_016_speech",
+          "DNR naming: HTDemucs dialog -> song_dnr_016_speech")
+    check(qc_name("song_dnr_016_mixture", "effect", dnr_map)
+          == "song_dnr_016_sfx",
+          "DNR naming: HTDemucs effect -> song_dnr_016_sfx")
+    check(qc_name("song_dnr_016_mixture", "music", dnr_map)
+          == "song_dnr_016_music",
+          "DNR naming: music stays song_dnr_016_music")
+
+    # HTDemucs CDX DNR: yaml lists dialog/effect/music but tensors are
+    # music/effect/dialog. Remap at zip time so QC _speech/_music get the
+    # right audio; Bandit speech/music/effects must not be touched.
+    check(demucs_output_instruments(["dialog", "effect", "music"])
+          == ["music", "effect", "dialog"],
+          "CDX DNR yaml order remaps to tensor order")
+    check(demucs_output_instruments(["Dialog", "Effect", "Music"])
+          == ["music", "effect", "dialog"],
+          "CDX DNR remap is case-insensitive")
+    check(demucs_output_instruments(["speech", "music", "effects"])
+          == ["speech", "music", "effects"],
+          "Bandit DNR stem order is left unchanged")
+    check(demucs_output_instruments(["music", "effect", "dialog"])
+          == ["music", "effect", "dialog"],
+          "already-correct CDX order is not remapped twice")
+
+    tensor_a, tensor_b, tensor_c = "A_music", "B_effect", "C_dialog"
+    labeled = dict(zip(
+        demucs_output_instruments(["dialog", "effect", "music"]),
+        [tensor_a, tensor_b, tensor_c]))
+    check(labeled == {"music": tensor_a, "effect": tensor_b,
+                      "dialog": tensor_c},
+          "CDX zip: tensor0=music, tensor1=effect, tensor2=dialog")
+    check([qc_name("song_dnr_016_mixture", stem, dnr_map)
+           for stem in ("music", "effect", "dialog")]
+          == ["song_dnr_016_music", "song_dnr_016_sfx",
+              "song_dnr_016_speech"],
+          "CDX remapped stems QC-name to _music/_sfx/_speech")
     check(qc_name("melody_086_mixture", "vocals", multisong_map)
           == "melody_086_vocals", "multisong naming: melody_086_vocals")
     check(qc_name("melody_086_mixture", "other", multisong_map)
@@ -326,6 +419,12 @@ def main():
     check(qc_name("medley_000_mixture", "vox_2", medley_map)
           == "medley_000_vocals2",
           "Medley Vox naming: medley_000_vocals2 from vox_2")
+    check(qc_name("medley_016_mixture", "vocals", medley_map)
+          == "medley_016_vocals1",
+          "Medley Vox naming: generic vocals -> medley_016_vocals1")
+    check(qc_name("medley_016_mixture", "other", medley_map)
+          == "medley_016_vocals2",
+          "Medley Vox naming: generic other -> medley_016_vocals2")
     check(parse_stem_suffix_map(ip._sdr_map_text(dnr_map))
           == dnr_map, "map text round-trips through the engine parser")
 

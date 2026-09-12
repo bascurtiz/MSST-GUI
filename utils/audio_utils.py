@@ -8,6 +8,24 @@ from typing import Dict, Tuple, Optional
 import torch.distributed as dist
 
 
+def expected_input_channels(config, model) -> int:
+    """Return the number of input channels the model expects."""
+    if getattr(model, "stereo", True) is False:
+        return 1
+    audio = getattr(config, "audio", None)
+    if audio is not None and "num_channels" in audio:
+        return int(audio["num_channels"])
+    if hasattr(model, "audio_channels"):
+        return int(model.audio_channels)
+    training = getattr(config, "training", None)
+    if training is not None:
+        if hasattr(training, "channels"):
+            return int(training.channels)
+        if isinstance(training, dict) and "channels" in training:
+            return int(training["channels"])
+    return 2
+
+
 def read_audio_transposed(path: str, instr: Optional[str] = None, skip_err: bool = False) -> Tuple[Optional[np.ndarray], Optional[int]]:
     """
     Read an audio file and return transposed waveform data with channels first.

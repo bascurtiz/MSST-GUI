@@ -80,6 +80,27 @@ def bigshifts_wrapper(
     return np.mean(results, axis=0)
 
 
+# ZFTurbo CDX23 HTDemucs: configs list dialog/effect/music, but apply_model
+# tensors are music/effect/dialog (see MVSEP-CDX23-Cinematic-Sound-Demixing
+# inference.py). Zip only remaps that exact config order so a later zoo yaml
+# of music/effect/dialog is not swapped twice.
+_CDX_DNR_CONFIG = ("dialog", "effect", "music")
+_CDX_DNR_TENSOR = ("music", "effect", "dialog")
+
+
+def demucs_output_instruments(instruments):
+    """Stem names aligned with HTDemucs output-tensor order.
+
+    CDX DNR checkpoints emit [music, effect, dialog] while their downloaded
+    yamls still list [dialog, effect, music]. Other instrument lists pass
+    through unchanged (Bandit speech/music/effects, 4-stem Demucs, ...).
+    """
+    names = [str(s) for s in instruments]
+    if tuple(n.lower() for n in names) == _CDX_DNR_CONFIG:
+        return list(_CDX_DNR_TENSOR)
+    return names
+
+
 def demix(
     config: ConfigDict,
     model: torch.nn.Module,
@@ -125,6 +146,11 @@ def demix(
         # fires on the first forward. Engine callers upmix the mono results
         # back to stereo afterwards.
         mix = mix.mean(dim=0, keepdim=True)
+
+    expected_ch = getattr(model, "audio_channels", None)
+    if (expected_ch == 2 and mix.shape[0] == 1
+            and getattr(model, "stereo", True) is not False):
+        mix = mix.repeat(2, 1)
 
     if model_type == 'mdxnet':
         # MDX-Net models are onnxruntime objects (not torch Modules); they
@@ -251,7 +277,7 @@ def demix(
 
     # Return the result as a dictionary or a single array
     if mode == "demucs":
-        instruments = config.training.instruments
+        instruments = demucs_output_instruments(config.training.instruments)
     else:
         instruments = prefer_target_instrument(config)
 

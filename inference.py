@@ -16,7 +16,10 @@ import torch.nn as nn
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
-from utils.audio_utils import normalize_audio, denormalize_audio, draw_spectrogram
+from utils.audio_utils import (
+    normalize_audio, denormalize_audio, draw_spectrogram,
+    expected_input_channels,
+)
 from utils.settings import get_model_from_config, load_config, parse_args_inference
 from utils.model_utils import bigshifts_wrapper
 from utils.model_utils import (
@@ -144,12 +147,15 @@ def run_folder(
             continue
 
         # Convert mono audio to expected channel format if needed
-        if len(mix.shape) == 1:
+        if mix.ndim == 1:
             mix = np.expand_dims(mix, axis=0)
-            if "num_channels" in config.audio:
-                if config.audio["num_channels"] == 2:
-                    print("Convert mono track to stereo...")
-                    mix = np.concatenate([mix, mix], axis=0)
+
+        target_ch = expected_input_channels(config, model)
+        if mix.shape[0] == 1 and target_ch == 2:
+            print("Convert mono track to stereo...")
+            mix = np.concatenate([mix, mix], axis=0)
+        elif mix.shape[0] > target_ch:
+            mix = mix[:target_ch]
 
         mix_orig = mix.copy()
 
