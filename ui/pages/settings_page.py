@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QMessageBox,
     QDialog, QStackedWidget,
 )
-from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint, QEvent, QRectF, QUrl
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint, QEvent, QRectF, QUrl, QSize
 from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath, QDesktopServices, QPixmap
 from ui.theme import theme_manager, UIConstants
 from backend import update_checker as uc
@@ -86,6 +86,15 @@ class _ElidedLabel(QLabel):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._apply()
+
+    def sizeHint(self):
+        fm = self.fontMetrics()
+        return QSize(fm.horizontalAdvance(self._full), fm.height())
+
+    def minimumSizeHint(self):
+        # Width 0 so Maximum/Preferred labels can shrink (and elide) instead
+        # of forcing a QScrollArea past the viewport. Height stays the line.
+        return QSize(0, self.fontMetrics().height())
 
     def _apply(self):
         w = self.width()
@@ -1227,6 +1236,8 @@ class _FolderManagerWidget(QWidget):
         # Scrollable list
         self._scroll_widget = QWidget()
         self._scroll_widget.setStyleSheet("background:transparent;")
+        self._scroll_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._scroll_widget.setMinimumWidth(0)
         self._list_layout = QVBoxLayout(self._scroll_widget)
         self._list_layout.setContentsMargins(0, 0, 8, 26)  # air under last row
         self._list_layout.setSpacing(8)
@@ -1235,6 +1246,8 @@ class _FolderManagerWidget(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setStyleSheet(f"""
             QScrollArea{{background:transparent;border:none;}}
             QScrollBar:vertical{{width:4px;background:transparent;margin:0;}}
@@ -1247,6 +1260,7 @@ class _FolderManagerWidget(QWidget):
             QScrollBar::sub-page:vertical{{background:transparent;}}
         """)
         scroll.setWidget(self._scroll_widget)
+        self._scroll = scroll
         lo.addWidget(scroll, 1)
 
         # Fetch
@@ -1564,6 +1578,8 @@ class _FolderManagerWidget(QWidget):
             )
             card.setCursor(Qt.PointingHandCursor)
             card.setFixedHeight(60)
+            card.setMinimumWidth(0)
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             card.clicked.connect(lambda x=fk: self._toggle_folder(x))
             clo = QHBoxLayout(card)
             clo.setContentsMargins(18, 0, 14, 0)
@@ -1584,7 +1600,8 @@ class _FolderManagerWidget(QWidget):
             if folder_date:
                 info_parts.append(_relative_time(folder_date))
             info_parts.append(f"{installed_count}/{entry_count} installed")
-            info_lbl = QLabel(" • ".join(info_parts))
+            info_lbl = _ElidedLabel(" • ".join(info_parts))
+            info_lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
             info_lbl.setStyleSheet(
                 f"font-family:'Montserrat';font-size:10px;color:{theme_manager.theme.text_muted};background:transparent;border:none;"
             )
@@ -1681,6 +1698,8 @@ class _FolderManagerWidget(QWidget):
 
         container = QWidget()
         container.setStyleSheet("background:transparent;")
+        container.setMinimumWidth(0)
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         hbox = QHBoxLayout(container)
         hbox.setContentsMargins(24, 0, 0, 0)
         hbox.setSpacing(0)
@@ -1705,6 +1724,8 @@ class _FolderManagerWidget(QWidget):
                 f"QFrame{{background:{theme_manager.theme.input_bg};"
                 f"border:1px solid {theme_manager.theme.border_visible};border-radius:8px;}}"
             )
+            card.setMinimumWidth(0)
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             clo = QVBoxLayout(card)
             clo.setContentsMargins(16, 12, 16, 12)
             clo.setSpacing(6)
@@ -1818,7 +1839,9 @@ class _FolderManagerWidget(QWidget):
             elif metric_text:
                 # Metric name on the left, one column per stem with the
                 # label above its value (dim labels, bright values), like
-                # the Model Library SDR rows.
+                # the Model Library SDR rows. Stretch 0 so leftover card
+                # width stays to the right — stem columns keep _STEM_GAP
+                # even on 2-stem models; they wrap only when they don't fit.
                 metric_lbl = _MetricColumns(pixel=10, weight=600,
                                             left=0, right=0)
                 metric_lbl.set_scores(scores, self._sort_metric)
@@ -1854,15 +1877,16 @@ class _FolderManagerWidget(QWidget):
 
             if updated_row.count():
                 updated_row.addStretch()
-                left_col.addLayout(updated_row)
 
             main_row.addLayout(left_col, 1)
 
             if info.stem_type:
                 type_tag = QLabel(_type_title(info.stem_type))
+                type_tag.setObjectName("mgrTypeTag")
                 type_tag.setToolTip(info.stem_type)
                 type_tag.setStyleSheet(_type_badge_ss(info.stem_type))
                 type_tag.setFixedHeight(17)
+                type_tag.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
                 main_row.addWidget(type_tag, 0, Qt.AlignVCenter)
 
             if installed:
@@ -1884,9 +1908,12 @@ class _FolderManagerWidget(QWidget):
                     f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
                 )
                 inst_btn.clicked.connect(lambda _, x=info: self._install(x))
+            inst_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
             main_row.addWidget(inst_btn, 0, Qt.AlignVCenter)
 
             clo.addLayout(main_row)
+            if updated_row.count():
+                clo.addLayout(updated_row)
 
             col.addWidget(card)
 

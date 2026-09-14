@@ -40,6 +40,7 @@ from backend.mvsep_scores import (
     lacks_validation_set,
     mean_metric,
     metric_line,
+    display_stems,
     sdr_line,
 )
 from backend.gpu_utils import list_gpus, device_ids_from_selection
@@ -2129,6 +2130,10 @@ class _MetricColumns(QWidget):
     Stem labels and the metric name use the dim text color; values use the
     primary text color (white digits in the dark theme), like the old
     single-line two-tone metric.
+
+    When the assigned width is too narrow for every stem on one row (e.g.
+    a 6-stem drum model in the Model Manager), extra stems wrap onto
+    further label/value row pairs instead of forcing a horizontal scroll.
     """
 
     _STEM_GAP = 28  # horizontal space between stem columns
@@ -2144,16 +2149,26 @@ class _MetricColumns(QWidget):
         self._metric_font.setPixelSize(
             metric_pixel if metric_pixel is not None else pixel)
         self._metric_font.setWeight(QFont.Weight(weight))
+        self.setMinimumWidth(0)
+        # Maximum: hug the packed stem columns (28px gaps). Expanding would
+        # grow to the card edge and stretch INSTRUM/VOCALS apart. The widget
+        # can still shrink below sizeHint so extra stems wrap when needed.
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
         self._grid = QGridLayout(self)
         self._grid.setContentsMargins(left, 0, right, 0)
         self._grid.setHorizontalSpacing(self._STEM_GAP)
         self._grid.setVerticalSpacing(2)
+        # Pack stems to the left at _STEM_GAP; leftover pane width must not
+        # inflate the space between columns (2-stem INSTRUM/VOCALS used to
+        # stretch to the card edge).
+        self._grid.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         # Empty stretch row: the two content rows keep their natural height
         # and any leftover vertical space (e.g. the library row's extra
         # score-block height) lands below the values, not between the lines.
         self._grid.setRowStretch(2, 1)
         self._metric_lbl = QLabel("")
         self._metric_lbl.setFont(self._metric_font)
+        self._metric_lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
         # Span both content rows, vertically centered: the metric name sits
         # between the stem labels (above) and the values (below), like a
         # row header. AlignLeft/AlignVCenter keep the badge compact.
@@ -2162,6 +2177,8 @@ class _MetricColumns(QWidget):
         self._labels = []
         self._values = []
         self._has = False
+        self._pack_key = None
+        self._in_reflow = False
         self.reapply_theme()
 
     def set_scores(self, scores, metric="sdr"):
@@ -2172,13 +2189,15 @@ class _MetricColumns(QWidget):
             w.deleteLater()
         self._labels, self._values = [], []
         self._has = False
+        self._pack_key = None
         if not scores:
             self._metric_lbl.setText("")
+            self._sync_layout_height()
             return
         label = MVSEP_METRIC_LABELS.get(metric, metric.upper())
         # Non-capital, matching the lowercase sort-dropdown options.
         self._metric_lbl.setText(label.lower())
-        for i, stem in enumerate(scores.get("stems", [])):
+        for stem in display_stems(scores):
             val = scores.get("metrics", {}).get(stem, {}).get(metric)
             if not isinstance(val, (int, float)):
                 continue
@@ -2187,21 +2206,150 @@ class _MetricColumns(QWidget):
             # model's original case and omit the trailing colon.
             l = QLabel(str(stem).upper())
             l.setFont(self._font)
-            self._grid.addWidget(l, 0, i + 1)
+            l.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+            l.setAlignment(Qt.AlignLeft)
             self._labels.append(l)
             v = QLabel(f"{val:.2f}")
             v.setFont(self._font)
-            self._grid.addWidget(v, 1, i + 1)
+            v.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+            v.setAlignment(Qt.AlignLeft)
             self._values.append(v)
         self._has = bool(self._labels)
         self.reapply_theme()
+        if self._has:
+            self._apply_pack([list(range(len(self._labels)))])
         self._sync_layout_height()
+        if self.width() > 0:
+            self._reflow()
+
+    def _stem_col_width(self, i):
+        return max(self._labels[i].sizeHint().width(),
+                   self._values[i].sizeHint().width())
+
+    def _v_spacing(self):
+        sp = self._grid.verticalSpacing()
+        return 2 if sp < 0 else sp
+
+    def _one_row_width(self):
+        if not self._labels:
+            return 0
+        m = self._grid.contentsMargins()
+        gap = self._STEM_GAP
+        stems = sum(self._stem_col_width(i) for i in range(len(self._labels)))
+        stems += gap * max(0, len(self._labels) - 1)
+        return (m.left() + m.right()
+                + self._metric_lbl.sizeHint().width() + gap + stems)
+
+    def _pack_rows(self, width):
+        n = len(self._labels)
+        if n == 0:
+            return []
+        if width <= 0:
+            return [list(range(n))]
+        m = self._grid.contentsMargins()
+        gap = self._STEM_GAP
+        avail = (width - m.left() - m.right()
+                 - self._metric_lbl.sizeHint().width() - gap)
+        if avail < 1:
+            avail = 1
+        rows, row, row_w = [], [], 0
+        for i in range(n):
+            sw = self._stem_col_width(i)
+            extra = 0 if not row else gap
+            if row and row_w + extra + sw > avail:
+                rows.append(row)
+                row, row_w = [i], sw
+            else:
+                row.append(i)
+                row_w += extra + sw
+        if row:
+            rows.append(row)
+        return rows
+
+    def _height_for_n_rows(self, n_rows):
+        if not self._labels:
+            return 0
+        lh = self._labels[0].sizeHint().height()
+        vh = self._values[0].sizeHint().height()
+        vspace = self._v_spacing()
+        pair = lh + vspace + vh
+        return max(28, n_rows * pair + (n_rows - 1) * vspace)
+
+    def _clear_row_stretches(self):
+        for r in range(self._grid.rowCount()):
+            self._grid.setRowStretch(r, 0)
+
+    def _clear_column_stretches(self):
+        for c in range(self._grid.columnCount()):
+            self._grid.setColumnStretch(c, 0)
+
+    def _apply_pack(self, rows):
+        for w in self._labels + self._values:
+            self._grid.removeWidget(w)
+        self._grid.removeWidget(self._metric_lbl)
+        self._clear_row_stretches()
+        self._clear_column_stretches()
+        n_grid = max(2, len(rows) * 2)
+        self._grid.addWidget(self._metric_lbl, 0, 0, n_grid, 1,
+                             Qt.AlignLeft | Qt.AlignVCenter)
+        max_c = 0
+        for r, row in enumerate(rows):
+            gr = r * 2
+            for c, i in enumerate(row):
+                self._grid.addWidget(self._labels[i], gr, c + 1,
+                                     Qt.AlignLeft | Qt.AlignTop)
+                self._grid.addWidget(self._values[i], gr + 1, c + 1,
+                                     Qt.AlignLeft | Qt.AlignTop)
+                max_c = max(max_c, c + 1)
+        # Absorb leftover width in an empty trailing column so 2-stem rows
+        # keep the same 28px gap as 6-stem drum rows.
+        self._grid.setColumnStretch(max_c + 1, 1)
+        self._grid.setRowStretch(n_grid, 1)
+
+    def _notify_parent_row(self):
+        """Library rows are fixed-height; grow them when stems wrap."""
+        w = self.parentWidget()
+        while w is not None:
+            updater = getattr(w, "_update_row_height", None)
+            if callable(updater):
+                updater()
+                refresh = getattr(w, "_refresh_parent_card_height", None)
+                if callable(refresh):
+                    refresh()
+                return
+            w = w.parentWidget()
+        self.updateGeometry()
+
+    def _reflow(self):
+        if not self._has or self._in_reflow:
+            return
+        self._in_reflow = True
+        try:
+            rows = self._pack_rows(self.width())
+            key = tuple(tuple(r) for r in rows)
+            packed = key != self._pack_key
+            if packed:
+                self._pack_key = key
+                self._apply_pack(rows)
+            old_h = self.height()
+            self._sync_layout_height()
+            if packed or self.height() != old_h:
+                self._notify_parent_row()
+        finally:
+            self._in_reflow = False
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._has:
+            self._reflow()
 
     def _sync_layout_height(self):
         if self._has:
             self.setMinimumHeight(0)
             self.setMaximumHeight(16777215)
-            h = max(28, self._grid.sizeHint().height())
+            w = self.width()
+            h = (self.heightForWidth(w) if w > 0
+                 else self._height_for_n_rows(1))
             self.setFixedHeight(h)
         else:
             self.setMinimumHeight(0)
@@ -2211,11 +2359,27 @@ class _MetricColumns(QWidget):
     def has_content(self):
         return self._has
 
+    def hasHeightForWidth(self):
+        return self._has
+
+    def heightForWidth(self, w):
+        if not self._has:
+            return 0
+        rows = self._pack_rows(w)
+        return self._height_for_n_rows(max(1, len(rows)))
+
+    def minimumSizeHint(self):
+        if not self._has:
+            return QSize(0, 0)
+        return QSize(0, self._height_for_n_rows(1))
+
     def sizeHint(self):
         if not self._has:
             return QSize(0, 0)
-        hint = self._grid.sizeHint()
-        return QSize(hint.width(), max(28, hint.height()))
+        w = self.width()
+        h = (self.heightForWidth(w) if w > 0
+             else self._height_for_n_rows(1))
+        return QSize(self._one_row_width(), h)
 
     def reapply_theme(self):
         t = theme_manager.theme
@@ -2326,7 +2490,7 @@ class _ModelItem(QFrame):
             self._scores_lbl.setMinimumHeight(sh)
             self._scores_lbl.setMaximumHeight(sh)
             self._scores_lbl.setSizePolicy(
-                QSizePolicy.Preferred, QSizePolicy.Fixed)
+                QSizePolicy.Expanding, QSizePolicy.Fixed)
             self._scores_line.setVisible(False)
             self._scores_line.setFixedHeight(0)
         elif self._scores and self._scores_line.text():
@@ -2501,8 +2665,8 @@ class _ModelItem(QFrame):
             self._scores_lbl.setVisible(False)
         # Fixed-height metric block under the name row (no stretch — stretch
         # inside a setFixedHeight parent can collapse the block to 0px).
-        self._scores_lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        outer.addWidget(self._scores_lbl, 0, Qt.AlignLeft)
+        self._scores_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        outer.addWidget(self._scores_lbl)
         outer.addWidget(self._scores_line, 0, Qt.AlignLeft)
         outer.addWidget(self._noval_lbl, 0, Qt.AlignLeft)
 
@@ -2596,6 +2760,12 @@ class _ModelItem(QFrame):
         super().resizeEvent(event)
         if getattr(self, "_lbl", None) is not None:
             self._elide_label()
+        scores = getattr(self, "_scores_lbl", None)
+        if scores is not None and scores.has_content():
+            new_h = self._total_height()
+            if new_h != self.height():
+                self._update_row_height()
+                self._refresh_parent_card_height()
 
     def set_display(self, text):
         """Show a friendlier label (e.g. the zoo full name); the ckpt

@@ -203,7 +203,7 @@ def test_lines_and_keys():
     p4 = ms.parse_entry_html(HTML_4STEM)
     line = ms.sdr_line(p4)
     check("4-stem SDR line", line ==
-          "SDR vocals: 5.02 | bass: 7.45 | drums: 7.75 | other: 3.99")
+          "SDR bass: 7.45 | drums: 7.75 | other: 3.99 | vocals: 5.02")
     check("4-stem mean sdr", abs(ms.mean_metric(p4, "sdr") - 6.0534) < 1e-3)
     check("4-stem mean aura_stft",
           abs(ms.mean_metric(p4, "aura_stft") - 5.8442) < 1e-3)
@@ -226,14 +226,54 @@ def test_lines_and_keys():
     piano = ms.parse_entry_html(HTML_PIANO)
     check("piano SI-SDR line keeps negative",
           ms.metric_line(piano, "si_sdr") ==
-          "SI-SDR piano: -1.75 | other: 15.75")
+          "SI-SDR other: 15.75 | piano: -1.75")
     check("piano bleedless line keeps negative",
           ms.metric_line(piano, "bleedless") ==
-          "BLEEDLESS piano: -2.47 | other: 50.40")
+          "BLEEDLESS other: 50.40 | piano: -2.47")
     mean_si = ms.mean_metric(piano, "si_sdr")
     check("piano mean si_sdr includes negative",
           mean_si is not None
           and abs(mean_si - ((-1.74664 + 15.74595) / 2)) < 1e-6)
+
+
+def test_display_stems_alphabetical():
+    """Metric columns always list stems A→Z, regardless of page order."""
+    check("instrum before vocals",
+          ms.display_stems({"stems": ["vocals", "instrum"]}) ==
+          ["instrum", "vocals"])
+    check("4-stems bass/drums/other/vocals",
+          ms.display_stems({"stems": ["vocals", "bass", "drums", "other"]}) ==
+          ["bass", "drums", "other", "vocals"])
+    check("karaoke back-instrum/lead",
+          ms.display_stems({"stems": ["lead", "back-instrum"]}) ==
+          ["back-instrum", "lead"])
+    check("strings other/strings",
+          ms.display_stems({"stems": ["strings", "other"]}) ==
+          ["other", "strings"])
+    check("piano other/piano",
+          ms.display_stems({"stems": ["piano", "other"]}) ==
+          ["other", "piano"])
+    check("guitar other before guitar",
+          ms.display_stems({"stems": ["guitar", "other"]}) ==
+          ["other", "guitar"])
+    check("guitar other-first even if page order is other/guitar",
+          ms.display_stems({"stems": ["other", "guitar"]}) ==
+          ["other", "guitar"])
+    check("bass instrum before bass",
+          ms.display_stems({"stems": ["bass", "instrum"]}) ==
+          ["instrum", "bass"])
+    check("bass instrum-first even if page order is instrum/bass",
+          ms.display_stems({"stems": ["instrum", "bass"]}) ==
+          ["instrum", "bass"])
+    check("4-stems bass stays first among 4 (no instrum)",
+          ms.display_stems({"stems": ["vocals", "bass", "drums", "other"]}) ==
+          ["bass", "drums", "other", "vocals"])
+    check("multi stems cymbals/hh/hh-cymbals/kick/snare/toms",
+          ms.display_stems({"stems": [
+              "kick", "snare", "toms", "hh", "cymbals", "hh-cymbals"]}) ==
+          ["cymbals", "hh", "hh-cymbals", "kick", "snare", "toms"])
+    check("empty scores", ms.display_stems(None) == [])
+    check("missing stems key", ms.display_stems({}) == [])
 
 
 def test_sheet_entries():
@@ -449,16 +489,16 @@ def test_negative_metric_display():
     item.set_metric("si_sdr")
     check("negative si-sdr metric label",
           item._scores_lbl._metric_lbl.text() == "si-sdr")
-    check("piano stem kept next to other",
+    check("piano stem columns alphabetical",
           [lbl.text() for lbl in item._scores_lbl._labels] ==
-          ["PIANO", "OTHER"])
+          ["OTHER", "PIANO"])
     check("piano si-sdr shows -1.75",
-          item._scores_lbl._values[0].text() == "-1.75")
+          item._scores_lbl._values[1].text() == "-1.75")
     check("other si-sdr still shown",
-          item._scores_lbl._values[1].text() == "15.75")
+          item._scores_lbl._values[0].text() == "15.75")
     item.set_metric("bleedless")
     check("piano bleedless shows -2.47",
-          item._scores_lbl._values[0].text() == "-2.47")
+          item._scores_lbl._values[1].text() == "-2.47")
     item.deleteLater()
 
 
@@ -787,6 +827,7 @@ def test_sort_combo_options():
 def main():
     test_parsing()
     test_lines_and_keys()
+    test_display_stems_alphabetical()
     test_sheet_entries()
     test_cache()
     test_store_no_network()

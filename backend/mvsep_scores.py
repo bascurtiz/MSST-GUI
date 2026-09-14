@@ -367,6 +367,39 @@ def _is_stale(entry: dict, stale_days: int = STALE_DAYS) -> bool:
 
 # ── Display helpers ───────────────────────────────────────────────────────
 
+# Companion stem pinned immediately before the named instrument (so
+# guitar models show OTHER, GUITAR and bass models show INSTRUM, BASS).
+_STEM_BEFORE = {
+    "guitar": "other",
+    "bass": "instrum",
+}
+
+
+def display_stems(scores: dict) -> list:
+    """Stem names in case-insensitive alphabetical order for metric columns.
+
+    Page/HTML order is preserved on the scores dict; the UI always shows
+    e.g. bass/drums/other/vocals, other/piano, cymbals/hh/hh-cymbals/….
+    Exceptions: guitar models list other immediately before guitar; bass
+    models list instrum immediately before bass.
+    """
+    if not scores:
+        return []
+    names = [str(s) for s in scores.get("stems") or []]
+    folded = {s.casefold() for s in names}
+
+    def key(s):
+        n = s.casefold()
+        for inst, companion in _STEM_BEFORE.items():
+            if inst in folded and n == companion:
+                return (inst, 0)
+            if n == inst:
+                return (inst, 1)
+        return (n, 0)
+
+    return sorted(names, key=key)
+
+
 def mean_metric(scores: dict, metric: str):
     """Average of one metric across the model's stems — the sort key. Returns
     None when the model has no scores or the metric is missing entirely."""
@@ -380,14 +413,13 @@ def mean_metric(scores: dict, metric: str):
 
 
 def metric_line(scores: dict, metric: str) -> str:
-    """'SDR effects: 10.74 | music: 8.28 | sfx: 9.45' style line. Stems keep
-    the page's own order/names so it is obvious which value belongs to which
-    stem, for 2-, 3- and 4-stem models alike."""
+    """'SDR bass: 7.45 | drums: 7.75 | other: 3.99 | vocals: 5.02' style line.
+    Stem names stay as published; column order is always alphabetical."""
     if not scores:
         return ""
     label = METRIC_LABELS.get(metric, metric.upper())
     parts = []
-    for stem in scores.get("stems", []):
+    for stem in display_stems(scores):
         val = scores.get("metrics", {}).get(stem, {}).get(metric)
         if isinstance(val, (int, float)):
             parts.append(f"{stem}: {val:.2f}")
