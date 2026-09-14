@@ -27,6 +27,34 @@ from typing import Any, Dict, List, Optional, Sequence
 # Sentinel: leave the config's target_instrument untouched.
 KEEP = object()
 
+# SW / MSST yamls copy audio.hop_length: 441 from the training template
+# with the comment "don't work (use in model)". The model STFT hop is
+# model.stft_hop_length (512). Chunk alignment must use that, not 441.
+_DEFAULT_STFT_HOP = 512
+
+
+def stft_hop_length_from_config(config: Any) -> int:
+    """STFT hop the RoFormer actually uses (not audio.hop_length)."""
+    model = None
+    if isinstance(config, dict):
+        model = config.get("model")
+    elif config is not None:
+        model = getattr(config, "model", None)
+    hop = None
+    if isinstance(model, dict):
+        hop = model.get("stft_hop_length")
+    elif model is not None:
+        hop = getattr(model, "stft_hop_length", None)
+        if hop is None and hasattr(model, "get"):
+            hop = model.get("stft_hop_length")
+    try:
+        hop_i = int(hop)
+        if hop_i > 0:
+            return hop_i
+    except (TypeError, ValueError):
+        pass
+    return _DEFAULT_STFT_HOP
+
 
 def is_single_output(config: Dict[str, Any]) -> bool:
     """True when the model can only emit its trained target stem.
@@ -46,6 +74,7 @@ def is_single_output(config: Dict[str, Any]) -> bool:
 def complement_stem_name(
     all_instruments: Sequence[str],
     separated_stems: Sequence[str],
+    emitted_stems: Optional[Sequence[str]] = None,
 ) -> str:
     """Name for the auto-derived rest stem (mix - separated stems).
 
@@ -54,10 +83,18 @@ def complement_stem_name(
     label it with that name ("vocals").  Multi-stem configs — where the
     complement is not any single trained stem — fall back to the generic
     upstream "instrumental" label.
+
+    ``emitted_stems`` is the set of stems the model already produced. When
+    the only missing trained name is already in that set (a 6-stem model's
+    real ``other`` head), do not reuse that name — the mix-minus would
+    overwrite the trained stem with the full mixture.
     """
     others = [i for i in all_instruments if i not in separated_stems]
     if len(others) == 1:
-        return others[0]
+        name = others[0]
+        if emitted_stems is not None and name in emitted_stems:
+            return "instrumental"
+        return name
     return "instrumental"
 
 
@@ -152,7 +189,8 @@ def plan_output_stems(
 
     out = separated[:]
     if rest:
-        complement = complement_stem_name(instruments, separated)
+        complement = complement_stem_name(
+            instruments, separated, emitted_stems=out)
         if complement not in out:
             out.append(complement)
     return out

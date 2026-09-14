@@ -166,15 +166,15 @@ class _GlyphWidget(QWidget):
         self.update()
 
     def paintEvent(self, event):
-        p = QPainter(self)
-        p.translate(0, self._dy)
-        if self._custom:
-            self._paint_download(p)
-            return
-        p.setFont(self._font())
-        p.setPen(QPen(self._color))
-        rect = self.rect()
-        p.drawText(rect, Qt.AlignCenter, self._text)
+        with QPainter(self) as p:
+            p.translate(0, self._dy)
+            if self._custom:
+                self._paint_download(p)
+                return
+            p.setFont(self._font())
+            p.setPen(QPen(self._color))
+            rect = self.rect()
+            p.drawText(rect, Qt.AlignCenter, self._text)
 
     def _paint_download(self, p):
         """Download icon: arrow pointing down with a dash below it. Drawn at

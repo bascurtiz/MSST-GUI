@@ -27,6 +27,7 @@ from utils.stem_planning import (  # noqa: E402
     plan_output_stems,
     resolve_target,
     rest_needed,
+    stft_hop_length_from_config,
 )
 
 FAILURES = []
@@ -77,6 +78,11 @@ BS_4STEM = {
     "model": {"num_stems": 4},
     "training": {"instruments": ["drums", "bass", "other", "vocals"]},
 }
+BS_6STEM = {
+    "model": {"num_stems": 6},
+    "training": {"instruments": [
+        "bass", "drums", "other", "vocals", "guitar", "piano"]},
+}
 SCNET_4STEM = {
     "model": {"num_stems": 4},
     "training": {"instruments": ["drums", "bass", "other", "vocals"]},
@@ -119,6 +125,13 @@ def main():
     check("4-stem complement stays generic 'instrumental'",
           complement_stem_name(["drums", "bass", "other", "vocals"], ["vocals"])
           == "instrumental")
+    check("6-stem missing only other does not reuse emitted other",
+          complement_stem_name(
+              ["bass", "drums", "other", "vocals", "guitar", "piano"],
+              ["bass", "drums", "vocals", "guitar", "piano"],
+              emitted_stems=["bass", "drums", "other", "vocals",
+                             "guitar", "piano"])
+          == "instrumental")
 
     # ── 3. Full stem plan: selecting all stems ─────────────────────────────
     # The reported bug scenario: select everything, save-rest auto-fires,
@@ -157,6 +170,11 @@ def main():
         plan = plan_output_stems(cfg, inst)
         check(f"plan(all stems)={name} -> all 4 stems",
               sorted(plan) == sorted(inst) and "instrumental" not in plan)
+    inst6 = BS_6STEM["training"]["instruments"]
+    plan6 = plan_output_stems(BS_6STEM, inst6, save_rest=True)
+    check("6-stem save-rest keeps trained other and adds instrumental",
+          "other" in plan6 and "instrumental" in plan6
+          and sorted(s for s in plan6 if s != "instrumental") == sorted(inst6))
 
     # ── 7. resolve_target / rest_needed unit checks ────────────────────────
     check("resolve_target keeps target for 1-output multi-select",
@@ -173,6 +191,17 @@ def main():
           rest_needed(UNWA_INST, ["instrument"]) is False)
     check("rest_needed does not fire for multi-stem all-selection",
           rest_needed(BS_4STEM, BS_4STEM["training"]["instruments"]) is False)
+
+    # SW yamls copy audio.hop_length: 441 from the training template
+    # ("don't work — use in model"). Chunk math must use STFT hop 512.
+    sw_yaml = {
+        "audio": {"hop_length": 441, "chunk_size": 588800},
+        "model": {"stft_hop_length": 512, "num_stems": 6},
+    }
+    check("SW yaml hop is model.stft_hop_length 512, not audio 441",
+          stft_hop_length_from_config(sw_yaml) == 512)
+    check("missing stft_hop_length defaults to 512",
+          stft_hop_length_from_config({"audio": {"hop_length": 441}}) == 512)
 
     # ── 8. Real installed config, when present ─────────────────────────────
     installed = os.path.join(

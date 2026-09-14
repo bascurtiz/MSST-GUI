@@ -54,6 +54,7 @@ from backend.msst_catalog import (
 from backend.yaml_analyzer import classify_model_type, get_stems_for_type
 from utils.stem_planning import (
     KEEP, complement_stem_name, is_single_output, plan_output_stems,
+    stft_hop_length_from_config,
     resolve_target, rest_needed,
 )
 from ui.strings import T_MULTI_SELECT_MODE
@@ -2268,7 +2269,11 @@ class _ModelItem(QFrame):
                     self._scores_url = url
 
     def _shows_no_validation(self):
-        return lacks_validation_set(self._type)
+        return lacks_validation_set(
+            self._type,
+            name=getattr(self, "_display", "") or self._name,
+            filename=self._ckpt or self._name,
+        )
 
     def _noval_ss(self):
         return (
@@ -2406,20 +2411,15 @@ class _ModelItem(QFrame):
         # edge in narrow panes, hiding it (the "3-dot missing in arch view"
         # bug). Shrinkable + elided keeps the dots on-screen at any width.
         self._lbl.setMinimumWidth(0)
-        self._lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        # Maximum (not Ignored): hug the title width so the link chip sits
+        # flush after the text — same spacing as Settings → Model Manager.
+        self._lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
         self._lbl.setStyleSheet(
             f"font-family:{FONT_STACK};font-size:12px;"
             "font-weight:600;letter-spacing:0.5px;"
             f"color:{theme_manager.theme.text_sec};background:transparent;"
         )
-        # Cap the label at its own text width (mirroring the arch-card
-        # titles): name + link chip then hug the card's left edge and the
-        # leftover row space goes to the middle stretch, keeping the badges
-        # and ··· menu flush right.
-        self._lbl.ensurePolished()
-        _lbl_cap = int(self._lbl.fontMetrics().horizontalAdvance(self._display)) + 8
-        self._lbl.setMaximumWidth(_lbl_cap)
-        hl.addWidget(self._lbl, 100)
+        hl.addWidget(self._lbl)
 
         # Link to the model's mvsep Quality Checker entry (when the CSV lists
         # one) — sits right after the name, like the arch cards' info chips.
@@ -2604,9 +2604,6 @@ class _ModelItem(QFrame):
             return
         self._display = text
         self._lbl.setToolTip(self._name if text != self._name else "")
-        self._lbl.ensurePolished()
-        cap = int(self._lbl.fontMetrics().horizontalAdvance(self._display)) + 8
-        self._lbl.setMaximumWidth(cap)
         self._lbl.updateGeometry()
         self.updateGeometry()
         self._elide_label()
@@ -4833,7 +4830,10 @@ class InferencePage(QWidget):
                     config["inference"] = {}
                 if "chunk_size" in ckpt_settings:
                     raw_cs = ckpt_settings["chunk_size"]
-                    hop = config.get("audio", {}).get("hop_length", 1024)
+                    # SW yamls set audio.hop_length: 441 ("don't work —
+                    # use in model"). Align chunks to the STFT hop the
+                    # RoFormer actually uses (model.stft_hop_length, 512).
+                    hop = stft_hop_length_from_config(config)
                     num_scales = config.get("model", {}).get("num_scales", 5)
                     align = 2 ** num_scales
                     T = raw_cs // hop + 1

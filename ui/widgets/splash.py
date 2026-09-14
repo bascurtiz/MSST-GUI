@@ -102,11 +102,12 @@ class SplashPanel(QWidget):
         self._bar.setValue(0)
         self._bar.setTextVisible(False)
         self._bar.setFixedHeight(5)
+        t = theme_manager.theme
         self._bar.setStyleSheet(
-            f"QProgressBar{{background:{theme_manager.theme.border};"
-            "border:none;border-radius:2px;}"
-            f"QProgressBar::chunk{{background:{theme_manager.accent};"
-            "border-radius:2px;}}"
+            f"QProgressBar {{ background: {t.border_visible}; border: none; "
+            f"border-radius: 2px; max-height: 5px; }}"
+            f"QProgressBar::chunk {{ background: {theme_manager.accent}; "
+            f"border-radius: 2px; }}"
         )
         root.addWidget(self._bar)
 
@@ -178,13 +179,14 @@ class SplashPanel(QWidget):
 
     # ── painting ─────────────────────────────────────────────────────────────
     def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        rect = QRectF(0.5, 0.5, self.width() - 1.0, self.height() - 1.0)
-        path = _rounded_path(rect, 18.0)
-        p.fillPath(path, QColor(theme_manager.theme.bg))
-        p.setPen(QPen(QColor(theme_manager.theme.border_dim), 1.0))
-        p.drawPath(path)
+        with QPainter(self) as p:
+            p.setRenderHint(QPainter.Antialiasing, True)
+            rect = QRectF(0.5, 0.5, self.width() - 1.0, self.height() - 1.0)
+            path = _rounded_path(rect, 18.0)
+            p.fillPath(path, QColor(theme_manager.theme.bg))
+            p.setPen(QPen(QColor(theme_manager.theme.border_dim), 1.0))
+            p.drawPath(path)
+        super().paintEvent(event)
 
 
 def _rounded_path(rect: QRectF, radius: float):

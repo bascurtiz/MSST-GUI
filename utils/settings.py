@@ -398,8 +398,10 @@ def _resolve_bs_roformer_variant(config, checkpoint_path=None):
 
     * top-level ``conformer: true``  -> BSConformer
     * top-level ``siamese: true``    -> BSRoformer(siamese=True) two-stream trunk
-    * top-level ``sw: true``         -> BSRoformerSW(learned positions)
-    * 6-stem configs with no flag    -> BSRoformerSW(rope) shared-bias "Logic"
+    * checkpoint ``cos_emb_time`` / ``shared_qkv_bias`` (or yaml ``sw: true``
+      when no checkpoint is available) -> BSRoformerSW(learned positions)
+    * checkpoint ``linear_62_bias_0`` -> BSRoformerSW(rope) shared-bias Logic
+    * 6-stem stock RoFormer (SW-Fixed, rotary_embed.freqs only) -> BSRoformer
     * top-level ``fno: true``         -> bs_roformer_fno (FNO mask estimator)
     * top-level ``hyperace: true``     -> bs_roformer_hyperace (SegmModel v1)
     * top-level ``hyperace2: true``    -> bs_roformer_hyperace2 (SegmModel v2)
@@ -411,6 +413,16 @@ def _resolve_bs_roformer_variant(config, checkpoint_path=None):
       the vendored fork class (models/bs_roformer/bs_roformer_unwa_large.py)
       is used so already-installed fork checkpoints keep loading even without
       their author side-car file.
+
+    Checkpoint keys win over yaml flags for the SW / Logic / stock split:
+    community yamls often omit ``sw: true``, and SW-Fixed was converted to
+    stock MSST weights — the old ``num_stems == 6 -> rope`` heuristic sent
+    those checkpoints into the wrong class.
+
+    ZFTurbo/MSST has no SW class: ``BSRoformer(**dict(config.model))``.
+    The public 6-stem model they (and MVSEP) run is SW-Fixed. Original
+    ``bs_6stem.ckpt`` (``cos_emb_time``) is remapped to that sibling by
+    ``resolve_sw_msst_paths`` before this builder runs.
     """
     from models.bs_roformer import BSRoformer, BSConformer
     from models.bs_roformer.bs_roformer_sw import BSRoformerSW
@@ -421,9 +433,6 @@ def _resolve_bs_roformer_variant(config, checkpoint_path=None):
     if getattr(config, 'siamese', None) is True:
         fit = _fit_model_kwargs(BSRoformer, _model_cfg)
         return BSRoformer(siamese=True, **fit)
-    if getattr(config, 'sw', None) is True:
-        fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
-        return BSRoformerSW(position_mode='learned', **fit)
     if getattr(config, 'fno', None) is True:
         from models.bs_roformer.bs_roformer_fno import BSRoformer as BSRoformerFNO
         return BSRoformerFNO(**_fit_model_kwargs(BSRoformerFNO, _model_cfg))
@@ -433,10 +442,14 @@ def _resolve_bs_roformer_variant(config, checkpoint_path=None):
     if getattr(config, 'hyperace', None) is True:
         from models.bs_roformer.bs_roformer_hyperace import BSRoformer as BSRoformerHyperACE
         return BSRoformerHyperACE(**_fit_model_kwargs(BSRoformerHyperACE, _model_cfg))
-    if _model_cfg.get('num_stems', 1) == 6:
-        fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
-        return BSRoformerSW(position_mode='rope', **fit)
     if checkpoint_path:
+        sw_mode = _sniff_bs_roformer_sw_mode(checkpoint_path)
+        if sw_mode == 'learned':
+            fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
+            return BSRoformerSW(position_mode='learned', **fit)
+        if sw_mode == 'rope':
+            fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
+            return BSRoformerSW(position_mode='rope', **fit)
         fork_cls = _sniff_fno_fork(checkpoint_path)
         if fork_cls is not None:
             fit = _fit_model_kwargs(fork_cls, _model_cfg)
@@ -449,6 +462,11 @@ def _resolve_bs_roformer_variant(config, checkpoint_path=None):
         if fork_cls is not None:
             fit = _fit_model_kwargs(fork_cls, _model_cfg)
             return fork_cls(**fit)
+        if sw_mode == 'stock':
+            return BSRoformer(**_fit_model_kwargs(BSRoformer, _model_cfg))
+    if getattr(config, 'sw', None) is True:
+        fit = _fit_model_kwargs(BSRoformerSW, _model_cfg)
+        return BSRoformerSW(position_mode='learned', **fit)
     return BSRoformer(**_fit_model_kwargs(BSRoformer, _model_cfg))
 
 
@@ -535,6 +553,123 @@ def _torch_load_ckpt_keys(checkpoint_path):
             sd = sd[wrapper]
             break
     return list(sd.keys())
+
+
+_SW_FIXED_CKPT_NAMES = (
+    "bs_6stem_fixed.ckpt",
+    "BS-Rofo-SW-Fixed.ckpt",
+    "BS-Roformer-SW-Fixed.ckpt",
+    "BS-ROFO-SW-Fixed.ckpt",
+)
+
+_SW_FIXED_YAML_NAMES = (
+    "bs_6stem_fixed_config.yaml",
+    "BS-Rofo-SW-Fixed.yaml",
+    "BS-Roformer-SW.yaml",
+    "bs_6stem_fixed.yaml",
+)
+
+
+def resolve_sw_msst_paths(checkpoint_path, config_path=None):
+    """Map pre-conversion SW weights onto the SW-Fixed pair ZFTurbo runs.
+
+    ZFTurbo's ``get_model_from_config('bs_roformer')`` is always stock
+    ``BSRoformer(**dict(config.model))``. The working 6-stem checkpoint
+    on MVSEP / UVR / MSST is jarredou's converted SW-Fixed file (rotary
+    only). The original ``bs_6stem.ckpt`` (``cos_emb_time`` /
+    ``shared_qkv_bias``) cannot load into that class and leaves
+    vocals/bass empty here.
+
+    Returns ``(checkpoint_path, config_path, redirected)``.
+    """
+    if not checkpoint_path or not os.path.isfile(checkpoint_path):
+        return checkpoint_path, config_path, False
+    if _sniff_bs_roformer_sw_mode(checkpoint_path) != "learned":
+        return checkpoint_path, config_path, False
+
+    ckpt_abs = os.path.abspath(checkpoint_path)
+    ckpt_dir = os.path.dirname(ckpt_abs)
+    stem, ext = os.path.splitext(os.path.basename(ckpt_abs))
+    names = list(_SW_FIXED_CKPT_NAMES)
+    for extra in (f"{stem}_fixed{ext}", f"{stem}-fixed{ext}"):
+        if extra not in names:
+            names.append(extra)
+
+    alt_ckpt = None
+    for name in names:
+        candidate = os.path.join(ckpt_dir, name)
+        if (os.path.isfile(candidate)
+                and os.path.normcase(os.path.abspath(candidate))
+                != os.path.normcase(ckpt_abs)):
+            alt_ckpt = os.path.abspath(candidate)
+            break
+
+    if alt_ckpt is None:
+        print(
+            f"[bs_roformer] {os.path.basename(checkpoint_path)} is the "
+            "pre-conversion SW checkpoint (learned positions). "
+            "ZFTurbo/MSST/MVSEP run SW-Fixed as stock BSRoformer. "
+            "Place bs_6stem_fixed.ckpt next to it — the original file "
+            "leaves vocals/bass empty."
+        )
+        return checkpoint_path, config_path, False
+
+    alt_yaml = config_path
+    yaml_names = list(_SW_FIXED_YAML_NAMES)
+    if config_path:
+        base = os.path.basename(config_path)
+        guessed = base.replace("_config.yaml", "_fixed_config.yaml")
+        if guessed != base:
+            yaml_names.insert(0, guessed)
+        guessed2 = base.replace(".yaml", "_fixed.yaml")
+        if guessed2 not in yaml_names:
+            yaml_names.append(guessed2)
+
+    search_dirs = []
+    if config_path:
+        search_dirs.append(os.path.dirname(os.path.abspath(config_path)))
+    search_dirs.append(ckpt_dir)
+    search_dirs.append(os.path.normpath(os.path.join(ckpt_dir, "..", "configs")))
+
+    for directory in search_dirs:
+        for name in yaml_names:
+            candidate = os.path.normpath(os.path.join(directory, name))
+            if os.path.isfile(candidate):
+                alt_yaml = candidate
+                break
+        else:
+            continue
+        break
+
+    print(
+        f"[bs_roformer] {os.path.basename(checkpoint_path)} is the "
+        f"pre-conversion SW checkpoint. Using {os.path.basename(alt_ckpt)} "
+        "as stock BSRoformer (same path as ZFTurbo/MSST/MVSEP)."
+    )
+    return alt_ckpt, alt_yaml, True
+
+
+def _sniff_bs_roformer_sw_mode(checkpoint_path):
+    """Classify a BS-Roformer checkpoint as learned SW, Logic rope, or stock.
+
+    Returns one of:
+
+    * ``'learned'`` — original jarredou SW (``cos_emb_time`` / ``shared_qkv_bias``)
+    * ``'rope'``    — Logic 6-stem shared-bias RoPE (``linear_62_bias_0``)
+    * ``'stock'``   — standard BSRoformer (including SW-Fixed)
+    * ``None``      — keys could not be read; caller should fall back to yaml
+    """
+    keys = _read_ckpt_keys(checkpoint_path)
+    if keys is None:
+        keys = _torch_load_ckpt_keys(checkpoint_path)
+    if not keys:
+        return None
+    keyset = set(keys)
+    if 'cos_emb_time' in keyset or 'shared_qkv_bias' in keyset:
+        return 'learned'
+    if 'linear_62_bias_0' in keyset or 'linear_64_bias_0' in keyset:
+        return 'rope'
+    return 'stock'
 
 
 def _sniff_fno_fork(checkpoint_path):
@@ -710,6 +845,25 @@ def get_model_from_config(model_type: str, config_path: str,
             and any(str(k).startswith('tran_') for k in dict(config.model))):
         model_type = 'scnet_tran'
         config.training.model_type = model_type
+    # Original jarredou SW (cos_emb_time) is not the architecture ZFTurbo
+    # or MVSEP run. If SW-Fixed sits next to it, load that as stock
+    # BSRoformer and record the redirected path so inference.py loads
+    # the matching weights.
+    if model_type == 'bs_roformer' and checkpoint_path:
+        new_ckpt, new_yaml, redirected = resolve_sw_msst_paths(
+            checkpoint_path, config_path)
+        if redirected:
+            checkpoint_path = new_ckpt
+            if (new_yaml and config_path
+                    and os.path.normcase(os.path.abspath(new_yaml))
+                    != os.path.normcase(os.path.abspath(config_path))):
+                config = load_config(model_type, new_yaml)
+                if 'model_type' in config.training:
+                    model_type = config.training.model_type
+            try:
+                config.redirected_checkpoint = new_ckpt
+            except Exception:
+                config.update({"redirected_checkpoint": new_ckpt})
     # Fork architectures (unwa's "Instrumental Large v2", pcunwa HyperACE,
     # etc.) are NOT special-cased here any more: the engine builds the model
     # from the author's own side-car file via --custom_backend when one was

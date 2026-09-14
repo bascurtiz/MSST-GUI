@@ -24,7 +24,7 @@ from ui.widgets.common import (
     EllipsisButton, add_button_hover,
     GlyphButton, ScoresRefreshButton, SyncingLabel, _outline_icon_color,
     _solid_icon_color,
-    _custom_badge_ss,
+    _custom_badge_ss, _type_badge_ss, _type_title,
     css_color as _css_color, DOWNLOAD_GLYPH, run_blurred_dialog,
 )
 from ui.widgets.smooth_bar import SmoothBar
@@ -38,6 +38,7 @@ from backend.model_manager import (
 from ui.pages.model_manager_dialog import ModelInstallDialog
 from ui.pages.inference_page import (
     _ExpandArrow, _SearchBar, _ComboBox, _combo_ss, _SortCombo, _MetricColumns,
+    _LinkBadge,
     SEARCH_FIELD_WIDTH, SORT_COMBO_WIDTH,
 )
 from backend.mvsep_scores import (
@@ -418,14 +419,20 @@ class _ModelCard(QFrame):
     remove_requested = Signal(str)
     type_changed = Signal(str, str)
 
-    def set_type(self, model_type):
-        """Update this card's type text in place (e.g. after a zoo-driven
-        type reconciliation)."""
+    def _apply_type_badge(self, model_type):
+        """Paint the stem/target pill — same style as Model Manager rows."""
         self._type = model_type
         try:
-            self._type_label.setText((model_type or "").capitalize())
+            self._type_label.setText(_type_title(model_type))
+            self._type_label.setToolTip(model_type or "")
+            self._type_label.setStyleSheet(_type_badge_ss(model_type))
+            self._type_label.setFixedHeight(17)
         except RuntimeError:
             pass
+
+    def set_type(self, model_type):
+        """Update this card's type badge in place (e.g. after zoo reconcile)."""
+        self._apply_type_badge(model_type)
 
     def __init__(self, name, arch, model_type, ckpt, yaml, added=None, parent=None,
                  backend_module="", custom_backend_enabled=False):
@@ -486,10 +493,10 @@ class _ModelCard(QFrame):
         type_row.setContentsMargins(0, 0, 0, 0)
         type_row.setSpacing(6)
 
-        self._type_label = QLabel(model_type.capitalize())
-        self._type_label.setStyleSheet(
-            f"font-family:'Montserrat';font-size:10px;color:{theme_manager.theme.text_dim};background:transparent;border:none;"
-        )
+        self._type_label = QLabel(_type_title(model_type))
+        self._type_label.setToolTip(model_type or "")
+        self._type_label.setStyleSheet(_type_badge_ss(model_type))
+        self._type_label.setFixedHeight(17)
         type_row.addWidget(self._type_label)
 
         edit_btn = QPushButton("Edit")
@@ -562,8 +569,7 @@ class _ModelCard(QFrame):
         if run_blurred_dialog(dlg) == QDialog.Accepted:
             type_val = dlg.selected()
             if type_val:
-                self._type = type_val
-                self._type_label.setText(type_val.capitalize())
+                self._apply_type_badge(type_val)
                 self.type_changed.emit(self._name, type_val)
 
     def _get_size(self):
@@ -1712,15 +1718,34 @@ class _FolderManagerWidget(QWidget):
             left_col.setContentsMargins(0, 0, 0, 0)
             left_col.setSpacing(6)
 
+            ckpt_name = info.checkpoint_url.split("/")[-1].split("?")[0]
+
+            name_row = QHBoxLayout()
+            name_row.setContentsMargins(0, 0, 0, 0)
+            name_row.setSpacing(6)
+            name_row.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             name_lbl = _ElidedLabel(info.full_name)
             name_lbl.setStyleSheet(
                 f"font-family:'Montserrat';font-size:12px;font-weight:700;"
                 f"color:{theme_manager.theme.text};background:transparent;border:none;"
             )
-            left_col.addWidget(name_lbl)
+            # Maximum (not Ignored): hug the title width so the link chip
+            # sits flush after the text; still shrinks + elides when narrow.
+            name_lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+            name_row.addWidget(name_lbl)
+            scores_url = self._scores_store.entry_url(ckpt_name.lower())
+            if scores_url:
+                link = _LinkBadge(
+                    f"Open \u201c{info.full_name}\u201d on mvsep Quality Checker")
+                link.clicked.connect(
+                    lambda u=scores_url: QDesktopServices.openUrl(QUrl(u)))
+                name_row.addWidget(link)
+            # Absorb leftover row width here — keeps name+link left-aligned
+            # (same pattern as Model Library _ModelItem rows).
+            name_row.addStretch(1)
+            left_col.addLayout(name_row)
 
             # Files
-            ckpt_name = info.checkpoint_url.split("/")[-1].split("?")[0]
             yaml_name = info.config_url.split("/")[-1].split("?")[0]
 
             ckpt_row = _ElidedLabel(f"┣━  {ckpt_name}", elide=Qt.ElideMiddle)
@@ -1747,7 +1772,6 @@ class _FolderManagerWidget(QWidget):
                 left_col.addWidget(py_row)
 
             # Size
-            ckpt_name = info.checkpoint_url.split("/")[-1].split("?")[0]
             file_size = self._folder_file_sizes.get(ckpt_name, 0)
             if not file_size:
                 file_size = info.file_size
@@ -1777,7 +1801,11 @@ class _FolderManagerWidget(QWidget):
                 if self._sort_metric else None)
             metric_text = metric_line(scores, self._sort_metric) if scores else ""
             no_validation = (
-                bool(self._sort_metric) and lacks_validation_set(info.stem_type))
+                bool(self._sort_metric) and lacks_validation_set(
+                    info.stem_type,
+                    name=info.full_name,
+                    filename=info.key,
+                ))
 
             if no_validation:
                 noval_lbl = QLabel(NO_VALIDATION_SET_LABEL)
@@ -1829,6 +1857,13 @@ class _FolderManagerWidget(QWidget):
                 left_col.addLayout(updated_row)
 
             main_row.addLayout(left_col, 1)
+
+            if info.stem_type:
+                type_tag = QLabel(_type_title(info.stem_type))
+                type_tag.setToolTip(info.stem_type)
+                type_tag.setStyleSheet(_type_badge_ss(info.stem_type))
+                type_tag.setFixedHeight(17)
+                main_row.addWidget(type_tag, 0, Qt.AlignVCenter)
 
             if installed:
                 inst_btn = QPushButton("✓ Installed")

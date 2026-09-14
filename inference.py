@@ -221,7 +221,14 @@ def run_folder(
         # generic "instrumental" label. (Shared helper: utils/stem_planning.py)
         if args.extract_instrumental:
             all_instruments = list(getattr(config.training, 'instruments', []) or [])
-            complement_name = complement_stem_name(all_instruments, instruments)
+            complement_name = complement_stem_name(
+                all_instruments, instruments,
+                emitted_stems=list(waveforms_orig),
+            )
+            # Never replace a stem the model already emitted (a 6-stem
+            # model's trained "other" must stay; mix-minus gets a new name).
+            if complement_name in waveforms_orig:
+                complement_name = "instrumental"
             instr = "vocals" if "vocals" in instruments else instruments[0]
             waveforms_orig[complement_name] = mix_orig - waveforms_orig[instr]
             if complement_name not in instruments:
@@ -387,6 +394,13 @@ def proc_folder(dict_args):
                 args.model_type, args.config_path,
                 custom_backend=getattr(args, 'custom_backend', None),
                 checkpoint_path=args.start_check_point)
+            # Original SW ckpt is remapped to SW-Fixed inside the builder
+            # (ZFTurbo/MSST path). Load those weights, not the 350 MB file.
+            redir = getattr(config, "redirected_checkpoint", None)
+            if not redir and hasattr(config, "get"):
+                redir = config.get("redirected_checkpoint")
+            if redir:
+                args.start_check_point = redir
         except ValueError as exc:
             # A model whose type has no dispatch branch used to die here as
             # a raw traceback; the GUI pre-validates registered models, but

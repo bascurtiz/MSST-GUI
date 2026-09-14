@@ -49,8 +49,13 @@ class LearnedRotaryEmbedding(Module):
 
     def __init__(self, cos_emb, sin_emb):
         super().__init__()
-        self.cos_emb = nn.Parameter(cos_emb)
-        self.sin_emb = nn.Parameter(sin_emb)
+        # Keep the *same* Parameter objects the parent registered as
+        # cos_emb_time / sin_emb_*. Re-wrapping with nn.Parameter() created
+        # a second tensor; apply() then used that copy, which stayed at
+        # init zeros whenever load_state_dict wrote only the top-level
+        # names (or wrote the two copies independently and they drifted).
+        self.cos_emb = cos_emb
+        self.sin_emb = sin_emb
 
     def apply(self, q, k):
         n = q.shape[-2]

@@ -23,9 +23,10 @@ background thread and emits `scores_ready(filename)` as each one lands, so the
 Model Library and Model Manager can light up per-model once data arrives.
 
 No score entry (no URL in the sheet) simply means the model is not listed yet —
-the UI shows nothing extra for it. Denoise and dereverb/deecho models have no
-public validation set at all; the library and manager show
-``NO_VALIDATION_SET_LABEL`` in the metric slot instead of a blank SDR line.
+the UI shows nothing extra for it. Denoise, dereverb/deecho, effects, crowd,
+and a few choir / surround / Medley-Vox / SFX models have no public
+validation set; the library and manager show ``NO_VALIDATION_SET_LABEL``
+in the metric slot instead of a blank or misleading SDR line.
 """
 import csv
 import io
@@ -56,15 +57,123 @@ METRIC_LABELS = {
     "fullness": "FULLNESS",
 }
 
-# Denoise / dereverb-deecho models have no mvsep quality-checker validation
-# set, so the UI shows this note in the SDR / SI-SDR slot instead of nothing.
-NO_VALIDATION_STEM_TYPES = frozenset({"denoise", "dereverb / deecho"})
+# Families with no mvsep quality-checker validation set. Choir / surround /
+# cinema-SFX / Medley-Vox IsrNET are typed as vocals or multi stems (those
+# families DO have a set), so they are listed by identity below.
+NO_VALIDATION_STEM_TYPES = frozenset({
+    "denoise",
+    "dereverb / deecho",
+    "effects",
+    "crowd",
+})
 NO_VALIDATION_SET_LABEL = "No validation set available"
 
+# Catalog keys, ckpt stems, and zoo full names (lowercased). Choirsep /
+# surround / SFX-cinema / SATB VR / Medley-Vox IsrNET+ChoirSep+Duet /
+# lead-rhythm guitar / BVE / VR-BVE / synth / percussion / Mega-53 would
+# otherwise inherit a stem-type SDR line they were never scored on.
+NO_VALIDATION_IDENTITIES = frozenset({
+    "mdx23c_sfx_jasper",
+    "mdx23c_sfxsplitter_jasper",
+    "scnet_surround_jasper",
+    "demucs4_choirsep",
+    "mdx_crowd_hq1",
+    "singing_librispeech_ft_isrnet",
+    "singing_librispeech_isrnet",
+    "medley_vox_choirsep_drypaint",
+    "mbr_duet_drypaint",
+    "mbr_crowd_aufr33_viperx",
+    "mbr_amb_jazzpear",
+    "mbr_expl_jazzpear",
+    "mbr_fight_jazzpear",
+    "mbr_foot_jazzpear",
+    "mbr_misc_jazzpear",
+    "mbr_toon_jazzpear",
+    "scnet_choirsep_exp",
+    "scnet_masked_choirsep_exp",
+    "vr6_bass_drypaint",
+    "vr6_soprano_drypaint",
+    "mdx23c sfx by jasper",
+    "mdx23c sfx splitter by jasper",
+    "scnet surround by jasper",
+    "htdemucs4 choirsep by dry paint dealer undr",
+    "mdx-net model: uvr-mdx-net crowd hq 1",
+    "singing librispeech finetuned model isrnet for medley-vox",
+    "singing librispeech isrnet model for medley-vox",
+    "choirsep for medley-vox by dry paint dealer undr",
+    "mel-band roformer duet by dry paint dealer undr",
+    "mel-band roformer crowd by aufr33 & viperx",
+    "mel-band roformer ambiance by jazzpear",
+    "mel-band roformer explosions by jazzpear",
+    "mel-band roformer fighting by jazzpear",
+    "mel-band roformer footsteps by jazzpear",
+    "mel-band roformer foley by jazzpear",
+    "mel-band roformer toon by jazzpear",
+    "scnet choirsep by dry paint dealer undr",
+    "scnet masked choirsep by dry paint dealer undr",
+    "vr arch single model v6 beta3: bass by dry paint dealer undr",
+    "vr arch single model v6 beta3: soprano by dry paint dealer undr",
+    "demucs4_lead_rhythm_guitar_drypaint",
+    "mbr_lead_rhythm_guitar_listra92",
+    "mbr_bve_gonzaluigi",
+    "uvr-bve-4b_sn-44100-1",
+    "uvr-bve-v2-4b-sn-44100",
+    "bs_syn_xlancer",
+    "bs_syn2_xlancer",
+    "bs_perc_xlancer",
+    "bs_perc2_xlancer",
+    "mbr_percussion_yolkispaliks",
+    "htdemucs4 lead-rhythm guitar by dry paint dealer undr",
+    "mel-band roformer lead-rhythm guitar by listra92",
+    "mel-band roformer bve by gonzaluigi",
+    "vr arch single model v5: uvr-bve-4b_sn-44100",
+    "vr arch single model v4: uvr-bve-v2-4b-sn-44100",
+    "bs roformer synth v1 by xlance",
+    "bs roformer synth v2 by xlance",
+    "bs roformer percussion v1 by xlance",
+    "bs roformer percussion v2 by xlance",
+    "mel-band roformer percussion experimental by yolkispalkis",
+})
 
-def lacks_validation_set(stem_type: str) -> bool:
-    """True for denoise and dereverb/deecho — no public SDR validation set."""
-    return (stem_type or "").strip().lower() in NO_VALIDATION_STEM_TYPES
+# Checkpoint / catalog-key prefixes for large model families (e.g. Mega 53).
+NO_VALIDATION_PREFIXES = ("bs_mega_53stem",)
+
+
+def _validation_identity_tokens(*parts: str) -> list[str]:
+    """Basename / stem / raw lowercased strings used to match a model."""
+    tokens = []
+    for part in parts:
+        if not part:
+            continue
+        raw = str(part).strip().lower()
+        if not raw:
+            continue
+        tokens.append(raw)
+        base = os.path.basename(raw.replace("\\", "/"))
+        tokens.append(base)
+        stem, _ext = os.path.splitext(base)
+        if stem:
+            tokens.append(stem)
+    return tokens
+
+
+def lacks_validation_set(stem_type: str = "", name: str = "",
+                         filename: str = "") -> bool:
+    """True when the model has no public SDR validation set.
+
+    Matches denoise / dereverb / effects / crowd by stem type, plus
+    specific choir / surround / SFX / Medley-Vox / SATB / guitar / BVE /
+    VR-BVE / synth / percussion / Mega-53 models by catalog key,
+    checkpoint stem, prefix, or zoo full name.
+    """
+    if (stem_type or "").strip().lower() in NO_VALIDATION_STEM_TYPES:
+        return True
+    for token in _validation_identity_tokens(name, filename):
+        if token in NO_VALIDATION_IDENTITIES:
+            return True
+        if any(token.startswith(prefix) for prefix in NO_VALIDATION_PREFIXES):
+            return True
+    return False
 
 # Published Google Sheet (Filename, URL, Architecture columns).
 SHEET_EXPORT_URL = (

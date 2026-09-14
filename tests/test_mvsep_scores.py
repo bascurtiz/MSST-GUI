@@ -620,18 +620,84 @@ def test_request_queues_cached_refresh():
 
 
 def test_lacks_validation_set_helper():
-    """Denoise and dereverb/deecho are the only types without a validation set."""
+    """Denoise / dereverb / effects / crowd, plus named choir/SFX/Medley models."""
     check("denoise lacks validation", ms.lacks_validation_set("denoise"))
     check("dereverb/deecho lacks validation",
           ms.lacks_validation_set("dereverb / deecho"))
+    check("effects lacks validation", ms.lacks_validation_set("effects"))
+    check("crowd lacks validation", ms.lacks_validation_set("crowd"))
     check("case and padding ignored",
           ms.lacks_validation_set("  Denoise  "))
     check("vocals has validation", not ms.lacks_validation_set("vocals"))
     check("instrumental has validation",
           not ms.lacks_validation_set("instrumental"))
+    check("multi stems has validation",
+          not ms.lacks_validation_set("multi stems"))
     check("empty type has validation", not ms.lacks_validation_set(""))
     check("none type has validation", not ms.lacks_validation_set(None))
     check("label copy", ms.NO_VALIDATION_SET_LABEL == "No validation set available")
+
+    check("choirsep key lacks validation even as vocals",
+          ms.lacks_validation_set("vocals", filename="demucs4_choirsep.ckpt"))
+    check("surround full name lacks validation",
+          ms.lacks_validation_set(
+              "multi stems", name="SCNet Surround by Jasper"))
+    check("IsrNET catalog key lacks validation",
+          ms.lacks_validation_set(
+              "vocals", filename="singing_librispeech_isrnet"))
+    check("SFX jasper path lacks validation",
+          ms.lacks_validation_set(
+              "multi stems",
+              filename=r"C:\models\mdx23c\mdx23c_sfx_jasper.ckpt"))
+    check("ordinary vocals ckpt still has validation",
+          not ms.lacks_validation_set("vocals", filename="mbr_vocals_viperx.ckpt"))
+    check("jazzpear ambiance by name",
+          ms.lacks_validation_set(
+              "effects", name="Mel-Band Roformer Ambiance by jazzpear"))
+
+    check("lead-rhythm guitar drypaint ckpt lacks validation",
+          ms.lacks_validation_set(
+              "guitar", filename="demucs4_lead_rhythm_guitar_drypaint.ckpt"))
+    check("lead-rhythm guitar drypaint by name",
+          ms.lacks_validation_set(
+              "guitar",
+              name="HTDemucs4 Lead-Rhythm Guitar by Dry Paint Dealer Undr"))
+    check("lead-rhythm guitar listra92 lacks validation",
+          ms.lacks_validation_set(
+              "guitar", filename="mbr_lead_rhythm_guitar_listra92.ckpt"))
+    check("BVE gonzaluigi lacks validation",
+          ms.lacks_validation_set(
+              "vocals", filename="mbr_bve_gonzaluigi.ckpt"))
+    check("VR BVE v5 lacks validation",
+          ms.lacks_validation_set(
+              "vocals", filename="uvr-bve-4b_sn-44100-1.ckpt"))
+    check("VR BVE v4 lacks validation",
+          ms.lacks_validation_set(
+              "vocals", filename="uvr-bve-v2-4b-sn-44100.ckpt"))
+    check("BS synth v1 xlance lacks validation",
+          ms.lacks_validation_set(
+              "keys", filename="bs_syn_xlancer.ckpt"))
+    check("BS synth v2 xlance lacks validation",
+          ms.lacks_validation_set(
+              "keys", filename="bs_syn2_xlancer.ckpt"))
+    check("BS percussion v1 xlance lacks validation",
+          ms.lacks_validation_set(
+              "percussion", filename="bs_perc_xlancer.ckpt"))
+    check("BS percussion v2 xlance lacks validation",
+          ms.lacks_validation_set(
+              "percussion", filename="bs_perc2_xlancer.ckpt"))
+    check("MBR percussion experimental lacks validation",
+          ms.lacks_validation_set(
+              "percussion", filename="mbr_percussion_yolkispaliks.ckpt"))
+    check("mega 53 guitar ckpt lacks validation via prefix",
+          ms.lacks_validation_set(
+              "guitar", filename="bs_mega_53stem_guitar_mvsep.ckpt"))
+    check("mega 53 full catalog key lacks validation via prefix",
+          ms.lacks_validation_set(
+              "multi stems", filename="bs_mega_53stem_full_mvsep"))
+    check("ordinary guitar ckpt still has validation",
+          not ms.lacks_validation_set(
+              "guitar", filename="mbr_guitar_chencfd.ckpt"))
 
 
 def test_library_no_validation_note():
@@ -668,6 +734,32 @@ def test_library_no_validation_note():
           and vocals._noval_lbl.isHidden()
           and vocals.height() == 39)
     vocals.deleteLater()
+
+    choir = _ModelItem(
+        "demucs4_choirsep.ckpt", model_type="vocals",
+        display="HTDemucs4 Choirsep by Dry Paint Dealer Undr")
+    check("choirsep note visible despite vocals type",
+          not choir._noval_lbl.isHidden()
+          and choir._noval_lbl.text() == ms.NO_VALIDATION_SET_LABEL
+          and choir._scores_lbl.isHidden())
+    choir.deleteLater()
+
+    sfx = _ModelItem(
+        "mdx23c_sfx_jasper.ckpt", model_type="multi stems",
+        display="MDX23C SFX by Jasper")
+    check("jasper SFX note visible despite multi-stem type",
+          not sfx._noval_lbl.isHidden()
+          and sfx._scores_lbl.isHidden())
+    sfx.deleteLater()
+
+    lead_guitar = _ModelItem(
+        "demucs4_lead_rhythm_guitar_drypaint.ckpt", model_type="guitar",
+        display="HTDemucs4 Lead-Rhythm Guitar by Dry Paint Dealer Undr")
+    check("lead-rhythm guitar note visible despite guitar type",
+          not lead_guitar._noval_lbl.isHidden()
+          and lead_guitar._noval_lbl.text() == ms.NO_VALIDATION_SET_LABEL
+          and lead_guitar._scores_lbl.isHidden())
+    lead_guitar.deleteLater()
 
 
 def test_sort_combo_options():
