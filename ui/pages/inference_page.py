@@ -3052,7 +3052,7 @@ class _ArchCard(QFrame):
             display = title_display
         else:
             display = ARCH_DISPLAY_NAMES.get(arch_name, arch_name.replace(" Architecture", ""))
-        title_lbl = QLabel(display.upper())
+        title_lbl = QLabel(display)
         title_lbl.setStyleSheet(
             "font-family:'Montserrat',sans-serif;font-size:11px;font-weight:700;"
             f"color:{theme_manager.theme.text};background:transparent;"
@@ -4125,7 +4125,7 @@ class InferencePage(QWidget):
 
     def _order_target_cards(self):
         """Sort the by-target grouping cards alphabetically by title (so, e.g.,
-        VOCALS sits at the end rather than first). Cards are moved into a
+        Vocals sits at the end rather than first). Cards are moved into a
         contiguous block just before the trailing stretch; in architecture mode
         they are hidden anyway, so their layout position is invisible there."""
         if not self._target_cards:

@@ -14,18 +14,21 @@ from ui.theme import theme_manager, FONT_FAMILY as FONT_FAMILY_DEFAULT
 from backend.version import APP_VERSION
 
 
-def paint_chevron(painter, cx, cy, angle=0.0, hovered=False):
+def paint_chevron(painter, cx, cy, angle=0.0, hovered=False, color=None):
     """Draw the app's standard chevron — the MODEL LIBRARY arrow: a
     two-segment, round-capped `>` at rest, rotated by `angle` degrees.
     Rest color is a faint theme-text tint (alpha 51); accent blue when
-    hovered. Shared by every chevron in the GUI so they all match."""
+    hovered. Pass `color` to override both. Shared by every chevron in
+    the GUI so they all match."""
     painter.save()
     painter.setRenderHint(QPainter.Antialiasing)
     painter.translate(cx, cy)
     painter.rotate(angle)
-    _c = QColor(theme_manager.theme.text)
-    _c.setAlpha(51)
-    pen = QPen(QColor(theme_manager.accent) if hovered else _c, 2)
+    if color is None:
+        _c = QColor(theme_manager.theme.text)
+        _c.setAlpha(51)
+        color = QColor(theme_manager.accent) if hovered else _c
+    pen = QPen(QColor(color), 2)
     pen.setCapStyle(Qt.RoundCap)
     painter.setPen(pen)
     painter.drawLine(-5, -6, 0, 0)
@@ -511,30 +514,30 @@ def _type_badge_ss(model_type):
 
 # Compact titles for the category badges / "sort by target" grouping rows.
 _TYPE_TITLES = {
-    "dual target (instrumental & vocals)": "DUAL TARGET",
-    "dereverb / deecho": "DEREVERB / DEECHO",
-    "phantom centre": "PHANTOM CENTRE",
-    "multi stems": "MULTI STEMS",
-    "super resolution": "SUPER RESOLUTION",
-    "vocals": "VOCALS",
-    "instrumental": "INSTRUMENTAL",
-    "denoise": "DENOISE",
-    "karaoke": "KARAOKE",
-    "drums": "DRUMS",
-    "bass": "BASS",
-    "piano": "PIANO",
-    "guitar": "GUITAR",
-    "wind": "WIND",
-    "strings": "STRINGS",
-    "percussion": "PERCUSSION",
-    "keys": "KEYS",
-    "effects": "EFFECTS",
-    "crowd": "CROWD",
+    "dual target (instrumental & vocals)": "Dual Target",
+    "dereverb / deecho": "Dereverb / Deecho",
+    "phantom centre": "Phantom Centre",
+    "multi stems": "Multi Stems",
+    "super resolution": "Super Resolution",
+    "vocals": "Vocals",
+    "instrumental": "Instrumental",
+    "denoise": "Denoise",
+    "karaoke": "Karaoke",
+    "drums": "Drums",
+    "bass": "Bass",
+    "piano": "Piano",
+    "guitar": "Guitar",
+    "wind": "Wind",
+    "strings": "Strings",
+    "percussion": "Percussion",
+    "keys": "Keys",
+    "effects": "Effects",
+    "crowd": "Crowd",
 }
 
 
 def _type_title(type_key):
-    return _TYPE_TITLES.get(type_key or "", (type_key or "").upper() or "UNKNOWN")
+    return _TYPE_TITLES.get(type_key or "", (type_key or "").title() or "Unknown")
 
 
 def _custom_badge_ss():
@@ -597,10 +600,49 @@ class FilePicker(QWidget):
         else: path, _ = QFileDialog.getOpenFileName(self, "Select file", filter=self._filter)
         if path: self.line.setText(path)
 
+class _BackChevron(QPushButton):
+    """Compact left-pointing chevron for PageHeader(back=True). Sits after
+    the accent bar, beside the title — not a full-width bar above it."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._hovered = False
+        self.setFixedSize(24, 24)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setToolTip("Back")
+        self.setStyleSheet(
+            "QPushButton{background:transparent;border:none;padding:0;}"
+        )
+
+    def enterEvent(self, e):
+        self._hovered = True
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(e)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        if self._hovered:
+            color = theme_manager.accent
+        elif theme_manager.mode == "dark":
+            color = "#FFFFFF"
+        else:
+            color = theme_manager.theme.text_muted
+        paint_chevron(p, self.width() / 2, self.height() / 2, 180.0,
+                      color=color)
+        p.end()
+
+
 class PageHeader(QWidget):
     """mvsep-style page header: left accent bar, big uppercase title, and
     a subtitle with an accent-highlighted phrase.
-    Optional back button above the title; extra widgets dock on the right."""
+    Optional back chevron sits after the bar, left of the title;
+    extra widgets dock on the right."""
 
     def __init__(self, title, subtitle="", highlight="", back=False, parent=None):
         super().__init__(parent)
@@ -620,21 +662,22 @@ class PageHeader(QWidget):
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(0)
 
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
+
         self.back_btn = None
         if back:
-            self.back_btn = QPushButton("← Back")
-            self.back_btn.setMinimumHeight(32)
-            self.back_btn.setCursor(Qt.PointingHandCursor)
-            self.back_btn.setStyleSheet(self._back_ss())
-            col.addWidget(self.back_btn)
-            col.addSpacing(14)
+            self.back_btn = _BackChevron()
+            title_row.addWidget(self.back_btn, 0, Qt.AlignVCenter)
 
         self.title_lbl = QLabel(title.upper())
         self.title_lbl.setStyleSheet(
             "font-family:'Montserrat',sans-serif;font-size:32px;font-weight:bold;color:"
             f"{theme_manager.theme.text};background:transparent;border:none;letter-spacing:-0.5px;"
         )
-        col.addWidget(self.title_lbl)
+        title_row.addWidget(self.title_lbl)
+        col.addLayout(title_row)
 
         self.sub_lbl = None
         if subtitle:
@@ -651,21 +694,11 @@ class PageHeader(QWidget):
                 "font-family:'Montserrat';font-size:10px;color:"
                 f"{theme_manager.theme.text_muted};background:transparent;border:none;letter-spacing:1px;"
             )
+            if back:
+                self.sub_lbl.setContentsMargins(32, 0, 0, 0)
             col.addWidget(self.sub_lbl)
 
         root.addLayout(col, 1)
-
-    def _back_ss(self):
-        t = theme_manager.theme
-        return (
-            "QPushButton{background:transparent;color:"
-            f"{t.text_muted};border:1px solid "
-            f"{t.border_visible};font-family:'Montserrat';font-size:12px;border-radius:6px;padding:0 16px;}}"
-            "QPushButton:hover{background:"
-            f"{t.border};color:"
-            f"{t.text};border-color:"
-            f"{theme_manager.accent};}}"
-        )
 
     def add_extra(self, widget):
         self.layout().addWidget(widget)
