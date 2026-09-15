@@ -2545,6 +2545,7 @@ class _ModelItem(QFrame):
         self._scores_url = scores_url
         self.setStyleSheet("QFrame{background:transparent;border:none;}")
         self.setCursor(Qt.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -2552,6 +2553,7 @@ class _ModelItem(QFrame):
 
         self._name_row = QWidget()
         self._name_row.setFixedHeight(self._NAME_ROW_H)
+        self._name_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._name_row.setStyleSheet("background:transparent;")
         row = self._name_row
         hl = QHBoxLayout(row)
@@ -3101,6 +3103,7 @@ class _ArchCard(QFrame):
         # Model list
         self._list_w = QWidget()
         self._list_w.setStyleSheet("background:transparent;")
+        self._list_w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._list_vl = QVBoxLayout(self._list_w)
         self._list_vl.setContentsMargins(0, 0, 0, 0)
         self._list_vl.setSpacing(0)
@@ -3117,7 +3120,11 @@ class _ArchCard(QFrame):
 
         self._content = QWidget()
         self._content.setStyleSheet("background:transparent;")
-        self._content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        # Expanding width: the header already spans the library pane; the
+        # model rows must too so the name-row stretch can pin type badges
+        # and the ··· menu to the card's right edge. Preferred + adjustSize
+        # used to hug the filename and leave a dead band on the right.
+        self._content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         cl = QVBoxLayout(self._content)
         cl.setContentsMargins(0, 0, 0, 0)
@@ -3183,7 +3190,6 @@ class _ArchCard(QFrame):
             w = self._list_vl.itemAt(i).widget()
             if isinstance(w, _ModelItem) and w.isVisibleTo(self._content):
                 w._update_row_height()
-                w.adjustSize()
                 h += max(w.sizeHint().height(), w.height())
         m = self._list_vl.contentsMargins()
         self._cached_height = h + m.top() + m.bottom()
@@ -3195,7 +3201,6 @@ class _ArchCard(QFrame):
             self.setMaximumHeight(16777215)
             self._content.setMinimumHeight(0)
             self._content.setMaximumHeight(16777215)
-            self._content.adjustSize()
             self._update_expanded_height()
             sync = getattr(self, "_score_sync", None)
             if callable(sync):
@@ -3268,7 +3273,6 @@ class _ArchCard(QFrame):
             self.setFixedHeight(want)
         self._content.setMinimumHeight(self._cached_height)
         self._content.setMaximumHeight(16777215)
-        self._content.adjustSize()
 
     def _deselect_all_models(self):
         for i in range(self._list_vl.count()):
@@ -3610,7 +3614,6 @@ class InferencePage(QWidget):
         if url:
             item.ensure_scores_link(url)
         item.set_metric(self._sort_metric)
-        item.adjustSize()
         return True
 
     def _apply_score_to_name(self, name):

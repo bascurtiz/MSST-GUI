@@ -114,11 +114,39 @@ def main():
     dot_right = wit._dots.mapTo(wcard, wit._dots.rect().topRight()).x()
     check("3-dot menu inside card edge in narrow pane",
           dot_right <= wcard.width() - 1)
-    check("long label elides when space is tight",
-          wit._lbl.text() != wit._display and wit._lbl.text().endswith("…"))
+    need = wit._lbl.fontMetrics().horizontalAdvance(wit._display)
+    if wit._lbl.width() < need - 2:
+        check("long label elides when space is tight",
+              wit._lbl.text() != wit._display and wit._lbl.text().endswith("…"))
+    else:
+        check("long label fits the full-width 340px row", True)
     check("full name still searchable via _display",
           wit._display == "dttnet_vocalsg32_ep4082_fix.ckpt")
     host.close()
+
+    # Short names in a wide pane must still span the card: type badge + ···
+    # sit on the right edge, not tucked after the filename. Scores must not
+    # be what drives that width (the name row stretch does).
+    wide_host = QWidget()
+    wide_host.resize(720, 240)
+    wv = QVBoxLayout(wide_host)
+    wv.setContentsMargins(0, 0, 0, 0)
+    wide_card = _ArchCard("Melband Roformer Architecture")
+    wide_card.add_model("inst_v1e.ckpt", os.path.join(tmp, "v.ckpt"), yaml_path,
+                        "Melband Roformer Architecture", "instrumental",
+                        "mel_band_roformer")
+    wv.addWidget(wide_card)
+    wide_host.show()
+    app.processEvents()
+    wide_card._toggle_expand(animated=False)
+    app.processEvents()
+    short = wide_card.findChildren(_ModelItem)[0]
+    check("short-name row spans the card width",
+          short.width() >= wide_card.width() - 2)
+    dots_x = short._dots.mapTo(wide_card, short._dots.rect().topRight()).x()
+    check("··· menu sits on the card's right edge",
+          dots_x >= wide_card.width() - 40)
+    wide_host.close()
 
     import shutil
     shutil.rmtree(tmp, ignore_errors=True)

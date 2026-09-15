@@ -470,26 +470,15 @@ def _resolve_bs_roformer_variant(config, checkpoint_path=None):
     return BSRoformer(**_fit_model_kwargs(BSRoformer, _model_cfg))
 
 
-def _read_ckpt_keys(checkpoint_path):
-    """Read a checkpoint's state-dict key names without materializing any
-    tensor data, using zipfile + pickle interception on the archive's
-    ``data.pkl`` member.
-
-    Why: the sniffers used to ``torch.load`` the checkpoint just to look at
-    key names, and inference.py loads the same checkpoint again right after.
-    torch 2.11 on Windows returns a *broken* mapping from the second mmap
-    load of a ZIP64 (>4 GB) archive — reading any storage from that second
-    load dies with a native access violation. Reading keys from the pickle
-    alone means the engine performs exactly one torch.load per checkpoint.
+def _read_ckpt_pkl_payloads(checkpoint_path):
+    """Return raw ``data.pkl`` bytes from a torch zip checkpoint.
 
     Handles old (``data.pkl`` at any prefix, e.g. Lightning checkpoints
     like ``last_mel_band_roformer/data.pkl``) and new
     (``archive/data.pkl``) torch zip layouts, and multi-archive Lightning
-    files by trying every ``data.pkl`` member. Returns the unwrapped key
-    list, or None if nothing readable was found.
+    files by collecting every ``data.pkl`` member. Returns an empty list
+    if the file isn't a readable zip.
     """
-    import io
-    import pickle
     import zipfile
 
     try:
@@ -503,7 +492,40 @@ def _read_ckpt_keys(checkpoint_path):
                         payloads.append(z.read(n))
                     except Exception:
                         continue
+            return payloads
     except Exception:
+        return []
+
+
+def _unwrap_ckpt_state_dict(obj):
+    """Return the inner state-dict if ``obj`` is a Lightning/torch wrapper."""
+    if not isinstance(obj, dict):
+        return None
+    for wrapper in ('state_dict', 'state', 'model_state_dict'):
+        if isinstance(obj.get(wrapper), dict):
+            return obj[wrapper]
+    return obj
+
+
+def _read_ckpt_keys(checkpoint_path):
+    """Read a checkpoint's state-dict key names without materializing any
+    tensor data, using zipfile + pickle interception on the archive's
+    ``data.pkl`` member.
+
+    Why: the sniffers used to ``torch.load`` the checkpoint just to look at
+    key names, and inference.py loads the same checkpoint again right after.
+    torch 2.11 on Windows returns a *broken* mapping from the second mmap
+    load of a ZIP64 (>4 GB) archive — reading any storage from that second
+    load dies with a native access violation. Reading keys from the pickle
+    alone means the engine performs exactly one torch.load per checkpoint.
+
+    Returns the unwrapped key list, or None if nothing readable was found.
+    """
+    import io
+    import pickle
+
+    payloads = _read_ckpt_pkl_payloads(checkpoint_path)
+    if not payloads:
         return None
 
     class _KeysUnpickler(pickle.Unpickler):
@@ -523,13 +545,102 @@ def _read_ckpt_keys(checkpoint_path):
             obj = _KeysUnpickler(io.BytesIO(raw)).load()
         except Exception:
             continue
-        if not isinstance(obj, dict):
+        obj = _unwrap_ckpt_state_dict(obj)
+        if obj is not None:
+            return list(obj.keys())
+    return None
+
+
+class _FakeCkptTensor:
+    """Stand-in for a pickled torch tensor: shape only, no storage."""
+    __slots__ = ('shape',)
+
+    def __init__(self, shape=()):
+        try:
+            self.shape = tuple(int(x) for x in shape)
+        except (TypeError, ValueError):
+            self.shape = ()
+
+
+class _TorchSize(tuple):
+    """Stand-in for ``torch.Size`` so pickle REDUCE/NEWOBJ keep dimensions."""
+
+    def __new__(cls, *args):
+        if not args:
+            return tuple.__new__(cls, ())
+        if len(args) == 1 and isinstance(args[0], (list, tuple)):
+            return tuple.__new__(cls, tuple(args[0]))
+        return tuple.__new__(cls, args)
+
+
+def _rebuild_ckpt_tensor(*args, **kwargs):
+    """Rebuild helper for ``_rebuild_tensor`` / ``_rebuild_tensor_v2``.
+
+    Signature is ``(storage, storage_offset, size, stride, ...)``. Storage
+    is always None because persistent_load never materializes bytes.
+    """
+    if args and isinstance(args[0], _FakeCkptTensor):
+        return args[0]
+    if len(args) >= 3 and args[2] is not None:
+        return _FakeCkptTensor(args[2])
+    return _FakeCkptTensor()
+
+
+def _rebuild_ckpt_from_type_v2(func, new_type, args, state):
+    try:
+        return func(*args)
+    except Exception:
+        return _FakeCkptTensor()
+
+
+def _read_ckpt_tensor_shape(checkpoint_path, key):
+    """Return ``tuple(shape)`` for one state-dict key from pickle metadata.
+
+    Same zip/pickle path as ``_read_ckpt_keys``: no tensor storage and no
+    ``torch.load``. ``torch.Size`` is preserved (the keys-only unpickler
+    stubs it, which would throw the shape away). Returns None if the
+    checkpoint can't be read or ``key`` is missing.
+    """
+    import io
+    import pickle
+
+    payloads = _read_ckpt_pkl_payloads(checkpoint_path)
+    if not payloads:
+        return None
+
+    class _ShapeUnpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            if module == 'torch' and name == 'Size':
+                return _TorchSize
+            if module == 'torch._utils':
+                if name in ('_rebuild_tensor', '_rebuild_tensor_v2',
+                            '_rebuild_parameter', '_rebuild_parameter_with_state'):
+                    return _rebuild_ckpt_tensor
+                if name == '_rebuild_from_type_v2':
+                    return _rebuild_ckpt_from_type_v2
+            if module.startswith('torch'):
+                return lambda *a, **k: None
+            return super().find_class(module, name)
+
+        def persistent_load(self, pid):
+            return None
+
+    for raw in payloads:
+        try:
+            obj = _ShapeUnpickler(io.BytesIO(raw)).load()
+        except Exception:
             continue
-        for wrapper in ('state_dict', 'state', 'model_state_dict'):
-            if isinstance(obj.get(wrapper), dict):
-                obj = obj[wrapper]
-                break
-        return list(obj.keys())
+        obj = _unwrap_ckpt_state_dict(obj)
+        if obj is None or key not in obj:
+            continue
+        value = obj[key]
+        shape = getattr(value, 'shape', None)
+        if shape is None:
+            continue
+        try:
+            return tuple(int(x) for x in shape)
+        except (TypeError, ValueError):
+            return None
     return None
 
 
@@ -767,6 +878,63 @@ def _sniff_melband_mask_estimator_depth(checkpoint_path):
     return max_linear_idx // 2
 
 
+_MELBAND_MLP_WEIGHT_KEY = 'mask_estimators.0.to_freqs.0.0.0.weight'
+
+
+def _sniff_melband_mlp_expansion_factor(checkpoint_path):
+    """Return the mask-estimator MLP expansion baked into a mel-band checkpoint.
+
+    MelBandRoformer builds each per-band head as
+    ``Linear(dim → dim * mlp_expansion_factor)``, so the first weight
+    ``mask_estimators.0.to_freqs.0.0.0.weight`` has shape
+    ``[dim * factor, dim]``. Side-car YAMLs often omit
+    ``mlp_expansion_factor`` (constructor default 4) while the checkpoint
+    was trained with 2 — the strict load then dies on every ``to_freqs``
+    layer (512 vs 1024 at dim 256). Shape is read from pickle metadata
+    without a second ``torch.load`` (see ``_read_ckpt_tensor_shape``).
+    Returns None if the checkpoint can't be read or the factor isn't an
+    integer multiple of ``dim``.
+    """
+    if not checkpoint_path:
+        return None
+    shape = _read_ckpt_tensor_shape(checkpoint_path, _MELBAND_MLP_WEIGHT_KEY)
+    if shape is None or len(shape) != 2:
+        return None
+    dim_hidden, dim = shape
+    if not dim or dim_hidden % dim != 0:
+        return None
+    return dim_hidden // dim
+
+
+def _apply_melband_checkpoint_overrides(kwargs, checkpoint_path,
+                                        log_tag='mel_band_roformer'):
+    """Override YAML mask-estimator depth / MLP expansion from checkpoint."""
+    if not checkpoint_path:
+        return kwargs
+    depth = _sniff_melband_mask_estimator_depth(checkpoint_path)
+    if depth is not None and kwargs.get('mask_estimator_depth') != depth:
+        print(
+            f"[{log_tag}] checkpoint mask-estimator depth is "
+            f"{depth} (config: {kwargs.get('mask_estimator_depth')}) — "
+            f"building with {depth}."
+        )
+        kwargs['mask_estimator_depth'] = depth
+    factor = _sniff_melband_mlp_expansion_factor(checkpoint_path)
+    # Constructor default is 4 when the YAML omits the key — report that
+    # effective value so the log matches what would have been built.
+    cfg_factor = kwargs.get('mlp_expansion_factor', 4)
+    if cfg_factor is None:
+        cfg_factor = 4
+    if factor is not None and cfg_factor != factor:
+        print(
+            f"[{log_tag}] checkpoint MLP expansion is "
+            f"{factor} (config: {cfg_factor}) — "
+            f"building with {factor}."
+        )
+        kwargs['mlp_expansion_factor'] = factor
+    return kwargs
+
+
 def _fit_model_kwargs(cls, kwargs: dict) -> dict:
     """Drop config keys a model constructor doesn't accept.
 
@@ -898,27 +1066,18 @@ def get_model_from_config(model_type: str, config_path: str,
         model = Torchseg_Net(config)
     elif model_type == 'mel_band_roformer':
         from models.bs_roformer import MelBandRoformer
-        kwargs = dict(config.model)
-        # A checkpoint's mask-estimator MLP depth can disagree with the
-        # side-car config (e.g. JazzPear's expl model was trained with depth
-        # 1 while its YAML says 2). Build with the depth the weights actually
-        # have so the strict load succeeds; otherwise every other layer
-        # matches and only the head's layer count fails.
-        depth = _sniff_melband_mask_estimator_depth(checkpoint_path)
-        if depth is not None and kwargs.get('mask_estimator_depth') != depth:
-            print(
-                f"[mel_band_roformer] checkpoint mask-estimator depth is "
-                f"{depth} (config: {kwargs.get('mask_estimator_depth')}) — "
-                f"building with {depth}."
-            )
-            kwargs['mask_estimator_depth'] = depth
+        kwargs = _apply_melband_checkpoint_overrides(
+            dict(config.model), checkpoint_path)
         model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, kwargs))
     elif model_type == 'mel_band_conformer':
         from models.bs_roformer import MelBandConformer
         model = MelBandConformer(**_fit_model_kwargs(MelBandConformer, dict(config.model)))
     elif model_type == 'mel_band_roformer_experimental':
         from models.bs_roformer.mel_band_roformer_experimental import MelBandRoformer
-        model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, dict(config.model)))
+        kwargs = _apply_melband_checkpoint_overrides(
+            dict(config.model), checkpoint_path,
+            log_tag='mel_band_roformer_experimental')
+        model = MelBandRoformer(**_fit_model_kwargs(MelBandRoformer, kwargs))
     elif model_type == 'bs_roformer':
         model = _resolve_bs_roformer_variant(config, checkpoint_path)
     elif model_type == 'bs_roformer_unwa_large':

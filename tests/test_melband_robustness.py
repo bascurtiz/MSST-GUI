@@ -15,6 +15,11 @@
    ``sink_tokens`` embedding; the bundled MelBandRoformer must build that
    parameter and run FlexAttention windowed time attention, or the strict
    load_state_dict dies with unexpected key "sink_tokens".
+5. ep_84 / ep_199-class checkpoints — sidecar YAML omits
+   ``mlp_expansion_factor`` (constructor default 4 → hidden 1024) while the
+   weights were trained with factor 2 (hidden 512 at dim 256). The engine
+   must sniff that width from the first ``to_freqs`` Linear and build the
+   matching head.
 """
 import os
 import sys
@@ -26,7 +31,10 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 from utils.model_utils import _finalize_sources  # noqa: E402
-from utils.settings import _sniff_melband_mask_estimator_depth  # noqa: E402
+from utils.settings import (  # noqa: E402
+    _sniff_melband_mask_estimator_depth,
+    _sniff_melband_mlp_expansion_factor,
+)
 
 FAILURES = []
 CHECKS = 0
@@ -48,6 +56,21 @@ def _head_keys(depth, bands=2, wrapped=False):
             sd[f"mask_estimators.0.to_freqs.{band}.0.{2 * layer}.bias"] = torch.zeros(4)
     # A couple of non-head keys that must be ignored.
     sd["band_split.to_features.0.1.weight"] = torch.zeros(2)
+    return {"model_state_dict": sd} if wrapped else sd
+
+
+def _mlp_weight_ckpt(dim_hidden, dim, wrapped=False):
+    """Fake checkpoint whose first mask-estimator Linear has a real 2-D shape.
+
+    Production sniffing reads pickle metadata for
+    ``mask_estimators.0.to_freqs.0.0.0.weight``; the tensor must be a real
+    ``[dim_hidden, dim]`` weight so torch.save records that size.
+    """
+    sd = {
+        "mask_estimators.0.to_freqs.0.0.0.weight": torch.zeros(dim_hidden, dim),
+        "mask_estimators.0.to_freqs.0.0.0.bias": torch.zeros(dim_hidden),
+        "band_split.to_features.0.1.weight": torch.zeros(2),
+    }
     return {"model_state_dict": sd} if wrapped else sd
 
 
@@ -78,6 +101,23 @@ def main():
         check(_sniff_melband_mask_estimator_depth(
             os.path.join(tmp, "missing.ckpt")) is None,
             "missing file -> None")
+
+        p512 = save("exp2.ckpt", _mlp_weight_ckpt(512, 256))
+        p1024 = save("exp4.ckpt", _mlp_weight_ckpt(1024, 256))
+        p512w = save("exp2_wrapped.ckpt", _mlp_weight_ckpt(512, 256, wrapped=True))
+        check(_sniff_melband_mlp_expansion_factor(p512) == 2,
+              "[512, 256] first Linear must sniff as mlp_expansion_factor 2")
+        check(_sniff_melband_mlp_expansion_factor(p1024) == 4,
+              "[1024, 256] first Linear must sniff as mlp_expansion_factor 4")
+        check(_sniff_melband_mlp_expansion_factor(p512w) == 2,
+              "wrapped model_state_dict must still sniff MLP expansion")
+        check(_sniff_melband_mlp_expansion_factor(pnone) is None,
+              "non-mel-band checkpoint -> None expansion")
+        check(_sniff_melband_mlp_expansion_factor(pempty) is None,
+              "empty checkpoint -> None expansion")
+        check(_sniff_melband_mlp_expansion_factor(
+            os.path.join(tmp, "missing.ckpt")) is None,
+            "missing file -> None expansion")
 
     # --- finalization: in-place mean + bounded nan cleanup + border trim ----
     rng = np.random.default_rng(0)
