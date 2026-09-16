@@ -5,7 +5,7 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import QEvent
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication, QWidget
 
 from utils.settings import parse_args_inference
@@ -25,6 +25,15 @@ def main():
     defaults = parse_args_inference({})
     if defaults.bigshifts != 1:
         failures.append("Big Shifts defaults to one pass")
+    if getattr(defaults, "skip_errors", None) is not False:
+        failures.append("skip_errors defaults off")
+    if defaults.draw_spectro != 0:
+        failures.append("draw_spectro defaults to 0")
+    skip = parse_args_inference({"skip_errors": True, "draw_spectro": 10})
+    if not skip.skip_errors:
+        failures.append("skip_errors can be enabled")
+    if skip.draw_spectro != 10:
+        failures.append("draw_spectro seconds preserved")
 
     # Both page headers use the same compact control dimensions: the folder
     # placeholder must fit in full, while the sort pill stays the inference
@@ -59,6 +68,26 @@ def main():
     splash.close()
     splash.deleteLater()
     app.processEvents()
+
+    popup = QWidget(None, Qt.Popup)
+    popup.show()
+    filt.eventFilter(popup, QEvent(QEvent.Type.Show))
+    app.processEvents()
+    if not popup.isVisible():
+        failures.append("popup window is not suppressed")
+    popup.close()
+    popup.deleteLater()
+
+    from PySide6.QtWidgets import QDialog
+    dlg = QDialog()
+    dlg.setWindowTitle("MSST")
+    dlg.show()
+    filt.eventFilter(dlg, QEvent(QEvent.Type.Show))
+    app.processEvents()
+    if not dlg.isVisible():
+        failures.append("titled dialog is not treated as a stray helper")
+    dlg.close()
+    dlg.deleteLater()
 
     from ui.theme import _StyledToolTip, _ToolTipFilter
     from PySide6.QtGui import QHelpEvent

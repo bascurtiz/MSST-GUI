@@ -4,13 +4,18 @@ import os, time
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
     QFileDialog, QSizePolicy, QLabel, QFrame, QTextEdit, QComboBox,
-    QGraphicsOpacityEffect,
+    QGraphicsOpacityEffect, QDialog, QScrollArea, QAbstractScrollArea,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QRectF, QPointF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import (
     QTextCursor, QPainter, QPen, QColor, QFont, QFontMetrics, QImage, QPixmap,
+    QPainterPath,
 )
-from ui.theme import theme_manager, FONT_FAMILY as FONT_FAMILY_DEFAULT
+from ui.theme import theme_manager, FONT_FAMILY as FONT_FAMILY_DEFAULT, UIConstants
+from ui.strings import (
+    PAGE_HELP, T_PAGE_HELP_TOOLTIP,
+    HELP_REQUIRED_CAPTION, HELP_OPTIONAL_CAPTION,
+)
 from backend.version import APP_VERSION
 
 
@@ -62,6 +67,14 @@ def _stop_icon_color(btn):
     return t.error if btn.isEnabled() else t.text_muted
 
 
+def _pause_icon_color(btn):
+    """Icon color for outline Pause / Open Output buttons."""
+    t = theme_manager.theme
+    if not btn.isEnabled():
+        return t.disabled_text
+    return t.text if btn._hovered else t.text_dim
+
+
 def _add_icon_color(btn):
     """Icon color for the inference '+ Add' button."""
     t = theme_manager.theme
@@ -90,6 +103,8 @@ def css_color(value, fallback="#808080"):
 
 
 DOWNLOAD_GLYPH = "download"  # marker: draw a download icon instead of text
+PAUSE_GLYPH = "pause"        # two vertical bars
+FOLDER_GLYPH = "folder"      # outline folder
 
 
 def run_blurred_dialog(dialog):
@@ -134,8 +149,10 @@ class _GlyphWidget(QWidget):
     centered 18px '+' floats ~3px above its 12px text label; the offset is
     computed from the font metrics so the glyph's ink center lands on the
     text's cap-height center (what the eye compares against).
-    The special DOWNLOAD_GLYPH marker draws a download icon (arrow down with
-    a dash below) instead of text."""
+    The special DOWNLOAD_GLYPH / PAUSE_GLYPH / FOLDER_GLYPH markers draw
+    icons instead of text."""
+
+    _CUSTOM = {DOWNLOAD_GLYPH, PAUSE_GLYPH, FOLDER_GLYPH}
 
     def __init__(self, text, size, family, parent=None):
         super().__init__(parent)
@@ -143,7 +160,7 @@ class _GlyphWidget(QWidget):
         self._size = size
         self._family = family
         self._color = QColor("#FFFFFF")
-        self._custom = text == DOWNLOAD_GLYPH
+        self._custom = text in self._CUSTOM
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         fm = self._metrics()
         from math import ceil
@@ -169,15 +186,23 @@ class _GlyphWidget(QWidget):
         self.update()
 
     def paintEvent(self, event):
-        with QPainter(self) as p:
-            p.translate(0, self._dy)
-            if self._custom:
+        p = QPainter(self)
+        if not p.isActive():
+            return
+        p.translate(0, self._dy)
+        if self._custom:
+            if self._text == PAUSE_GLYPH:
+                self._paint_pause(p)
+            elif self._text == FOLDER_GLYPH:
+                self._paint_folder(p)
+            else:
                 self._paint_download(p)
-                return
-            p.setFont(self._font())
-            p.setPen(QPen(self._color))
-            rect = self.rect()
-            p.drawText(rect, Qt.AlignCenter, self._text)
+            p.end()
+            return
+        p.setFont(self._font())
+        p.setPen(QPen(self._color))
+        p.drawText(self.rect(), Qt.AlignCenter, self._text)
+        p.end()
 
     def _paint_download(self, p):
         """Download icon: arrow pointing down with a dash below it. Drawn at
@@ -208,6 +233,44 @@ class _GlyphWidget(QWidget):
         dash_y = y0 + bh * 0.96
         dash = bw * 0.40
         p.drawLine(cx - dash, dash_y, cx + dash, dash_y)
+
+    def _paint_pause(self, p):
+        """Two vertical bars, optically matching the play/stop glyphs."""
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(self._color)
+        bw = self.width() * 0.72
+        bh = self.height() * 0.52
+        x0 = (self.width() - bw) / 2.0
+        y0 = (self.height() - bh) / 2.0
+        bar_w = max(2.0, bw * 0.22)
+        gap = bw * 0.22
+        left = x0 + (bw - (bar_w * 2 + gap)) / 2.0
+        p.drawRoundedRect(QRectF(left, y0, bar_w, bh), 0.8, 0.8)
+        p.drawRoundedRect(QRectF(left + bar_w + gap, y0, bar_w, bh), 0.8, 0.8)
+
+    def _paint_folder(self, p):
+        """Outline folder matching the Training page's folder button icon."""
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(self._color, max(1.3, self._size / 13.0))
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        bw = self.width() * 0.84
+        bh = self.height() * 0.56
+        x0 = (self.width() - bw) / 2.0
+        y0 = (self.height() - bh) / 2.0
+        tab = bw * 0.28
+        path = QPainterPath()
+        path.moveTo(x0, y0 + bh * 0.22)
+        path.lineTo(x0 + tab, y0 + bh * 0.22)
+        path.lineTo(x0 + tab + bw * 0.12, y0)
+        path.lineTo(x0 + bw, y0)
+        path.lineTo(x0 + bw, y0 + bh)
+        path.lineTo(x0, y0 + bh)
+        path.closeSubpath()
+        p.drawPath(path)
 
 
 class GlyphButton(QPushButton):
@@ -241,8 +304,18 @@ class GlyphButton(QPushButton):
         h.addWidget(self._glyph_lbl, 0, Qt.AlignVCenter)
         h.addWidget(self._text_lbl, 0, Qt.AlignVCenter)
         self._content.raise_()
+        self._fit_h = None
+        self._fit_pad = 28
         self._refresh_icon()
         self._optical_align(text_size)
+
+    def fit_contents(self, height=40, h_pad=28):
+        """Lock height; width hugs the glyph + label plus side padding."""
+        self._fit_h = height
+        self._fit_pad = h_pad
+        self._content.adjustSize()
+        self.setFixedSize(self._content.width() + h_pad, height)
+        self._layout_icon()
 
     def _optical_align(self, text_size):
         """Calibrate the glyph's vertical offset from painted pixels: font
@@ -288,6 +361,8 @@ class GlyphButton(QPushButton):
             return
         self._text_lbl.setText(text)
         self._layout_icon()
+        if self._fit_h is not None:
+            self.fit_contents(self._fit_h, self._fit_pad)
 
     def _refresh_icon(self):
         # own transparent backgrounds: page containers use bare `background:`
@@ -638,13 +713,700 @@ class _BackChevron(QPushButton):
         p.end()
 
 
+class HelpButton(QPushButton):
+    """30px circular '?' that opens the page Help dialog. Painted so a
+    theme switch restyles it without a stylesheet rebuild."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("pageHelpBtn")
+        self.setFixedSize(30, 30)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setToolTip(T_PAGE_HELP_TOOLTIP)
+        self.setStyleSheet("QPushButton{background:transparent;border:none;}")
+        self._hovered = False
+
+    def enterEvent(self, e):
+        self._hovered = True
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(e)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        if not p.isActive():
+            return
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5)
+        accent = QColor(theme_manager.accent)
+        if self._hovered:
+            p.setPen(Qt.NoPen)
+            p.setBrush(accent)
+            p.drawEllipse(r)
+            text = QColor(theme_manager._accent_text)
+        else:
+            pen = QPen(accent, 1.5)
+            p.setPen(pen)
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(r)
+            text = accent
+        font = QFont(FONT_FAMILY_DEFAULT, 12)
+        font.setBold(True)
+        p.setFont(font)
+        p.setPen(text)
+        p.drawText(self.rect(), Qt.AlignCenter, "?")
+        p.end()
+
+
+class _HelpChevron(QWidget):
+    """Same 24×24 `>` as the CONFIGURATION combo rows, so Optional lines
+    up with Quality / Stems / Device."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(24, 24)
+        self._angle = 0.0
+        self._hovered = False
+
+    def set_expanded(self, on):
+        self._angle = 90.0 if on else 0.0
+        self.update()
+
+    def set_hovered(self, on):
+        self._hovered = on
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        if not p.isActive():
+            return
+        paint_chevron(p, 12, 12, self._angle, hovered=self._hovered)
+        p.end()
+
+
+class _HelpHeader(QWidget):
+    """Clickable badge + caption row for the OPTIONAL card."""
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+            e.accept()
+            return
+        super().mousePressEvent(e)
+
+
+def _help_error_hover():
+    c = QColor(theme_manager.theme.error)
+    return f"rgba({c.red()},{c.green()},{c.blue()},51)"
+
+
+def _help_num_badge(num, accent=True):
+    """Same 24×24 square chip as How Ensemble Works (INPUT / PROCESS)."""
+    t = theme_manager.theme
+    b = QLabel(str(num))
+    b.setFixedSize(24, 24)
+    b.setAlignment(Qt.AlignCenter)
+    if accent:
+        b.setStyleSheet(
+            "background:" + theme_manager.accent + ";"
+            "color:" + theme_manager._accent_text + ";"
+            "font-family:'Montserrat',sans-serif;"
+            "font-size:11px;font-weight:bold;"
+            "border-radius:3px;"
+        )
+    else:
+        b.setStyleSheet(
+            f"background:{t.surface};color:{t.text_dim};"
+            f"border:1px solid {t.border_visible};"
+            "font-family:'Montserrat',sans-serif;"
+            "font-size:11px;font-weight:bold;"
+            "border-radius:3px;"
+        )
+    return b
+
+
+def _help_step_row(n, text, required):
+    """One to-do: square index + 13px secondary copy, no card chrome."""
+    t = theme_manager.theme
+    row = QWidget()
+    row.setStyleSheet("background:transparent;")
+    hl = QHBoxLayout(row)
+    hl.setContentsMargins(0, 4, 0, 4)
+    hl.setSpacing(12)
+    hl.addWidget(_help_num_badge(n, accent=False), 0, Qt.AlignTop)
+    body = QLabel(text)
+    body.setWordWrap(True)
+    body.setStyleSheet(
+        "font-family:'Montserrat';font-size:13px;"
+        f"color:{t.text_sec};background:transparent;"
+    )
+    hl.addWidget(body, 1)
+    return row
+
+
+class _HelpSection(QFrame):
+    """Open REQUIRED / OPTIONAL block — no card, accent title + square index
+    like How Ensemble Works' INPUT / PROCESS sections."""
+    toggled = Signal()
+
+    def __init__(self, kind, items, caption, index=1, parent=None):
+        super().__init__(parent)
+        t = theme_manager.theme
+        required = kind == "required"
+        self.setObjectName("helpRequired" if required else "helpOptional")
+        self.setStyleSheet(
+            f"QFrame#{self.objectName()}{{background:transparent;border:none;}}"
+        )
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(0, 0, 0, 0)
+        vl.setSpacing(14)
+        vl.addSpacing(8)
+
+        hr = QHBoxLayout()
+        hr.setSpacing(8)
+        title = QLabel("REQUIRED" if required else "OPTIONAL")
+        title.setObjectName("helpRequiredBadge" if required else "helpOptionalBadge")
+        title.setStyleSheet(
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;"
+            "font-weight:bold;letter-spacing:1px;"
+            f"color:{theme_manager.accent};background:transparent;"
+        )
+        hr.addWidget(title)
+        hr.addStretch()
+        vl.addLayout(hr)
+
+        cap = QLabel(caption)
+        cap.setWordWrap(True)
+        cap.setStyleSheet(
+            "font-family:'Montserrat';font-size:13px;"
+            f"color:{t.text_sec};background:transparent;"
+        )
+        vl.addWidget(cap)
+
+        self._body = QWidget()
+        self._body.setObjectName(
+            "helpRequiredBody" if required else "helpOptionalBody")
+        self._body.setStyleSheet("background:transparent;")
+        bl = QVBoxLayout(self._body)
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.setSpacing(0)
+        for i, step in enumerate(items, 1):
+            bl.addWidget(_help_step_row(i, step, required))
+        vl.addWidget(self._body)
+
+
+def _help_section(kind, items, caption, index=1):
+    return _HelpSection(kind, items, caption, index=index)
+
+
+# Match inference/training CONFIGURATION row height so Optional cards are
+# never squeezed below the Model Library architecture cards (42px).
+_OPTIONAL_ROW_H = 42
+
+
+def _optional_scroll_ss(gutter=True):
+    t = theme_manager.theme
+    # Inference Optional sits next to the Model Library bar, so a 16px
+    # lane keeps SPECTRO / Skip errors off the thumb. Training Optional
+    # has no neighbor bar — that lane capped the cards on the right.
+    bar = (
+        "QScrollBar:vertical{width:16px;background:transparent;margin:0;}"
+        "QScrollBar::handle:vertical{"
+        f"background:{t.scrollbar_handle};"
+        "border-radius:2px;min-height:30px;margin-left:12px;}"
+        f"QScrollBar::handle:vertical:hover{{background:{t.scrollbar_hover};}}"
+        "QScrollBar::add-line:vertical{height:0;}"
+        "QScrollBar::sub-line:vertical{height:0;}"
+        "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{"
+        "background:transparent;}"
+    ) if gutter else (
+        "QScrollBar:vertical{width:0px;height:0px;}"
+    )
+    return (
+        "QScrollArea{background:transparent;border:none;}"
+        + bar
+    )
+
+
+def _page_edge_scroll_ss():
+    """Full-page vertical bar: 4px thumb inset 12px from the window edge
+    (Training / Auto Ensemble). Opposite gutter of Optional — here the
+    complaint is the chrome, not the cards."""
+    t = theme_manager.theme
+    return (
+        "QScrollArea{background:transparent;border:none;}"
+        "QScrollBar:vertical{width:16px;background:transparent;margin:0;}"
+        "QScrollBar::handle:vertical{"
+        f"background:{t.scrollbar_handle};"
+        "border-radius:2px;min-height:30px;margin-right:12px;}"
+        f"QScrollBar::handle:vertical:hover{{background:{t.scrollbar_hover};}}"
+        "QScrollBar::add-line:vertical{height:0;}"
+        "QScrollBar::sub-line:vertical{height:0;}"
+        "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{"
+        "background:transparent;}"
+    )
+
+
+class OptionalFold(QWidget):
+    """Page-level Optional disclosure. Starts closed so the first view is
+    only the required path; click the header to reveal extras underneath.
+
+    fill_leftover=True (Inference): the body is an inner scroller
+    that eats leftover column space so rows stay 42px instead of squashing.
+
+    fill_leftover=False (Training / Iterative Ensemble): the body sizes to
+    its content at full column width — no 16px scrollbar lane."""
+    toggled = Signal(bool)
+
+    def __init__(self, title="Optional", spacing=6, parent=None, fill_leftover=True):
+        super().__init__(parent)
+        self.setObjectName("optionalFold")
+        self._fill_leftover = fill_leftover
+        self.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding if fill_leftover else QSizePolicy.Preferred,
+        )
+        self._expanded = False
+        self._spacing = spacing
+        root = QVBoxLayout(self)
+        # Same 19px that sits under CONFIGURATION — above the OPTIONAL
+        # title and again before its first row (every page that shows it).
+        root.setContentsMargins(0, 19, 0, 0)
+        root.setSpacing(19)
+        root.setAlignment(Qt.AlignTop)
+
+        header = _HelpHeader(self)
+        header.setObjectName("optionalFoldHeader")
+        header.setFixedHeight(24)
+        header.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        hl = QHBoxLayout(header)
+        # 14px right margin matches cfgRow so this `>` stacks with Quality /
+        # Stems / Device (those rows use a 24×24 arrow and 14px inset).
+        hl.setContentsMargins(0, 0, 14, 0)
+        hl.setSpacing(0)
+        t = theme_manager.theme
+        self._lbl = QLabel(title.upper())
+        self._lbl.setStyleSheet(
+            "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:bold;"
+            f"color:{t.text_muted};background:transparent;padding-left:8px;"
+            f"border-left:3px solid {t.border_visible};letter-spacing:1.5px;"
+        )
+        hl.addWidget(self._lbl, 1)
+        self._chevron = _HelpChevron()
+        hl.addWidget(self._chevron, 0, Qt.AlignVCenter)
+        self._header = header
+        header.clicked.connect(self._toggle)
+        header.installEventFilter(self)
+        header.setToolTip("Show optional settings")
+        root.addWidget(header)
+
+        self._body = QWidget()
+        self._body.setObjectName("optionalFoldBody")
+        self._body.setStyleSheet("background:transparent;")
+        self._body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.body = QVBoxLayout(self._body)
+        self.body.setContentsMargins(0, 0, 0, 0)
+        self.body.setSpacing(spacing)
+        self.body.setAlignment(Qt.AlignTop)
+        self.body.setSizeConstraint(QVBoxLayout.SetMinimumSize)
+        # Leftover column height (maximized Inference) must land below the
+        # cards, not as gaps between them.
+        self.body.addStretch(1)
+
+        if fill_leftover:
+            self._scroll = QScrollArea()
+            self._scroll.setObjectName("optionalFoldScroll")
+            self._scroll.setWidgetResizable(True)
+            self._scroll.setFrameShape(QFrame.NoFrame)
+            self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._scroll.setStyleSheet(_optional_scroll_ss(gutter=True))
+            self._scroll.setWidget(self._body)
+            root.addWidget(self._scroll, 1)
+        else:
+            # No inner QScrollArea: a viewport with horizontal scroll off
+            # clips Resume / Augmentation / Edit Configuration to the right
+            # (their min width exceeds the pane, while CONFIGURATION rows
+            # above are laid out at full column width). The page scroller
+            # already handles overflow.
+            self._scroll = QWidget()
+            self._scroll.setObjectName("optionalFoldScroll")
+            self._scroll.setStyleSheet("background:transparent;border:none;")
+            self._scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            wrap = QVBoxLayout(self._scroll)
+            wrap.setContentsMargins(0, 0, 0, 0)
+            wrap.setSpacing(0)
+            wrap.addWidget(self._body)
+            root.addWidget(self._scroll, 0)
+        self._apply()
+
+    def addWidget(self, w, stretch=0):
+        w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.body.insertWidget(max(0, self.body.count() - 1), w, stretch)
+        w.installEventFilter(self)
+        self._lock_width_to_body()
+
+    def addLayout(self, layout, stretch=0):
+        self.body.insertLayout(max(0, self.body.count() - 1), layout, stretch)
+        self._lock_width_to_body()
+
+    def _lock_width_to_body(self):
+        """Keep the fold (and its column) as wide as the open cards, even
+        while OPTIONAL is collapsed — otherwise Training's left column
+        jumps when Resume / Augmentation appear."""
+        if self._fill_leftover:
+            return
+        w = max(self._body.minimumSizeHint().width(), self._body.sizeHint().width())
+        if w > 0:
+            self.setMinimumWidth(w)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._lock_width_to_body()
+
+    def is_expanded(self):
+        return self._expanded
+
+    def eventFilter(self, obj, event):
+        if obj is self._header:
+            if event.type() == QEvent.Enter:
+                self._chevron.set_hovered(True)
+            elif event.type() == QEvent.Leave:
+                self._chevron.set_hovered(False)
+        elif event.type() in (QEvent.Show, QEvent.Hide) and obj is not self._header:
+            self._refresh_body_min()
+        return super().eventFilter(obj, event)
+
+    def _content_h(self):
+        heights = []
+        for i in range(self.body.count()):
+            item = self.body.itemAt(i)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                if w.isHidden():
+                    continue
+                h = w.minimumHeight() or w.sizeHint().height()
+                heights.append(max(h, _OPTIONAL_ROW_H) if h > 0 else _OPTIONAL_ROW_H)
+                continue
+            lay = item.layout()
+            if lay is not None:
+                h = lay.sizeHint().height()
+                if h > 0:
+                    heights.append(h)
+        if not heights:
+            return 0
+        return sum(heights) + self._spacing * (len(heights) - 1)
+
+    def _min_viewport_h(self):
+        content = self._content_h()
+        if content <= 0:
+            return _OPTIONAL_ROW_H
+        if not self._fill_leftover:
+            return content
+        return min(content, _OPTIONAL_ROW_H)
+
+    def _refresh_body_min(self):
+        content = self._content_h()
+        self._body.setMinimumHeight(content)
+        if self._expanded:
+            self._scroll.setMinimumHeight(self._min_viewport_h())
+            if not self._fill_leftover:
+                self._scroll.setMaximumHeight(max(content, _OPTIONAL_ROW_H))
+        else:
+            self._scroll.setMinimumHeight(0)
+            if not self._fill_leftover:
+                self._scroll.setMaximumHeight(0)
+        self.updateGeometry()
+
+    def _toggle(self):
+        self._expanded = not self._expanded
+        self._apply()
+        self.toggled.emit(self._expanded)
+
+    def _apply(self):
+        self._body.setVisible(self._expanded)
+        self._scroll.setVisible(True)
+        if self._fill_leftover:
+            # Keep the scroll pane in the layout even while collapsed — it
+            # eats leftover column space *below* the header so OPTIONAL stays
+            # parked under Device instead of floating in the gap.
+            self._scroll.setMaximumHeight(16777215)
+            self._scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            if self._expanded:
+                self._refresh_body_min()
+                self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+                self._header.setToolTip("Hide optional settings")
+            else:
+                self._scroll.setMinimumHeight(0)
+                self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                self._header.setToolTip("Show optional settings")
+        else:
+            self._scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            if self._expanded:
+                self._refresh_body_min()
+                self._header.setToolTip("Hide optional settings")
+            else:
+                self._scroll.setMinimumHeight(0)
+                self._scroll.setMaximumHeight(0)
+                self._header.setToolTip("Show optional settings")
+        self._chevron.set_expanded(self._expanded)
+        self.updateGeometry()
+
+    def reapply_theme(self):
+        t = theme_manager.theme
+        self._lbl.setStyleSheet(
+            "font-family:'Montserrat',sans-serif;font-size:10px;font-weight:bold;"
+            f"color:{t.text_muted};background:transparent;padding-left:8px;"
+            f"border-left:3px solid {t.border_visible};letter-spacing:1.5px;"
+        )
+        self._chevron.update()
+        if self._fill_leftover:
+            self._scroll.setStyleSheet(_optional_scroll_ss(gutter=True))
+
+
+# Side pads 20+14, square chip 24, gap 12, plus the 32px column gutter
+# when REQUIRED and OPTIONAL sit side by side.
+_HELP_STEP_CHROME = 20 + 14 + 24 + 12
+_HELP_COL_GUTTER = 32
+_HELP_MIN_W = 440
+_HELP_MAX_W = 960
+_HELP_PAD_L = 20
+_HELP_PAD_R = 14
+_HELP_PAD_Y = 20
+
+
+def _help_line_px(text, font):
+    fm = QFontMetrics(font)
+    widest = 0
+    for line in (text or "").split("\n"):
+        line = line.strip()
+        if line:
+            widest = max(widest, fm.boundingRect(line).width())
+    return widest
+
+
+def _help_col_px(items, caption, font):
+    widest = _help_line_px(caption or "", font)
+    for step in items or []:
+        widest = max(widest, _help_line_px(step, font))
+    return widest
+
+
+def _help_preferred_width(data, parent=None):
+    """Dialog width from the two side-by-side columns (or one if a list
+    is empty), clamped to the parent window so a short page stays compact."""
+    font = QFont(FONT_FAMILY_DEFAULT, 13)
+    intro_w = _help_line_px(data.get("intro") or "", font)
+    req = data.get("required") or []
+    opt = data.get("optional") or []
+    req_w = _help_col_px(req, data.get("required_caption") or HELP_REQUIRED_CAPTION, font)
+    opt_w = _help_col_px(opt, data.get("optional_caption") or HELP_OPTIONAL_CAPTION, font)
+    if req and opt:
+        content = req_w + _HELP_STEP_CHROME + _HELP_COL_GUTTER + opt_w + _HELP_STEP_CHROME
+    else:
+        content = max(req_w, opt_w) + _HELP_STEP_CHROME
+    content = max(content, intro_w + _HELP_PAD_L + _HELP_PAD_R)
+    title_font = QFont(FONT_FAMILY_DEFAULT, UIConstants.SEC_TITLE_FONT_SIZE)
+    title_font.setBold(True)
+    title = f"HELP  ·  {data.get('title', '')}"
+    title_w = _HELP_PAD_L + QFontMetrics(title_font).horizontalAdvance(title) + 8 + 24 + _HELP_PAD_R
+    min_w = 640 if req and opt else _HELP_MIN_W
+    w = max(content, title_w, min_w)
+    max_w = _HELP_MAX_W
+    win = parent.window() if parent is not None else None
+    if win is not None and win.width() > 280:
+        max_w = min(max_w, max(min_w, win.width() - 64))
+    return int(min(w, max_w))
+
+
+class PageHelpDialog(QDialog):
+    """Frameless Help sheet — How Ensemble Works layout: title + ×,
+    REQUIRED and OPTIONAL side by side, no card chrome."""
+
+    def __init__(self, data, parent=None):
+        super().__init__(parent)
+        self.setObjectName("pageHelpDialog")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setModal(True)
+        self._drag_pos = None
+        t = theme_manager.theme
+        # Split border-* — Qt QSS cannot parse `border:1px solid rgba(...)`.
+        self.setStyleSheet(
+            f"QDialog#pageHelpDialog{{background:{t.bg};"
+            "border-width:1px;border-style:solid;"
+            f"border-color:{t.border_dim};border-radius:8px;}}"
+        )
+        root = QVBoxLayout(self)
+        root.setContentsMargins(_HELP_PAD_L, _HELP_PAD_Y, _HELP_PAD_R, _HELP_PAD_Y)
+        root.setSpacing(0)
+
+        hdr = QHBoxLayout()
+        hdr.setContentsMargins(0, 0, 0, 0)
+        hdr.setSpacing(8)
+        title = QLabel(f"HELP  ·  {data.get('title', '')}".strip())
+        title.setStyleSheet(
+            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;"
+            f"font-weight:bold;color:{t.text};background:transparent;letter-spacing:1.5px;"
+        )
+        hdr.addWidget(title)
+        hdr.addStretch()
+        close = QPushButton("\u2715")
+        close.setFixedSize(24, 24)
+        close.setStyleSheet(
+            f"QPushButton{{background:transparent;color:{t.text_muted};"
+            "border:none;font-size:11px;border-radius:4px;}"
+            f"QPushButton:hover{{background:{_help_error_hover()};color:{t.error};}}"
+        )
+        close.clicked.connect(self.accept)
+        hdr.addWidget(close)
+        root.addLayout(hdr)
+        root.addSpacing(16)
+
+        sc = QScrollArea()
+        sc.setWidgetResizable(False)
+        sc.setFrameShape(QFrame.NoFrame)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        sc.setStyleSheet(_optional_scroll_ss())
+        inner = QWidget()
+        inner.setStyleSheet("background:transparent;")
+        body = QVBoxLayout(inner)
+        body.setContentsMargins(0, 0, 10, 0)
+        body.setSpacing(0)
+
+        intro = QLabel(data.get("intro", ""))
+        intro.setWordWrap(True)
+        intro.setStyleSheet(
+            "font-family:'Montserrat';font-size:13px;"
+            f"color:{t.text_sec};background:transparent;"
+        )
+        body.addWidget(intro)
+        body.addSpacing(24)
+
+        required = data.get("required") or []
+        optional = data.get("optional") or []
+        cols = QHBoxLayout()
+        cols.setContentsMargins(0, 0, 0, 0)
+        cols.setSpacing(_HELP_COL_GUTTER)
+        cols.setAlignment(Qt.AlignTop)
+        n = 1
+        if required:
+            cols.addWidget(_help_section(
+                "required", required,
+                data.get("required_caption") or HELP_REQUIRED_CAPTION,
+                index=n,
+            ), 1, Qt.AlignTop)
+            n += 1
+        if required and optional:
+            vdiv = QFrame()
+            vdiv.setFixedWidth(1)
+            vdiv.setStyleSheet(f"background:{t.border_dim};border:none;")
+            cols.addWidget(vdiv)
+        if optional:
+            cols.addWidget(_help_section(
+                "optional", optional,
+                data.get("optional_caption") or HELP_OPTIONAL_CAPTION,
+                index=n,
+            ), 1, Qt.AlignTop)
+        body.addLayout(cols)
+        body.addStretch()
+        sc.setWidget(inner)
+        root.addWidget(sc, 1)
+
+        self._help_data = data
+        self._sc = sc
+        self._inner = inner
+        self._hdr = hdr
+        self._fit_to_content()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and e.pos().y() < 48:
+            self._drag_pos = e.globalPos() - self.frameGeometry().topLeft()
+            e.accept()
+            return
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self._drag_pos is not None and e.buttons() == Qt.LeftButton:
+            self.move(e.globalPos() - self._drag_pos)
+            e.accept()
+            return
+        super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._drag_pos = None
+        super().mouseReleaseEvent(e)
+
+    def _refit(self):
+        self._fit_to_content()
+
+    def _fit_to_content(self, data=None, sc=None, inner=None, footer=None):
+        data = data if data is not None else self._help_data
+        sc = sc if sc is not None else self._sc
+        inner = inner if inner is not None else self._inner
+        width = _help_preferred_width(data, self.parentWidget())
+        inner_w = max(200, width - _HELP_PAD_L - _HELP_PAD_R)
+        inner.setMinimumSize(0, 0)
+        inner.setMaximumSize(16777215, 16777215)
+        inner.setFixedWidth(inner_w)
+        lay = inner.layout()
+        if lay is not None:
+            lay.invalidate()
+            lay.activate()
+        inner.adjustSize()
+        content_h = max(inner.sizeHint().height(), inner.minimumSizeHint().height())
+        if inner.hasHeightForWidth():
+            hfw = inner.heightForWidth(inner_w)
+            if hfw > 0:
+                content_h = max(content_h, hfw)
+        inner.setFixedSize(inner_w, content_h)
+
+        header_h = 24
+        chrome = _HELP_PAD_Y + _HELP_PAD_Y + header_h + 16
+
+        max_h = 820
+        scr = self.screen()
+        if scr is not None:
+            max_h = min(max_h, max(chrome + 160, int(scr.availableGeometry().height() * 0.88)))
+        if content_h <= max_h - chrome:
+            sc.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            sc.setFixedSize(inner_w, content_h)
+            self.setFixedSize(width, chrome + content_h)
+        else:
+            view_h = max_h - chrome
+            sc.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            sc.setFixedSize(inner_w, view_h)
+            self.setFixedSize(width, max_h)
+
+
+def show_page_help(parent, page_key):
+    data = PAGE_HELP.get(page_key)
+    if not data:
+        return
+    run_blurred_dialog(PageHelpDialog(data, parent))
+
+
 class PageHeader(QWidget):
     """mvsep-style page header: left accent bar, big uppercase title, and
     a subtitle with an accent-highlighted phrase.
     Optional back chevron sits after the bar, left of the title;
-    extra widgets dock on the right."""
+    extra widgets dock on the right. Pass help_key to dock a Help '?'
+    as the rightmost extra (Required vs Optional to-do for that page)."""
 
-    def __init__(self, title, subtitle="", highlight="", back=False, parent=None):
+    def __init__(self, title, subtitle="", highlight="", back=False, parent=None,
+                 help_key=None):
         super().__init__(parent)
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -695,13 +1457,36 @@ class PageHeader(QWidget):
                 f"{theme_manager.theme.text_muted};background:transparent;border:none;letter-spacing:1px;"
             )
             if back:
-                self.sub_lbl.setContentsMargins(32, 0, 0, 0)
-            col.addWidget(self.sub_lbl)
+                # Layout spacer — not QLabel contentsMargins. Parent
+                # stylesheets (Auto/Manual header wrappers) polish children
+                # and reset widget margins, which left those subtitles flush
+                # left while Iterative (no wrapper stylesheet) stayed indented.
+                sub_row = QHBoxLayout()
+                sub_row.setContentsMargins(0, 0, 0, 0)
+                sub_row.setSpacing(0)
+                sub_row.addSpacing(24 + title_row.spacing())
+                sub_row.addWidget(self.sub_lbl, 1)
+                col.addLayout(sub_row)
+            else:
+                col.addWidget(self.sub_lbl)
 
         root.addLayout(col, 1)
 
+        self._help_btn = None
+        if help_key:
+            self._help_btn = HelpButton(self)
+            self._help_btn.clicked.connect(
+                lambda: show_page_help(self.window() or self, help_key))
+            root.addWidget(self._help_btn, 0, Qt.AlignVCenter)
+
     def add_extra(self, widget):
-        self.layout().addWidget(widget)
+        # Help stays the rightmost extra so the '?' is always where
+        # users look for it, even when Log / GitHub / badges are added.
+        if self._help_btn is not None:
+            idx = self.layout().indexOf(self._help_btn)
+            self.layout().insertWidget(idx, widget)
+        else:
+            self.layout().addWidget(widget)
         return widget
 
     def set_title(self, text):
@@ -904,16 +1689,16 @@ class ScoresRefreshButton(QPushButton):
     _ICON_ROT = 90
     _pix_cache = {}
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, tooltip=None):
         super().__init__(parent)
         self._hovered = False
         self._busy = False
         self._spin_deg = 0.0
         self.setFixedSize(28, 28)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip(
+        self.setToolTip(tooltip or (
             "Refresh mvsep Quality Checker scores\n"
-            "(new models, updated links).")
+            "(new models, updated links)."))
         self._spin_timer = QTimer(self)
         self._spin_timer.setInterval(40)
         self._spin_timer.timeout.connect(self._tick_spin)

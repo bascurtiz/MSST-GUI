@@ -4,11 +4,13 @@ A modern desktop GUI for [Music-Source-Separation-Training](https://github.com/Z
 
 Separate audio into stems (vocals, instrumental, drums, bass, guitar, piano, …) with state-of-the-art Roformer, MDX, Demucs, SCNet, Apollo and Bandit models — no command line required.
 
-![MSST GUI in action](msst-gui-ani-v3.gif)
+The app **vendors** ZFTurbo's MSST scripts (`inference.py`, `train.py`, `valid.py`, `ensemble.py` plus `utils/` / `models/` / `configs/`). Jobs spawn those local files; this is not a wrapper around `pip install msst`.
+
+![MSST GUI in action](msst-gui-ani-v4.gif)
 
 ## Features
 
-- **Inference** — drop or browse audio files, pick a model from the library (grouped by architecture), choose quality (WAV / FLAC / MP3), stems, TTA and device (GPU/CPU auto-detected).
+- **Inference** — drop or browse audio files (WAV, FLAC, MP3, …), pick a model from the library (grouped by architecture), choose quality (FLAC 16-bit, FLAC 24-bit, or WAV 32-bit float), stems, TTA and device (GPU/CPU auto-detected).
 - **Training** — train or fine-tune any MSST architecture from the GUI: pick a config, dataset, validation set and checkpoint, tune batch size / learning rate / losses / metrics, and watch progress, validation metrics and the log live (runs `train.py` from ZFTurbo's repo).
 - **Auto Ensemble** — select a target stem type and every compatible registered model is combined automatically.
 - **Manual Ensemble** — combine custom model outputs with per-file weights and selectable ensemble algorithms.
@@ -48,12 +50,12 @@ The **Training** tab wraps `train.py` / `valid.py` from Music-Source-Separation-
 
 1. Pick a model config (`configs/…yaml`), a results folder, the training data folder(s) and the validation folder (MUSDB layout with `mixture.wav`, see the ⓘ on *Dataset type*).
 2. Adjust the training settings (batch size, learning rate, epochs, optimizer, loss functions, validation metrics) — the values are read from the YAML and written back into `results/train_config_<model>.yaml` for the run.
-3. Optionally resume from a checkpoint (**Latest** picks the newest one in the results folder) and set GPUs / workers / seed and the run flags.
+3. Optionally resume from a checkpoint (**Latest** picks the newest one in the results folder) and set GPUs / workers / seed, launcher (Standard / DDP / Accelerate), LoRA, freeze layers and wandb in **GPUs / Workers / Seed**.
 4. **Start Training** — the monitor shows step progress, validation metrics per epoch and the log (`results/train_log.txt`). Checkpoints land in the results folder and can be registered in Settings for inference.
 
 The job runs under the same private runtime as inference (no torch in the GUI process).
 
-The `utils/`, `models/`, `configs/`, `docs/` and `scripts/` trees plus `train.py`, `valid.py`, `inference.py` and `ensemble.py` are the upstream Music-Source-Separation-Training code, copied verbatim (its README is at `docs/README_MSST.md`).
+The `utils/`, `models/`, `configs/`, `docs/` and `scripts/` trees plus `train.py`, `valid.py`, `inference.py` and `ensemble.py` are vendored from Music-Source-Separation-Training (its README is at `docs/README_MSST.md`; packaged-API docs live under `docs/cli.md` and `docs/python_api.md`). We do not depend on the PyPI `msst` wheel.
 
 ## Getting models
 

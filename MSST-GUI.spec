@@ -33,7 +33,7 @@ def walk_datas(src_root, dest_root, exts=None):
 
 datas = []
 for f in ("inference.py", "ensemble.py", "train.py", "valid.py",
-          "train_accelerate.py", "valid_ddp.py",
+          "train_ddp.py", "train_accelerate.py", "valid_ddp.py",
           "requirements-runtime.txt"):
     datas.append((os.path.join(ROOT, f), "."))
 
@@ -58,6 +58,8 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         "torch", "torchvision", "torchaudio",   # never in the GUI process
+        "accelerate", "peft", "transformers", "bitsandbytes",
+        "timm", "wandb", "loralib",
         "tkinter", "pytest", "IPython", "jupyter",
         "PyQt5", "PyQt6", "PySide2",            # the app uses PySide6 only
         # urllib3 does `from backports import zstd`; PyInstaller can pull a

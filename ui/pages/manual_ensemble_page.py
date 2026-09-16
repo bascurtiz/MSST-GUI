@@ -19,8 +19,9 @@ from backend.paths import REPO_ROOT, get_python_exe
 from ui.theme import theme_manager, UIConstants
 from ui.widgets.common import (
     PageHeader, outline_button_ss, solid_button_ss, ChevronCombo, GlyphButton,
-    EllipsisButton,
+    EllipsisButton, FOLDER_GLYPH,
     _outline_icon_color, _solid_icon_color, _stop_icon_color, _addfile_icon_color,
+    _pause_icon_color,
 )
 from ui.pages.inference_page import _ComboBox, _ExpandArrow
 
@@ -951,22 +952,21 @@ class ManualEnsemblePage(QWidget):
 
         self._guide_panel.setStyleSheet(_guide_ss())
         self._drop_zone.setStyleSheet(_drop_zone_ss())
+        if hasattr(self, "_action_bar"):
+            self._action_bar.setStyleSheet(
+                f"QWidget#actionBar{{background:{t.bg};border:none;}}"
+            )
 
         for w in self.findChildren(QPushButton):
             if w is self.btn_run:
                 w.setStyleSheet(solid_button_ss())
+                w._refresh_icon()
             elif w is self.btn_stop:
-                w.setStyleSheet(
-                    f"QPushButton{{"
-                    f"background:{t.surface_alt};color:{t.text_label};"
-                    f"border:1px solid {t.border_dim};border-radius:4px;"
-                    "font-family:'Montserrat',sans-serif;font-weight:600;"
-                    "font-size:12px;}"
-                    f"QPushButton:enabled{{"
-                    f"color:{t.error};border:1px solid {_rgba_str(t.error, 102)};}}"
-                    f"QPushButton:hover:enabled{{background:{_rgba_str(t.error, 20)};}}"
-                    f"QPushButton:disabled{{color:{t.text_label};}}"
-                )
+                self._update_stop_style()
+                w._refresh_icon()
+            elif w is self._open_btn:
+                self._update_open_style()
+                w._refresh_icon()
             elif w is self._guide_btn:
                 w.setStyleSheet(
                     f"QPushButton{{background:transparent;color:{t.text_dim};"
@@ -998,26 +998,34 @@ class ManualEnsemblePage(QWidget):
 
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(32, 32, 32, 32)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+
+        header_w = QWidget()
+        header_w.setStyleSheet("background:transparent;")
+        hh = QHBoxLayout(header_w)
+        hh.setContentsMargins(32, 32, 32, 0)
+        hh.setSpacing(0)
 
         hdr = PageHeader(
             "MANUAL ENSEMBLE",
             "COMBINE MODELS WITH CUSTOM WEIGHTS",
             highlight="CUSTOM WEIGHTS",
             back=True,
+            help_key="manual_ensemble",
         )
         self._back_btn = hdr.back_btn
         self._back_btn.clicked.connect(self.navigate_back.emit)
-        root.addWidget(hdr)
-        root.addSpacing(16)
+        hh.addWidget(hdr, 1)
+        root.addWidget(header_w)
+        root.addSpacing(UIConstants.HEADER_CONTENT_GAP)
 
         t = theme_manager.theme
 
         content = QWidget()
         content.setStyleSheet("background:transparent;")
         cl = QVBoxLayout(content)
-        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setContentsMargins(32, 0, 32, 0)
         cl.setSpacing(0)
 
         self._main_split = QHBoxLayout()
@@ -1029,65 +1037,6 @@ class ManualEnsemblePage(QWidget):
         wl = QVBoxLayout(workspace)
         wl.setContentsMargins(0, 0, 0, 0)
         wl.setSpacing(0)
-
-        top = QWidget()
-        top.setStyleSheet(f"background:{theme_manager.theme.bg};")
-        top_hl = QHBoxLayout(top)
-        top_hl.setContentsMargins(0, 0, 0, 0)
-        top_hl.setSpacing(0)
-
-        left = QWidget()
-        left.setStyleSheet(f"background:{theme_manager.theme.bg};")
-        left.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        ll = QVBoxLayout(left)
-        ll.setContentsMargins(32, 20, 24, 16)
-        ll.setSpacing(0)
-
-        ll.addStretch(1)
-
-        ll.addWidget(_sec_hdr("Run Ensemble"))
-        ll.addSpacing(8)
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-        btn_row.setContentsMargins(0, 0, 0, 0)
-
-        self.btn_run = GlyphButton("Run Ensemble", "\u25B6", _solid_icon_color,
-                                   glyph_size=18, text_size=12)
-        self.btn_run.setFixedSize(240, 44)
-        self.btn_run.setStyleSheet(solid_button_ss())
-        self.btn_run.clicked.connect(self._run)
-
-        self.btn_stop = GlyphButton("Stop", "\u25A0", _stop_icon_color,
-                                    glyph_size=16, text_size=12)
-        self.btn_stop.setFixedSize(110, 44)
-        self.btn_stop.setEnabled(False)
-        self.btn_stop.setStyleSheet(
-            f"QPushButton{{"
-            f"background:{t.surface_alt};color:{t.text_label};"
-            f"border:1px solid {t.border_dim};border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:600;"
-            "font-size:12px;}"
-            f"QPushButton:enabled{{"
-            f"color:{t.error};border:1px solid {_rgba_str(t.error, 102)};}}"
-            f"QPushButton:hover:enabled{{background:{_rgba_str(t.error, 20)};}}"
-            f"QPushButton:disabled{{color:{t.text_label};}}"
-        )
-        self.btn_stop.clicked.connect(self._stop)
-
-        btn_row.addWidget(self.btn_run)
-        btn_row.addWidget(self.btn_stop)
-        btn_row.addStretch()
-        ll.addLayout(btn_row)
-
-        top_hl.addWidget(left, 42)
-
-        right = QWidget()
-        right.setStyleSheet(f"background:{theme_manager.theme.bg};")
-        right.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        rl = QVBoxLayout(right)
-        rl.setContentsMargins(0, 20, 32, 16)
-        rl.setSpacing(0)
 
         settings_hdr = QHBoxLayout()
         settings_hdr.addWidget(_sec_hdr("Settings"))
@@ -1105,9 +1054,9 @@ class ManualEnsemblePage(QWidget):
         )
         self._guide_btn.clicked.connect(self._toggle_guide)
         settings_hdr.addWidget(self._guide_btn)
-        rl.addLayout(settings_hdr)
+        wl.addLayout(settings_hdr)
 
-        rl.addSpacing(10)
+        wl.addSpacing(10)
 
         cfg = QVBoxLayout()
         cfg.setSpacing(6)
@@ -1196,18 +1145,12 @@ class ManualEnsemblePage(QWidget):
         or_hl.addWidget(or_btn)
         cfg.addWidget(out_row)
 
-        rl.addLayout(cfg)
-        rl.addStretch()
-
-        top_hl.addWidget(right, 58)
-        wl.addWidget(top)
-
-        wl.addWidget(_hdiv(8))
+        wl.addLayout(cfg)
 
         files_outer = QWidget()
         files_outer.setStyleSheet(f"background:{theme_manager.theme.bg};")
         fl = QVBoxLayout(files_outer)
-        fl.setContentsMargins(32, 14, 32, 14)
+        fl.setContentsMargins(0, 14, 0, 0)
         fl.setSpacing(8)
 
         hdr_row = QHBoxLayout()
@@ -1221,7 +1164,7 @@ class ManualEnsemblePage(QWidget):
         hdr_row.addStretch()
 
         self._btn_add = GlyphButton("Add File", "+", _addfile_icon_color,
-                                    glyph_size=16, text_size=8)
+                                    glyph_size=16, text_size=8, parent=self)
         self._btn_add.setFixedSize(100, 26)
         self._btn_add.setStyleSheet(
             f"QPushButton{{background:transparent;color:{t.text_muted};"
@@ -1316,7 +1259,10 @@ class ManualEnsemblePage(QWidget):
 
         self._guide_panel = _EnsembleGuidePanel()
         self._guide_panel._close_btn.clicked.connect(self._toggle_guide)
-        self._guide_panel.setMaximumWidth(0)
+        self._main_split.setSpacing(UIConstants.SECTION_SPACING)
+        self._guide_panel.setMaximumWidth(self._guide_target_width())
+        self._guide_btn.setText("\u2715")
+        self._guide_sized = False
         self._main_split.addWidget(self._guide_panel, 0)
 
         self._guide_anim = QPropertyAnimation(self._guide_panel, b"maximumWidth")
@@ -1325,6 +1271,85 @@ class ManualEnsemblePage(QWidget):
 
         cl.addLayout(self._main_split)
         root.addWidget(content, 1)
+        self._build_action_bar(root)
+
+    def _build_action_bar(self, outer):
+        t = theme_manager.theme
+        bar_container = QWidget()
+        bar_container.setObjectName("actionBar")
+        bar_container.setStyleSheet(
+            f"QWidget#actionBar{{background:{t.bg};border:none;}}"
+        )
+        bar_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._action_bar = bar_container
+
+        bar = QHBoxLayout(bar_container)
+        bar.setContentsMargins(32, 24, 32, 32)
+        bar.setSpacing(8)
+
+        self.btn_run = GlyphButton("Manual Ensemble", "\u25B6", _solid_icon_color,
+                                   glyph_size=18, text_size=12, parent=self)
+        self.btn_run.setCursor(Qt.PointingHandCursor)
+        self.btn_run.setStyleSheet(solid_button_ss())
+        self.btn_run.fit_contents()
+        self.btn_run.clicked.connect(self._run)
+        bar.addWidget(self.btn_run)
+
+        self.btn_stop = GlyphButton("Stop", "\u25A0", _stop_icon_color,
+                                    glyph_size=16, text_size=12, parent=self)
+        self.btn_stop.setCursor(Qt.PointingHandCursor)
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self._stop)
+        self._update_stop_style()
+        self.btn_stop.fit_contents()
+        bar.addWidget(self.btn_stop)
+
+        bar.addStretch(1)
+
+        self._open_btn = GlyphButton("Open Output", FOLDER_GLYPH, _pause_icon_color,
+                                     glyph_size=16, text_size=10, parent=self)
+        self._open_btn.setCursor(Qt.PointingHandCursor)
+        self._open_btn.clicked.connect(self._open_output)
+        self._update_open_style()
+        self._open_btn.fit_contents()
+        bar.addWidget(self._open_btn)
+
+        outer.addWidget(bar_container, 0)
+
+    def _update_stop_style(self):
+        t = theme_manager.theme
+        self.btn_stop.setStyleSheet(
+            "QPushButton{"
+            f"background:{t.surface};color:{t.text_muted};"
+            f"border:1px solid {t.border};border-radius:6px;"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:12px;}"
+            "QPushButton:enabled{"
+            f"color:{t.error};border:1px solid {t.error};}}"
+            f"QPushButton:hover:enabled{{background:{t.surface_alt};}}"
+            f"QPushButton:disabled{{color:{t.text_muted};}}"
+        )
+
+    def _update_open_style(self):
+        t = theme_manager.theme
+        self._open_btn.setStyleSheet(
+            f"QPushButton{{background:{t.surface};color:{t.text_dim};"
+            f"border:1px solid {t.border};"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:10px;"
+            "border-radius:6px;}"
+            f"QPushButton:hover{{background:{t.surface_alt};color:{t.text};}}"
+        )
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._guide_sized:
+            return
+        self._guide_sized = True
+        if self._guide_panel.maximumWidth() > 10:
+            self._guide_panel.setMaximumWidth(self._guide_target_width())
+
+    def _guide_target_width(self):
+        return max(380, min(int(max(self.width(), 0) * 0.30), 500))
 
     def _toggle_guide(self):
         if self._guide_anim.state() == QPropertyAnimation.Running:
@@ -1333,7 +1358,8 @@ class ManualEnsemblePage(QWidget):
         is_open = self._guide_panel.maximumWidth() > 10
 
         if not is_open:
-            target_width = max(380, min(int(self.width() * 0.30), 500))
+            self._main_split.setSpacing(UIConstants.SECTION_SPACING)
+            target_width = self._guide_target_width()
             self._guide_anim.setStartValue(0)
             self._guide_anim.setEndValue(target_width)
             self._guide_anim.setEasingCurve(QEasingCurve.OutCubic)
@@ -1349,10 +1375,20 @@ class ManualEnsemblePage(QWidget):
 
     def _on_guide_closed(self):
         self._guide_btn.setText("How Ensemble Works")
+        self._main_split.setSpacing(0)
         try:
             self._guide_anim.finished.disconnect(self._on_guide_closed)
         except TypeError:
             pass
+
+    def _open_output(self):
+        output = self._output_edit.text().strip()
+        if output:
+            path = os.path.dirname(os.path.abspath(output))
+        else:
+            path = os.getcwd()
+        if os.path.isdir(path):
+            os.startfile(path)
 
     def _on_files_dropped(self, paths):
         for p in paths:

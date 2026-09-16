@@ -9,7 +9,8 @@ driver's own nvidia-smi tool; torch is only used as a fallback.
 from __future__ import annotations
 
 import shutil
-import subprocess
+
+from backend.win_startup import hidden_run
 
 _cached_gpus: list[str] | None = None
 
@@ -20,11 +21,10 @@ def _gpus_via_nvidia_smi() -> list[str] | None:
     if not smi:
         return None
     try:
-        out = subprocess.run(
+        out = hidden_run(
             [smi, "--query-gpu=name,memory.total",
              "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=4,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            text=True, timeout=4,
         )
         if out.returncode != 0:
             return None

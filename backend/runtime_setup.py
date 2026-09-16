@@ -22,6 +22,7 @@ import sys
 import time
 
 from backend.paths import get_app_dir, get_runtime_dir, get_runtime_python, REPO_ROOT
+from backend.win_startup import hidden_run
 
 # Keep the bundled runtime hermetic: installed packages must never be
 # resolved from the user's roaming site-packages (version conflicts), and
@@ -48,10 +49,9 @@ def nvidia_smi_query(fields: str):
     if not smi:
         return None
     try:
-        out = subprocess.run(
+        out = hidden_run(
             [smi, f"--query-gpu={fields}", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            text=True, timeout=10,
         )
         if out.returncode != 0:
             return None

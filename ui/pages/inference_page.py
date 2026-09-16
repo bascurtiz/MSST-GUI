@@ -66,7 +66,7 @@ from ui.widgets.common import (
     GlyphButton, dark_menu_qss, run_blurred_dialog,
     _outline_icon_color, _solid_icon_color, _stop_icon_color, _add_icon_color,
     _type_badge_ss, _custom_badge_ss, _blocked_badge_ss,
-    _type_badge_color, _type_title,
+    _type_badge_color, _type_title, OptionalFold,
 )
 from ui.widgets.smooth_bar import SmoothBar
 
@@ -223,7 +223,7 @@ ARCH_DISPLAY_NAMES = {
     "Bandit Architecture": "Bandit",
     "BS Roformer Architecture": "Band-Split RoFormer",
     "Demucs Architecture": "Demucs",
-    "MDX23c Architecture": "MDX23c",
+    "MDX23c Architecture": "MDX23C",
     "MDX-Net Architecture": "MDX-Net",
     "Medley Vox Architecture": "Medley-Vox",
     "Melband Roformer Architecture": "Mel-Band RoFormer",
@@ -920,7 +920,7 @@ def _combo_ss():
         f"QComboBox QAbstractItemView::item{{padding:6px 12px;min-height:26px;}}"
         f"QComboBox QAbstractItemView::item:hover{{background:{theme_manager._accent_soft};color:{t.text};}}"
     )
-ROW_H = 46
+ROW_H = 42  # same as Model Library architecture cards (_ArchCard header)
 # CONFIGURATION column: label + ⓘ (widest label is BIG SHIFTS ≈ 69px).
 CONFIG_LABEL_W = 100
 CONFIG_DOT_SLOT = 24   # gap + 14px glyph; keeps every ⓘ on one vertical line
@@ -931,13 +931,14 @@ def _test_all_ss():
     """Outline style for the MULTI-SELECT MODELS button — accent outline that
     fills accent when armed (checked = multi-select mode) and dims to
     neutral when disabled (during a batch or normal run). The label font
-    matches the SEPARATE button's (Montserrat 12px, regular weight)."""
+    matches the SEPARATE button (Montserrat 12px)."""
     t = theme_manager.theme
     return (
         "QPushButton{background:transparent;"
         f"color:{theme_manager.accent};"
         f"border:1px solid {theme_manager.accent};border-radius:6px;"
-        "font-family:'Montserrat',sans-serif;font-size:12px;}"
+        "font-family:'Montserrat',sans-serif;font-size:12px;"
+        "padding:0 18px;}"
         f"QPushButton:hover{{background:{theme_manager._accent_soft};}}"
         f"QPushButton:checked{{background:{theme_manager.accent};"
         f"color:{theme_manager._accent_text};border-color:{theme_manager.accent};}}"
@@ -1315,7 +1316,7 @@ class _SdrTestRow(QFrame):
         # The label is longer than the other rows' (QUALITY / DEVICE...), so
         # it sizes naturally instead of the shared 80px column; the tooltip
         # rides on the controls.
-        lb = QLabel("Quality Checker Test")
+        lb = QLabel("QUALITY CHECK")
         lb.setStyleSheet(_lbl_ss())
         lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         hl.addWidget(lb)
@@ -2407,6 +2408,57 @@ class _MetricColumns(QWidget):
                 f"color:{bright};background:transparent;border:none;")
 
 
+class _ElidingName(QLabel):
+    """Name label that *paints* an elided string but keeps sizeHint at the
+    full title. Setting the QLabel text to "BS..." used to shrink the hint,
+    so Target-mode rows (laid out while their card was hidden) stayed
+    truncated after the grouping became visible."""
+
+    def __init__(self, text, parent=None):
+        super().__init__(parent)
+        self._full = text or ""
+        super().setText(self._full)
+        self.setWordWrap(False)
+        self.setMinimumWidth(32)
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+        self.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+    def set_full(self, text):
+        self._full = text or ""
+        super().setText(self._full)
+        self.updateGeometry()
+        self.update()
+
+    def sizeHint(self):
+        fm = self.fontMetrics()
+        return QSize(max(32, fm.horizontalAdvance(self._full) + 2),
+                     max(fm.height(), 16))
+
+    def minimumSizeHint(self):
+        fm = self.fontMetrics()
+        return QSize(32, max(fm.height(), 16))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.updateGeometry()
+        self.update()
+
+    def painted_text(self):
+        w = self.width()
+        if w <= 0:
+            return self._full
+        return self.fontMetrics().elidedText(self._full, Qt.ElideRight, w)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        p.setFont(self.font())
+        p.setPen(self.palette().color(self.foregroundRole()))
+        p.drawText(self.contentsRect(), int(Qt.AlignVCenter | Qt.AlignLeft),
+                   self.painted_text())
+        p.end()
+
+
 class _ModelItem(QFrame):
     selected = Signal(str, str, str, str, str, str, bool)
     unchecked = Signal(str, str)
@@ -2551,7 +2603,7 @@ class _ModelItem(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        self._name_row = QWidget()
+        self._name_row = QWidget(self)
         self._name_row.setFixedHeight(self._NAME_ROW_H)
         self._name_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._name_row.setStyleSheet("background:transparent;")
@@ -2561,49 +2613,34 @@ class _ModelItem(QFrame):
         hl.setContentsMargins(12, 0, 8, 0)
         hl.setSpacing(6)
 
-        self._circle = _CircleCheck()
+        self._circle = _CircleCheck(row)
         self._circle.toggled.connect(self._on_circle_toggled)
         hl.addWidget(self._circle)
 
         self._display = display or name
-        self._lbl = QLabel(self._display)
+        self._lbl = _ElidingName(self._display, row)
         self._lbl.setObjectName("modelItemLabel")
-        if self._display != name:
-            self._lbl.setToolTip(name)
-        # The name must still be free to shrink (and elide) below its full
-        # text width: rows whose name is a long ckpt filename and/or carry
-        # extra badges (CUSTOM + type) would otherwise push the fixed
-        # right-side cluster — the ··· menu — past the card's visible
-        # edge in narrow panes, hiding it (the "3-dot missing in arch view"
-        # bug). Shrinkable + elided keeps the dots on-screen at any width.
-        self._lbl.setMinimumWidth(0)
-        # Maximum (not Ignored): hug the title width so the link chip sits
-        # flush after the text — same spacing as Settings → Model Manager.
-        self._lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
         self._lbl.setStyleSheet(
             f"font-family:{FONT_STACK};font-size:12px;"
             "font-weight:600;letter-spacing:0.5px;"
             f"color:{theme_manager.theme.text_sec};background:transparent;"
         )
         hl.addWidget(self._lbl)
-
-        # Link to the model's mvsep Quality Checker entry (when the CSV lists
-        # one) — sits right after the name, like the arch cards' info chips.
         self._link = None
         if scores_url:
-            self._link = _LinkBadge(f"Open \u201c{self._display}\u201d on mvsep Quality Checker")
+            self._link = _LinkBadge(
+                f"Open \u201c{self._display}\u201d on mvsep Quality Checker", row)
             self._link.clicked.connect(
                 lambda u=scores_url: QDesktopServices.openUrl(QUrl(u)))
             hl.addWidget(self._link)
-
-        # Push the trailing badges / ··· menu to the right edge so the
-        # name+link group stays left-aligned, like the arch card titles.
         hl.addStretch(1)
 
         if custom_backend_enabled and backend_module:
             ctag = QLabel("CUSTOM")
             ctag.setStyleSheet(_custom_badge_ss())
             ctag.setFixedHeight(17)
+            ctag.setWordWrap(False)
+            ctag.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
             hl.addWidget(ctag)
 
         if model_type:
@@ -2612,6 +2649,8 @@ class _ModelItem(QFrame):
             tag.setToolTip(model_type)
             tag.setStyleSheet(_type_badge_ss(model_type))
             tag.setFixedHeight(17)
+            tag.setWordWrap(False)
+            tag.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
             hl.addWidget(tag)
 
         if not runnable:
@@ -2624,6 +2663,8 @@ class _ModelItem(QFrame):
                 + " Select a different model or update the app.")
             btag.setStyleSheet(_blocked_badge_ss())
             btag.setFixedHeight(17)
+            btag.setWordWrap(False)
+            btag.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
             hl.addWidget(btag)
 
         self._dots = QPushButton("\u00b7\u00b7\u00b7")
@@ -2650,12 +2691,13 @@ class _ModelItem(QFrame):
         # available. Indented to align under the model name: metric name on
         # the left, one column per stem with the label above its value.
         self._scores_lbl = _MetricColumns(
-            pixel=9, metric_pixel=SORT_METRIC_FONT_PX, left=36, right=8)
+            pixel=9, metric_pixel=SORT_METRIC_FONT_PX, left=36, right=8,
+            parent=self)
         self._scores_line = _TwoToneMetric(
-            pixel=SORT_METRIC_FONT_PX, left=36, right=8)
+            pixel=SORT_METRIC_FONT_PX, left=36, right=8, parent=self)
         self._scores_line.setVisible(False)
         self._scores_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        self._noval_lbl = QLabel(NO_VALIDATION_SET_LABEL)
+        self._noval_lbl = QLabel(NO_VALIDATION_SET_LABEL, self)
         self._noval_lbl.setStyleSheet(self._noval_ss())
         self._noval_lbl.setVisible(False)
         self._noval_lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
@@ -2672,7 +2714,7 @@ class _ModelItem(QFrame):
         outer.addWidget(self._scores_line, 0, Qt.AlignLeft)
         outer.addWidget(self._noval_lbl, 0, Qt.AlignLeft)
 
-        self._divider = QFrame()
+        self._divider = QFrame(self)
         self._divider.setFixedHeight(1)
         self._divider.setStyleSheet(
             f"background:{theme_manager.theme.border};border:none;")
@@ -2741,22 +2783,32 @@ class _ModelItem(QFrame):
             f"Open \u201c{self._display}\u201d on mvsep Quality Checker")
         self._link.clicked.connect(
             lambda u=url: QDesktopServices.openUrl(QUrl(u)))
-        # After circle + label (indices 0, 1), before the stretch.
         self._name_hl.insertWidget(2, self._link)
 
     def _elide_label(self):
-        """Clip the label to its allotted width (it is free to shrink because
-        its size policy is Ignored), keeping the full name in `self._display`
-        for search. The full text is exposed as a tooltip when elided."""
         lbl = self._lbl
         full = self._display or ""
-        w = lbl.width()
-        text = full if w <= 0 else lbl.fontMetrics().elidedText(
-            full, Qt.ElideRight, w)
-        if text != lbl.text():
-            lbl.setText(text)
-            if text != full and not lbl.toolTip():
-                lbl.setToolTip(full)
+        painted = lbl.painted_text()
+        lbl.setToolTip(full if painted != full else (
+            self._name if full != self._name else ""))
+        lbl.update()
+
+    def set_display(self, text):
+        """Show a friendlier label (e.g. the zoo full name); the ckpt
+        filename stays in the tooltip and is still matched by search."""
+        if not text or text == self._display:
+            return
+        self._display = text
+        self._lbl.set_full(text)
+        self.updateGeometry()
+        self._elide_label()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        lbl = getattr(self, "_lbl", None)
+        if lbl is not None:
+            lbl.updateGeometry()
+            self._elide_label()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -2768,17 +2820,6 @@ class _ModelItem(QFrame):
             if new_h != self.height():
                 self._update_row_height()
                 self._refresh_parent_card_height()
-
-    def set_display(self, text):
-        """Show a friendlier label (e.g. the zoo full name); the ckpt
-        filename stays in the tooltip and is still matched by search."""
-        if not text or text == self._display:
-            return
-        self._display = text
-        self._lbl.setToolTip(self._name if text != self._name else "")
-        self._lbl.updateGeometry()
-        self.updateGeometry()
-        self._elide_label()
 
     def _on_circle_toggled(self, checked):
         self._is_selected = checked
@@ -3025,7 +3066,7 @@ class _ArchCard(QFrame):
         vl.setSpacing(0)
 
         # Card header
-        self._hdr = QFrame()
+        self._hdr = QFrame(self)
         self._hdr.setObjectName("cardHdr")
         self._hdr.setFixedHeight(42)
         self._hdr.setStyleSheet(
@@ -3090,7 +3131,7 @@ class _ArchCard(QFrame):
         self._count_lbl.setFixedHeight(18)
         hh.addWidget(self._count_lbl)
 
-        self._toggle_btn = _ExpandArrow()
+        self._toggle_btn = _ExpandArrow(self._hdr)
         self._toggle_btn.clicked.connect(lambda: self._toggle_expand(animated=True))
         hh.addWidget(self._toggle_btn)
 
@@ -3101,7 +3142,7 @@ class _ArchCard(QFrame):
         vl.addWidget(self._hdr)
 
         # Model list
-        self._list_w = QWidget()
+        self._list_w = QWidget(self)
         self._list_w.setStyleSheet("background:transparent;")
         self._list_w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._list_vl = QVBoxLayout(self._list_w)
@@ -3118,7 +3159,7 @@ class _ArchCard(QFrame):
             "background:transparent;padding:6px 12px;")
         self._list_vl.addWidget(self._empty_lbl)
 
-        self._content = QWidget()
+        self._content = QWidget(self)
         self._content.setStyleSheet("background:transparent;")
         # Expanding width: the header already spans the library pane; the
         # model rows must too so the name-row stretch can pin type badges
@@ -3184,6 +3225,14 @@ class _ArchCard(QFrame):
 
     # ── Animation helpers ──
 
+    def _relayout_names(self):
+        for i in range(self._list_vl.count()):
+            w = self._list_vl.itemAt(i).widget()
+            if isinstance(w, _ModelItem) and getattr(w, "_lbl", None):
+                w._lbl.updateGeometry()
+                w._elide_label()
+                w.updateGeometry()
+
     def _rebuild_cache(self):
         h = 0
         for i in range(self._list_vl.count()):
@@ -3202,6 +3251,7 @@ class _ArchCard(QFrame):
             self._content.setMinimumHeight(0)
             self._content.setMaximumHeight(16777215)
             self._update_expanded_height()
+            self._relayout_names()
             sync = getattr(self, "_score_sync", None)
             if callable(sync):
                 sync()
@@ -3303,6 +3353,7 @@ class _ArchCard(QFrame):
         item = _ModelItem(name, ckpt, yaml_path, arch, model_type, engine_type,
                           backend_module, custom_backend_enabled, display=display,
                           runnable=runnable, blocked_reason=blocked_reason,
+                          parent=self._list_w,
                           scores=scores, scores_url=scores_url)
         # Rows may be created after the sort dropdown was restored. Apply the
         # active metric immediately instead of leaving the constructor's SDR
@@ -3423,7 +3474,7 @@ class _SortToggle(QWidget):
                 "font-family:'Montserrat';font-size:8px;font-weight:600;"
                 "margin-top:1px;"
             )
-        self._sw = _MiniSwitch()
+        self._sw = _MiniSwitch(parent=self)
         self._sw.toggled.connect(self._set_on)
         hl.addWidget(self._arch_lbl)
         hl.addWidget(self._sw)
@@ -3501,6 +3552,116 @@ class _MiniSwitch(QWidget):
         x = self.width() - k - m if self._on else m
         p.setBrush(QColor("#FFFFFF"))
         p.drawEllipse(int(x), (self.height() - k) // 2, k, k)
+
+
+def _switch_side_ss(active):
+    color = theme_manager.accent if active else theme_manager.theme.text_muted
+    return (
+        "font-family:'Montserrat';font-size:8px;font-weight:600;"
+        f"margin-top:1px;background:transparent;color:{color};"
+    )
+
+
+class _SwitchRow(QFrame):
+    """Config row with the Architecture / Target pill switch.
+
+    `off_text` is the left (unchecked) label, `on_text` the right.
+    `changed` emits the new checked state.
+    """
+    changed = Signal(bool)
+
+    def __init__(self, label, off_text, on_text, tooltip="", checked=False,
+                 make_label=None):
+        super().__init__()
+        self.setObjectName("cfgRow")
+        self._off_text = off_text
+        self._on_text = on_text
+        self.setFixedHeight(ROW_H)
+        self.setStyleSheet(_row_ss())
+        self.setCursor(Qt.PointingHandCursor)
+
+        hl = QHBoxLayout(self)
+        hl.setContentsMargins(12, 0, 14, 0)
+        hl.setSpacing(0)
+        hl.addWidget((make_label or _label_with_info)(label, tooltip))
+        hl.addSpacing(CONFIG_VALUE_GAP)
+        hl.addStretch(1)
+
+        self._off_lbl = QLabel(off_text)
+        self._on_lbl = QLabel(on_text)
+        self._sw = _MiniSwitch(checked, self)
+        self._sw.toggled.connect(self._on_sw)
+        hl.addWidget(self._off_lbl, 0, Qt.AlignVCenter)
+        hl.addSpacing(5)
+        hl.addWidget(self._sw, 0, Qt.AlignVCenter)
+        hl.addSpacing(5)
+        hl.addWidget(self._on_lbl, 0, Qt.AlignVCenter)
+        self._relabel()
+
+    def _on_sw(self, on):
+        self._relabel()
+        self.changed.emit(on)
+
+    def _relabel(self):
+        on = self._sw.is_checked()
+        self._off_lbl.setStyleSheet(_switch_side_ss(not on))
+        self._on_lbl.setStyleSheet(_switch_side_ss(on))
+
+    def is_on(self):
+        return self._sw.is_checked()
+
+    def set_on(self, on):
+        self._sw.set_checked(bool(on))
+
+    def currentText(self):
+        return self._on_text if self.is_on() else self._off_text
+
+    def mousePressEvent(self, e):
+        child = self.childAt(e.pos())
+        w = child
+        while w is not None and w is not self:
+            if w is self._sw:
+                super().mousePressEvent(e)
+                return
+            if w is self._off_lbl:
+                self.set_on(False)
+                super().mousePressEvent(e)
+                return
+            if w is self._on_lbl:
+                self.set_on(True)
+                super().mousePressEvent(e)
+                return
+            w = w.parentWidget()
+        self.set_on(not self.is_on())
+        super().mousePressEvent(e)
+
+    def reapply_theme(self):
+        self.setStyleSheet(_row_ss())
+        self._sw.update()
+        self._relabel()
+        for lbl in self.findChildren(QLabel):
+            if lbl is self._off_lbl or lbl is self._on_lbl:
+                continue
+            lbl.setStyleSheet(_lbl_ss())
+
+
+class _PairRow(QWidget):
+    """Two configuration cards on one line, equal width, 6px gap."""
+
+    def __init__(self, left, right, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("background:transparent;")
+        self._left = left
+        self._right = right
+        hl = QHBoxLayout(self)
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(6)
+        for w in (left, right):
+            w.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            w.setMinimumWidth(0)
+            hl.addWidget(w, 1)
+        self.setFixedHeight(ROW_H)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
 
 # ── InferencePage ─────────────────────────────────────────────────────────────
@@ -3653,8 +3814,10 @@ class InferencePage(QWidget):
             "INFERENCE",
             "AI POWERED MUSIC STEMS EXTRACTION",
             highlight="MUSIC STEMS",
+            help_key="inference",
         ))
         root.addWidget(header_w)
+        root.addSpacing(UIConstants.HEADER_CONTENT_GAP)
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -3663,9 +3826,9 @@ class InferencePage(QWidget):
         # ── LEFT COLUMN ────────────────────────────────────────────────
         left = QWidget()
         left.setStyleSheet(f"background:{theme_manager.theme.bg};")
-        left.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        left.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         ll = QVBoxLayout(left)
-        ll.setContentsMargins(32, 32, 10, 32)
+        ll.setContentsMargins(32, 16, 10, 32)
         ll.setSpacing(0)
 
         t = theme_manager.theme
@@ -3682,20 +3845,20 @@ class InferencePage(QWidget):
         cfg.setContentsMargins(0, 0, 0, 0)
 
         self._input_row = _BrowseRow(
-            None, "Input", "Select or drop audio file(s)\u2026",
+            None, "Input", "Select audio file(s)\u2026",
             mode="file", file_filter=AUDIO_FILTER,
             tooltip="Audio file(s) to separate.\n"
                     "Click to browse or drop files here.")
         cfg.addWidget(self._input_row)
 
         self._output_row = _BrowseRow(
-            None, "Output", "Select or drop output folder\u2026", mode="folder",
+            None, "Output", "Select output folder\u2026", mode="folder",
             tooltip="Folder where the stems are written.\n"
                     "Each model gets its own subfolder per checkpoint.")
         cfg.addWidget(self._output_row)
 
         self._fmt_row = _ComboRow(
-            None, "Quality",
+            None, "Format",
             ["FLAC (16-bit)", "FLAC (24-bit)", "WAV (32-bit float)"],
             tooltip="Output format applied to all stems (lossless).\n"
                     "FLAC stems that would clip are peak-normalized to stay FLAC.")
@@ -3708,20 +3871,6 @@ class InferencePage(QWidget):
                     "All of the model's stems are saved by default.")
         cfg.addWidget(self._output_stems_row)
 
-        self._tta_row = _ComboRow(
-            None, "TTA", ["Disabled", "Enabled"],
-            tooltip="Extra pass on flipped audio, averaged in.\n"
-                    "Cleaner stems, but roughly doubles the time.")
-        self._tta_combo = self._tta_row.combo
-        cfg.addWidget(self._tta_row)
-
-        self._bigshifts_row = _ComboRow(
-            None, "Big Shifts", ["Disabled", "2", "4", "8"],
-            tooltip="Average several circularly shifted passes.\n"
-                    "This can reduce boundary artifacts, but increases runtime.")
-        self._bigshifts_combo = self._bigshifts_row.combo
-        cfg.addWidget(self._bigshifts_row)
-
         self._dev_row = _ComboRow(
             None, "Device", list_gpus(),
             tooltip="GPU (CUDA) is by far the fastest.\n"
@@ -3732,6 +3881,51 @@ class InferencePage(QWidget):
             self._device_combo.setCurrentIndex(1)
         cfg.addWidget(self._dev_row)
 
+        self._optional = OptionalFold()
+        opt = self._optional
+        self._tta_row = _SwitchRow(
+            "TTA", "Disabled", "Enabled",
+            tooltip="Extra pass on flipped audio, averaged in.\n"
+                    "Cleaner stems, but roughly doubles the time.")
+        self._bigshifts_row = _ComboRow(
+            None, "Big Shifts", ["Disabled", "2", "4", "8"],
+            tooltip="Average several circularly shifted passes.\n"
+                    "This can reduce boundary artifacts, but increases runtime.")
+        self._bigshifts_combo = self._bigshifts_row.combo
+        opt.addWidget(_PairRow(self._tta_row, self._bigshifts_row))
+
+        self._spectro_row = _ComboRow(
+            None, "Spectro", ["Disabled", "5s", "10s", "30s"],
+            tooltip="Save preview spectrograms of each stem (--draw_spectro).\n"
+                    "Value is how many seconds of the track to plot.")
+        self._spectro_combo = self._spectro_row.combo
+        opt.addWidget(self._spectro_row)
+
+        self._skip_row = _SwitchRow(
+            "Skip errors", "Disabled", "Enabled",
+            tooltip="Continue after an unreadable input (--skip_errors).\n"
+                    "Disable to fail the whole job on the first bad file.",
+            checked=True)
+        opt.addWidget(self._skip_row)
+
+        self._lora_row = _SwitchRow(
+            "LoRA", "Off", "On",
+            tooltip="Optional LoRA adapter for inference.\n"
+                    "Turn on, then pick PEFT or loralib.")
+        self._lora_row.changed.connect(self._sync_lora_rows)
+        self._lora_kind_row = _SwitchRow(
+            "LoRA type", "PEFT", "loralib",
+            tooltip="PEFT and loralib match the training flags.")
+        self._lora_pair = _PairRow(self._lora_row, self._lora_kind_row)
+        opt.addWidget(self._lora_pair)
+
+        self._lora_ckpt_row = _BrowseRow(
+            None, "LoRA adapter", "Select LoRA checkpoint\u2026", mode="file",
+            file_filter="Checkpoints (*.ckpt *.pth *.pt *.bin *.safetensors);;All files (*.*)",
+            tooltip="--lora_checkpoint_peft or --lora_checkpoint_loralib,\n"
+                    "matching the LoRA mode above.")
+        opt.addWidget(self._lora_ckpt_row)
+
         self._sdr_row = _SdrTestRow(
             tooltip="Quality Checker Test: write outputs with mvsep\n"
                     "quality-checker naming. The trailing '_mixture' is\n"
@@ -3740,13 +3934,13 @@ class InferencePage(QWidget):
                     "song_X_speech, song_X_instrum).")
         self._sdr_check = self._sdr_row.check
         self._sdr_combo = self._sdr_row.combo
-        cfg.addWidget(self._sdr_row)
+        opt.addWidget(self._sdr_row)
+        self._sync_lora_rows()
 
         ll.addLayout(cfg)
+        ll.addWidget(opt, 1)
 
         ll.addSpacing(36)
-        ll.addStretch()  # anchor the Run Inference block to the bottom so it
-                         # aligns horizontally with + ADD in the right column
 
         # Run Inference
         ll.addWidget(_sec_hdr("Run Inference"))
@@ -3757,14 +3951,14 @@ class InferencePage(QWidget):
         btn_row.setContentsMargins(0, 0, 0, 0)
 
         self.btn_run = GlyphButton("Separate", "\u25B6", _solid_icon_color,
-                                   glyph_size=18, text_size=12)
-        self.btn_run.setFixedSize(170, 44)
+                                   glyph_size=18, text_size=12, parent=self)
         self.btn_run.setStyleSheet(solid_button_ss())
+        self.btn_run.fit_contents()
         self.btn_run.clicked.connect(self._run)
 
         self.btn_stop = GlyphButton("Stop", "\u25A0", _stop_icon_color,
-                                    glyph_size=16, text_size=12)
-        self.btn_stop.setFixedSize(100, 44)
+                                    glyph_size=16, text_size=12, parent=self)
+        self.btn_stop.fit_contents()
         self.btn_stop.setEnabled(False)
         self.btn_stop.setStyleSheet(
             "QPushButton{"
@@ -3780,11 +3974,13 @@ class InferencePage(QWidget):
         self.btn_stop.clicked.connect(self._stop)
 
         self.btn_test_all = QPushButton("Multi-select Models")
-        self.btn_test_all.setFixedSize(168, 44)
         self.btn_test_all.setCursor(Qt.PointingHandCursor)
         self.btn_test_all.setCheckable(True)
         self.btn_test_all.setToolTip(T_MULTI_SELECT_MODE)
         self.btn_test_all.setStyleSheet(_test_all_ss())
+        self.btn_test_all.setFixedHeight(40)
+        self.btn_test_all.adjustSize()
+        self.btn_test_all.setFixedSize(self.btn_test_all.sizeHint().width(), 40)
         self.btn_test_all.clicked.connect(self._toggle_multi_mode)
 
         btn_row.addWidget(self.btn_run)
@@ -3798,7 +3994,7 @@ class InferencePage(QWidget):
         right.setStyleSheet(f"background:{theme_manager.theme.bg};")
         right.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         rl = QVBoxLayout(right)
-        rl.setContentsMargins(10, 32, 32, 32)
+        rl.setContentsMargins(10, 16, 32, 32)
         rl.setSpacing(0)
 
         # Model Library header, vertically centered against the search box
@@ -3901,23 +4097,22 @@ class InferencePage(QWidget):
         rl.addSpacing(10)
 
         # + ADD (bottom of the library) — jumps to Settings where models
-        # are added/registered. Styled like the LOG button in CONSOLE;
-        # lifted 7px so its centre aligns with the 44px RUN/STOP row.
+        # are added/registered. Same 40px height as View Logs; width hugs the label.
         add_row = QHBoxLayout()
-        add_row.setContentsMargins(0, 0, 14, 7)
+        add_row.setContentsMargins(0, 0, 14, 0)
         add_row.addStretch()
         self._add_btn = GlyphButton("Add", "+", _add_icon_color,
-                                    glyph_size=18, text_size=9)
+                                    glyph_size=16, text_size=10, parent=self)
         self._add_btn.setCursor(Qt.PointingHandCursor)
-        self._add_btn.setFixedSize(70, 30)
         self._add_btn.setStyleSheet(
             f"QPushButton{{"
             f"background:{t.surface};color:{t.text_dim};"
-            f"border:1px solid {t.border_dim};border-radius:4px;"
+            f"border:1px solid {t.border_dim};border-radius:6px;"
             "font-family:'Montserrat',sans-serif;font-weight:600;"
-            "font-size:9px;padding:0 8px;}"
+            "font-size:10px;padding:0 14px;}"
             f"QPushButton:hover{{background:{theme_manager._accent_soft};"
             f"color:{t.text};border:1px solid {theme_manager.accent};}}")
+        self._add_btn.fit_contents()
         self._add_btn.clicked.connect(self.add_model_requested.emit)
         add_row.addWidget(self._add_btn)
         rl.addLayout(add_row)
@@ -4040,6 +4235,10 @@ class InferencePage(QWidget):
             row.combo.setStyleSheet(_combo_ss())
             for lbl in row.findChildren(QLabel):
                 lbl.setStyleSheet(_lbl_ss())
+        for row in self.findChildren(_SwitchRow):
+            row.reapply_theme()
+        for fold in self.findChildren(OptionalFold):
+            fold.reapply_theme()
         for row in self.findChildren(_OutputStemsRow):
             row.setStyleSheet(_row_ss())
             for lbl in row.findChildren(QLabel):
@@ -4065,7 +4264,7 @@ class InferencePage(QWidget):
     def _create_arch_card(self, arch):
         """Build a library card for an architecture. Also used at runtime for
         archs the user registers that aren't part of the static ARCH_TYPES."""
-        card = _ArchCard(arch)
+        card = _ArchCard(arch, parent=self)
         card._library_sort_metric = self._sort_metric
         card._score_sync = self._sync_library_scores
         card.model_selected.connect(self._on_model_selected)
@@ -4087,6 +4286,7 @@ class InferencePage(QWidget):
         _apply_library_visibility). The colored dot is the model type's color."""
         card = _ArchCard(
             type_key,
+            parent=self,
             dot_color=_type_badge_color(type_key) or "#9A9FB3",
             title_display=_type_title(type_key),
             info_url="",
@@ -4157,6 +4357,19 @@ class InferencePage(QWidget):
         # Search narrowed the visible set — re-derive the Select all state
         # against the filtered universe.
         self._update_select_all_state()
+        QTimer.singleShot(0, self._relayout_visible_library_names)
+
+    def _relayout_visible_library_names(self):
+        """Target cards sit hidden (0-width) in Architecture mode. After they
+        become visible, re-query name sizeHints so titles are not stuck at
+        the elided width they measured while collapsed."""
+        cards = (self._target_cards.values() if self._sort_by_target
+                 else self._arch_cards.values())
+        for card in cards:
+            if not card.isVisible():
+                continue
+            card._relayout_names()
+            card.updateGeometry()
 
     def _on_sort_changed(self, target_mode):
         self._sort_by_target = bool(target_mode)
@@ -4714,6 +4927,35 @@ class InferencePage(QWidget):
             "save_rest": rest,
         }
 
+    def _lora_mode_text(self):
+        if not self._lora_row.is_on():
+            return "Off"
+        return "loralib" if self._lora_kind_row.is_on() else "PEFT"
+
+    def _sync_lora_rows(self, _on=None):
+        on = self._lora_row.is_on()
+        self._lora_kind_row.setVisible(on)
+        self._lora_ckpt_row.setVisible(on)
+        fold = getattr(self, "_optional", None)
+        if fold is not None:
+            fold._refresh_body_min()
+
+    def _lora_ckpt_path(self):
+        """Single adapter path from the LoRA browse row, or ''."""
+        v = self._lora_ckpt_row.value()
+        if isinstance(v, list):
+            return v[0] if v else ""
+        return v if isinstance(v, str) else ""
+
+    def _spectro_seconds(self):
+        text = self._spectro_combo.currentText()
+        if not text or text == "Disabled":
+            return 0.0
+        try:
+            return float(str(text).rstrip("sS"))
+        except (TypeError, ValueError):
+            return 0.0
+
     def save_settings(self):
         # Snapshot the current model's stem choice so it survives relaunches.
         if self._selected_model and self._selected_model.get("name"):
@@ -4724,8 +4966,12 @@ class InferencePage(QWidget):
             "output_folder": self._output_row.value()
                              if isinstance(self._output_row.value(), str) else "",
             "output_format": self._fmt_combo.currentText(),
-            "tta":           self._tta_combo.currentText(),
+            "tta":           self._tta_row.currentText(),
             "bigshifts":     self._bigshifts_combo.currentText(),
+            "spectrogram":   self._spectro_combo.currentText(),
+            "skip_errors":   self._skip_row.currentText(),
+            "lora_mode":     self._lora_mode_text(),
+            "lora_checkpoint": self._lora_ckpt_path(),
             "device":        self._device_combo.currentText(),
             "stems":         self._output_stems_row.get_selected_stems(),
             "save_rest":     self._output_stems_row.get_save_rest(),
@@ -4763,15 +5009,34 @@ class InferencePage(QWidget):
         idx = self._fmt_combo.findText(fmt)
         if idx >= 0: self._fmt_combo.setCurrentIndex(idx)
         tta = d.get("tta", "Disabled")
+        if isinstance(tta, bool):
+            tta = "Enabled" if tta else "Disabled"
         if not isinstance(tta, str): tta = "Disabled"
-        idx = self._tta_combo.findText(tta)
-        if idx >= 0: self._tta_combo.setCurrentIndex(idx)
+        self._tta_row.set_on(tta in ("Enabled", "On", "on", "true", "True", "1"))
         bigshifts = d.get("bigshifts", "Disabled")
         if isinstance(bigshifts, int):
             bigshifts = "Disabled" if bigshifts <= 1 else str(bigshifts)
         if not isinstance(bigshifts, str): bigshifts = "Disabled"
         idx = self._bigshifts_combo.findText(bigshifts)
         if idx >= 0: self._bigshifts_combo.setCurrentIndex(idx)
+        spectro = d.get("spectrogram", "Disabled")
+        if not isinstance(spectro, str): spectro = "Disabled"
+        idx = self._spectro_combo.findText(spectro)
+        if idx >= 0: self._spectro_combo.setCurrentIndex(idx)
+        skip = d.get("skip_errors", "Enabled")
+        if isinstance(skip, bool):
+            skip = "Enabled" if skip else "Disabled"
+        if not isinstance(skip, str): skip = "Enabled"
+        self._skip_row.set_on(skip not in ("Disabled", "Off", "off", "false", "False", "0"))
+        lora_mode = d.get("lora_mode", "Off")
+        if not isinstance(lora_mode, str): lora_mode = "Off"
+        lora_on = lora_mode in ("PEFT", "loralib", "On", "on", "peft")
+        self._lora_row.set_on(lora_on)
+        self._lora_kind_row.set_on(lora_mode == "loralib")
+        self._sync_lora_rows()
+        lora_ckpt = d.get("lora_checkpoint", "")
+        if isinstance(lora_ckpt, str) and lora_ckpt:
+            self._lora_ckpt_row.set_value([lora_ckpt] if os.path.isfile(lora_ckpt) else lora_ckpt)
         dev = d.get("device", "")
         if not isinstance(dev, str): dev = ""
         idx = self._device_combo.findText(dev)
@@ -4955,7 +5220,7 @@ class InferencePage(QWidget):
 
         device_ids = device_ids_from_selection(self._device_combo.currentText())
         force_cpu  = device_ids is None
-        use_tta    = self._tta_combo.currentText() == "Enabled"
+        use_tta    = self._tta_row.is_on()
         bigshifts_text = self._bigshifts_combo.currentText()
         try:
             bigshifts = max(1, int(bigshifts_text)) if bigshifts_text != "Disabled" else 1
@@ -5132,6 +5397,17 @@ class InferencePage(QWidget):
         if use_tta: cmd.append("--use_tta")
         if bigshifts > 1:
             cmd += ["--bigshifts", str(bigshifts)]
+        spectro_s = self._spectro_seconds()
+        if spectro_s > 0:
+            cmd += ["--draw_spectro", str(spectro_s)]
+        if self._skip_row.is_on():
+            cmd.append("--skip_errors")
+        lora_mode = self._lora_mode_text()
+        lora_ckpt = self._lora_ckpt_path()
+        if lora_ckpt and lora_mode == "PEFT":
+            cmd += ["--lora_checkpoint_peft", lora_ckpt]
+        elif lora_ckpt and lora_mode == "loralib":
+            cmd += ["--lora_checkpoint_loralib", lora_ckpt]
         # Fork architectures ship their own backend .py (downloaded to
         # models/custom/<module> at install time, under the writable APP_DIR);
         # pass the folder so the engine loads the model class from the

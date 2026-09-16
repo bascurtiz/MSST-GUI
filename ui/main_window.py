@@ -346,11 +346,11 @@ class _WindowButtons(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
 
-        self._min_btn = _WindowButton("minimize")
+        self._min_btn = _WindowButton("minimize", self)
         self._min_btn.clicked.connect(lambda: self.window().showMinimized())
-        self._max_btn = _WindowButton("maximize")
+        self._max_btn = _WindowButton("maximize", self)
         self._max_btn.clicked.connect(self._toggle_maximize)
-        self._close_btn = _WindowButton("close")
+        self._close_btn = _WindowButton("close", self)
         self._close_btn.clicked.connect(lambda: self.window().close())
 
         layout.addWidget(self._min_btn)
@@ -531,14 +531,29 @@ class _ThemeToggle(QFrame):
 
 
 class _ThemeSwitchOverlay(QWidget):
-    """Opaque full-window cover shown while pages are rebuilt for a theme
-    switch. Painted in the NEW theme so the app reads as already switched.
-    Shows a progress bar: the rebuild runs in chunks, so a determinate bar
-    (advancing per completed chunk) reads smooth, unlike a spinner that can
-    only repaint between chunks."""
+    """Opaque cover shown while pages are rebuilt for a theme switch.
+
+    Top-level (not a child of the main window) so it sits above the stray
+    captioned "MSST" helper HWNDs that page construction otherwise maps
+    beside the overlay pill. Painted in the NEW theme so the app reads as
+    already switched.
+    """
+
+    _FLAGS = (
+        Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
+        | Qt.WindowDoesNotAcceptFocus | Qt.NoDropShadowWindowHint
+    )
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        # Ignore parent: a child overlay cannot cover sibling top-level
+        # helper windows. Hide before flags so the HWND never flashes.
+        super().__init__(None)
+        self.setObjectName("themeSwitchOverlay")
+        self.setWindowTitle("\u200b")
+        self.setAttribute(Qt.WA_DontShowOnScreen, True)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setWindowFlags(self._FLAGS)
+        self.setAttribute(Qt.WA_DontShowOnScreen, True)
         self._progress = 0.0
 
     def set_progress(self, fraction):
@@ -651,20 +666,28 @@ class MainWindow(QMainWindow):
     TAB_SETTINGS = 4
 
     def __init__(self, progress_cb=None):
-        super().__init__()
+        super().__init__(None)
         self.setObjectName("mainWindow")
+        # setWindowFlags recreates the HWND — apply DontShowOnScreen both
+        # before and after so the default-sized frame never maps.
+        self.setAttribute(Qt.WA_DontShowOnScreen, True)
+        self.setWindowFlags(
+            Qt.FramelessWindowHint | Qt.WindowMinimizeButtonHint
+            | Qt.NoDropShadowWindowHint
+        )
+        self.setAttribute(Qt.WA_DontShowOnScreen, True)
         # Startup-only progress hook consumed by the splash screen; cleared
         # by main() once the window is shown so theme rebuilds don't fire it.
         self._progress_cb = progress_cb
         self.setWindowTitle("MUSIC SOURCE SEPARATION — MODERN GUI")
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowMinimizeButtonHint)
         self.setMinimumSize(QSize(1100, 700))
         self._report_progress("Preparing workspace...", 12)
 
-        self._central = QWidget()
+        self._central = QWidget(self)
         cv = QVBoxLayout(self._central)
         cv.setContentsMargins(0, 0, 0, 0)
         cv.setSpacing(0)
+        self.setCentralWidget(self._central)
 
         self._header = self._build_header()
         cv.addWidget(self._header)
@@ -681,17 +704,10 @@ class MainWindow(QMainWindow):
         self._stripping = False
         self._pages_stripped = False
         self._switch_overlay = None
-        self._stack = QStackedWidget()
-        self.ensemble_stack = QStackedWidget()
-        self._create_pages()
-
-        self._stack.addWidget(self.inference_page)       # 0
-        self._stack.addWidget(self.training_page)        # 1
-        self._stack.addWidget(self.ensemble_stack)       # 2
-        self._stack.addWidget(self.console_page)         # 3
-        self._stack.addWidget(self.settings_page)        # 4
+        self._stack = QStackedWidget(self._central)
+        self.ensemble_stack = QStackedWidget(self._stack)
         cv.addWidget(self._stack, 1)
-        self.setCentralWidget(self._central)
+        self._create_pages()
         self._apply_theme_bgs()
 
         # The blur effect is attached to the central widget ONLY while a
@@ -731,24 +747,28 @@ class MainWindow(QMainWindow):
                 pass
 
     # —— Theme switching ————————————————————————————————————————————————
+    def _spawn_page(self, attr, cls, stack):
+        """Construct a page already parented to its stack so it never maps
+        as a top-level 'MSST' window, then insert it in the same turn."""
+        page = cls(stack)
+        setattr(self, attr, page)
+        stack.addWidget(page)
+        return page
+
     def _create_pages(self):
         self._report_progress("Building inference page...", 28)
-        self.inference_page = InferencePage()
+        self._spawn_page("inference_page", InferencePage, self._stack)
         self._report_progress("Building training page...", 38)
-        self.training_page = TrainingPage()
+        self._spawn_page("training_page", TrainingPage, self._stack)
         self._report_progress("Building ensemble pages...", 44)
-        self.ensemble_landing = EnsembleLandingPage()
-        self.auto_ensemble = AutoEnsemblePage()
-        self.manual_ensemble = ManualEnsemblePage()
-        self.iterative_ensemble = IterativeEnsemblePage()
+        self._add_ensemble_page("ensemble_landing", EnsembleLandingPage)
+        self._add_ensemble_page("auto_ensemble", AutoEnsemblePage)
+        self._add_ensemble_page("manual_ensemble", ManualEnsemblePage)
+        self._add_ensemble_page("iterative_ensemble", IterativeEnsemblePage)
+        self._stack.addWidget(self.ensemble_stack)
         self._report_progress("Building console & settings...", 56)
-        self.console_page = ConsolePage()
-        self.settings_page = SettingsPage()
-
-        self.ensemble_stack.addWidget(self.ensemble_landing)
-        self.ensemble_stack.addWidget(self.auto_ensemble)
-        self.ensemble_stack.addWidget(self.manual_ensemble)
-        self.ensemble_stack.addWidget(self.iterative_ensemble)
+        self._spawn_page("console_page", ConsolePage, self._stack)
+        self._spawn_page("settings_page", SettingsPage, self._stack)
         self._wire_pages()
 
     def _wire_pages(self):
@@ -906,10 +926,13 @@ class MainWindow(QMainWindow):
         self._saved_stack_idx = self._stack.currentIndex()
         self._saved_ens_idx = self.ensemble_stack.currentIndex()
         self._stripping = True
+        from ui.widgets.splash import set_stray_sweep
+        set_stray_sweep(True)
         overlay = self._show_switch_overlay()
         if overlay is not None:
             overlay.set_progress(0.03)
         QApplication.processEvents()  # paint the overlay before tearing down
+        self._sweep_theme_strays()
 
         self._persist_training_settings()
         self._persist_inference_settings()
@@ -936,14 +959,16 @@ class MainWindow(QMainWindow):
             if overlay is not None:
                 overlay.set_progress(0.03 + 0.07 * (i + 1) / n)
             QApplication.processEvents()
+            self._sweep_theme_strays()
         self._stripping = False
         self._pages_stripped = True
         return True
 
     def _show_switch_overlay(self):
         if self._switch_overlay is None:
-            self._switch_overlay = _ThemeSwitchOverlay(self)
-        self._switch_overlay.setGeometry(self.rect())
+            self._switch_overlay = _ThemeSwitchOverlay()
+        self._switch_overlay.setGeometry(self.frameGeometry())
+        self._switch_overlay.setAttribute(Qt.WA_DontShowOnScreen, False)
         self._switch_overlay.show()
         self._switch_overlay.raise_()
         return self._switch_overlay
@@ -962,15 +987,17 @@ class MainWindow(QMainWindow):
             QApplication.processEvents()
         self._pages_stripped = False
         self._switching = True
+        from ui.widgets.splash import set_stray_sweep
+        set_stray_sweep(True)
         self._rebuild_steps = [
-            lambda: setattr(self, "inference_page", InferencePage()),
-            lambda: setattr(self, "training_page", TrainingPage()),
-            lambda: self._add_ensemble_page("ensemble_landing", EnsembleLandingPage()),
-            lambda: self._add_ensemble_page("auto_ensemble", AutoEnsemblePage()),
-            lambda: self._add_ensemble_page("manual_ensemble", ManualEnsemblePage()),
-            lambda: self._add_ensemble_page("iterative_ensemble", IterativeEnsemblePage()),
-            lambda: setattr(self, "console_page", ConsolePage()),
-            lambda: setattr(self, "settings_page", SettingsPage()),
+            lambda: self._spawn_page("inference_page", InferencePage, self._stack),
+            lambda: self._spawn_page("training_page", TrainingPage, self._stack),
+            lambda: self._add_ensemble_page("ensemble_landing", EnsembleLandingPage),
+            lambda: self._add_ensemble_page("auto_ensemble", AutoEnsemblePage),
+            lambda: self._add_ensemble_page("manual_ensemble", ManualEnsemblePage),
+            lambda: self._add_ensemble_page("iterative_ensemble", IterativeEnsemblePage),
+            lambda: self._spawn_page("console_page", ConsolePage, self._stack),
+            lambda: self._spawn_page("settings_page", SettingsPage, self._stack),
             self._wire_pages,
             self._apply_theme_bgs,
             self._attach_pages,
@@ -981,16 +1008,22 @@ class MainWindow(QMainWindow):
         self._rebuild_step_i = 0
         QTimer.singleShot(0, self._rebuild_step)
 
-    def _add_ensemble_page(self, attr, page):
-        setattr(self, attr, page)
-        self.ensemble_stack.addWidget(page)
+    def _add_ensemble_page(self, attr, cls):
+        self._spawn_page(attr, cls, self.ensemble_stack)
 
     def _attach_pages(self):
+        # addWidget on an already-inserted child moves it to the end, so
+        # calling these in tab order repairs the stack after a rebuild that
+        # appended pages while ensemble_stack was still sitting at index 0.
         self._stack.addWidget(self.inference_page)       # 0
         self._stack.addWidget(self.training_page)        # 1
         self._stack.addWidget(self.ensemble_stack)       # 2
         self._stack.addWidget(self.console_page)         # 3
         self._stack.addWidget(self.settings_page)        # 4
+
+    def _sweep_theme_strays(self):
+        from ui.widgets.splash import hide_startup_strays
+        hide_startup_strays(self, self._switch_overlay)
 
     def _rebuild_step(self):
         if not self._switching:
@@ -1002,6 +1035,7 @@ class MainWindow(QMainWindow):
         if self._switch_overlay is not None:
             frac = 0.10 + 0.88 * (self._rebuild_step_i / len(self._rebuild_steps))
             self._switch_overlay.set_progress(frac)
+        self._sweep_theme_strays()
         if self._rebuild_step_i < len(self._rebuild_steps):
             QTimer.singleShot(0, self._rebuild_step)
 
@@ -1010,6 +1044,8 @@ class MainWindow(QMainWindow):
         self.ensemble_stack.setCurrentIndex(getattr(self, "_saved_ens_idx", 0))
 
     def _finish_theme_rebuild(self):
+        from ui.widgets.splash import set_stray_sweep
+        set_stray_sweep(False)
         if self._switch_overlay is not None:
             self._switch_overlay.hide()
             self._switch_overlay.deleteLater()
@@ -1089,7 +1125,7 @@ class MainWindow(QMainWindow):
 
     # —— Header ————————————————————————————————————————————————————————
     def _build_header(self):
-        hdr = _HeaderBar()
+        hdr = _HeaderBar(self._central)
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(28, 0, 16, 0)
         hl.setSpacing(0)
@@ -1106,18 +1142,18 @@ class MainWindow(QMainWindow):
         self._nav_tabs = []
         tab_names = ["INFERENCE", "TRAINING", "ENSEMBLE", "CONSOLE", "SETTINGS"]
         for i, name in enumerate(tab_names):
-            tab = _NavTab(name, i)
+            tab = _NavTab(name, i, hdr)
             tab.clicked.connect(self._switch)
             self._nav_tabs.append(tab)
             hl.addWidget(tab)
 
         hl.addStretch(1)
 
-        self._theme_toggle = _ThemeToggle()
+        self._theme_toggle = _ThemeToggle(hdr)
         hl.addWidget(self._theme_toggle)
         hl.addSpacing(12)
 
-        self._window_buttons = _WindowButtons()
+        self._window_buttons = _WindowButtons(hdr)
         hl.addWidget(self._window_buttons)
 
         self._indicator = _NavIndicator(hdr)
@@ -1381,6 +1417,8 @@ class MainWindow(QMainWindow):
         self.auto_ensemble.load_models(models)
         self.iterative_ensemble.load_models(models)
         self.settings_page.load_settings(models)
+        from ui.widgets.splash import hide_startup_strays
+        hide_startup_strays(self)
 
     def _on_process_state(self, running):
         self._processing = running

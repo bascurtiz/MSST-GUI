@@ -145,7 +145,9 @@ def run_folder(
         except Exception as e:
             print(f"Cannot read track: {format(path)}")
             print(f"Error message: {str(e)}")
-            continue
+            if getattr(args, "skip_errors", False):
+                continue
+            sys.exit(1)
 
         # Convert mono audio to expected channel format if needed
         if mix.ndim == 1:

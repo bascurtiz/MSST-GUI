@@ -437,8 +437,8 @@ def main():
     page = _build_page(tmp, [_model(tmp, "qc_model")])
     row = page._sdr_row
     labels = [w.text() for w in row.findChildren(QLabel)]
-    check(any("Quality Checker Test" == t for t in labels),
-          f"row label reads 'Quality Checker Test', got {labels}")
+    check(any("QUALITY CHECK" == t for t in labels),
+          f"row label reads 'QUALITY CHECK', got {labels}")
     check(row.combo.count() == len(EXPECTED_DATASETS),
           f"dropdown lists all datasets, got {row.combo.count()}")
     from backend.sdr_datasets import (

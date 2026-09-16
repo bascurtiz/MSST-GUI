@@ -29,18 +29,25 @@ from PySide6.QtGui import (
 )
 
 from backend.runner import ProcessRunner
-from backend.paths import REPO_ROOT, TRAIN_SCRIPT, get_python_exe
+from backend.paths import REPO_ROOT, get_python_exe
 from backend.gpu_utils import list_gpus
 from backend import settings as settings_store
+from backend.train_cmd import (
+    DEFAULT_RUN_OPTS, accelerate_available, build_train_command,
+    detect_custom_backend, inject_lora_defaults, resolve_launcher,
+    subprocess_env,
+)
 from ui.strings import T_EXPORT_WEIGHTS
 from ui.theme import theme_manager, UIConstants
 from ui.widgets.common import (
     PageHeader, solid_button_ss, EllipsisButton, GlyphButton, css_color,
-    _solid_icon_color, _stop_icon_color, run_blurred_dialog,
+    _solid_icon_color, _stop_icon_color, run_blurred_dialog, OptionalFold,
+    _page_edge_scroll_ss,
 )
 from ui.pages.inference_page import (
     _sec_hdr, _row_ss, _lbl_ss, _combo_ss, _ComboBox, _ExpandArrow,
-    _InfoDot, _CircleCheck, _MiniSwitch, ROW_H,
+    _InfoDot, _CircleCheck, _MiniSwitch, _SwitchRow, ROW_H,
+    CONFIG_DOT_SLOT, CONFIG_VALUE_GAP,
 )
 from ui.widgets.ckpt_settings_dialog import _TitleBar
 from ui.widgets.pretrained_models_dialog import PretrainedModelsDialog
@@ -65,7 +72,7 @@ DATASET_TYPES = [
     ("7", "Type 7 — Class-balanced aligned (rare instruments boosted)"),
 ]
 
-LABEL_W = 170
+LABEL_W = 160
 MONO = "'Courier New','Consolas',monospace"
 
 
@@ -193,40 +200,38 @@ def _label_font():
 
 def _lbl_with_info(label, tooltip=""):
     """Row label column (wider than the INFERENCE page's: training labels
-    like RESUME CHECKPOINT need the room). Rows that carry a ⓘ dot reserve
-    the full label budget for the text, so the dot starts at one shared x
-    instead of trailing the text — the same fixed-slot trick the INFERENCE
-    page's CONFIGURATION column uses to keep its dots in a vertical line.
-    A label that cannot fit on one line wraps inside the row (the width is
-    set explicitly: a word-wrapped QLabel's own sizeHint uses a narrow
-    aspect-ratio heuristic and would wrap MODEL TYPE too)."""
+    like RESUME need the room). The ⓘ slot matches Inference CONFIGURATION:
+    CONFIG_DOT_SLOT in front of the glyph, CONFIG_VALUE_GAP after it (added
+    by the row). A label that cannot fit on one line wraps inside the row
+    (the width is set explicitly: a word-wrapped QLabel's own sizeHint uses
+    a narrow aspect-ratio heuristic and would wrap MODEL TYPE too)."""
     wrap = QWidget()
     wrap.setStyleSheet("background:transparent;")
     wrap.setFixedWidth(LABEL_W)
     hl = QHBoxLayout(wrap)
-    hl.setContentsMargins(0, 0, 8, 0)
+    hl.setContentsMargins(0, 0, 0, 0)
     hl.setSpacing(5)
     lb = QLabel(label.upper())
     lb.setStyleSheet(_lbl_ss())
     lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-    max_w = LABEL_W - 8 - (_InfoDot.SLOT_W if tooltip else 0)
     if tooltip:
-        # Fixed dot slot: the label always occupies the full budget, so the
-        # dot lands at LABEL_W - 8 - SLOT_W + spacing in every dot row.
-        lb.setWordWrap(True)
-        lb.setFixedWidth(max_w)
+        # Same slot as Inference: label text | 10px | 14px ⓘ, every dot on
+        # one x so CONFIG_VALUE_GAP after the wrap is the air before the value.
+        lb.setFixedWidth(LABEL_W - CONFIG_DOT_SLOT)
+        natural = QFontMetrics(_label_font()).horizontalAdvance(label.upper()) + 2
+        lb.setWordWrap(natural > LABEL_W - CONFIG_DOT_SLOT)
+        hl.addWidget(lb, 0, Qt.AlignVCenter)
+        hl.addSpacing(CONFIG_DOT_SLOT - _InfoDot.W - hl.spacing())
+        hl.addWidget(_InfoDot(tooltip), 0, Qt.AlignVCenter)
     else:
         natural = QFontMetrics(_label_font()).horizontalAdvance(label.upper()) + 2
-        if natural <= max_w:
+        if natural <= LABEL_W:
             lb.setFixedWidth(natural)
         else:
             lb.setWordWrap(True)
-            lb.setFixedWidth(max_w)
-    hl.addWidget(lb, 0, Qt.AlignVCenter)
-    if tooltip:
-        hl.addSpacing(_InfoDot.SLOT_W - _InfoDot.W - hl.spacing())
-        hl.addWidget(_InfoDot(tooltip), 0, Qt.AlignVCenter)
-    hl.addStretch()
+            lb.setFixedWidth(LABEL_W)
+        hl.addWidget(lb, 0, Qt.AlignVCenter)
+        hl.addStretch()
     return wrap
 
 
@@ -256,7 +261,7 @@ class _WrapLabel(QWidget):
         super().__init__(parent)
         self._text = ""
         self._placeholder = placeholder
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.setMinimumWidth(60)
 
     @staticmethod
@@ -273,12 +278,20 @@ class _WrapLabel(QWidget):
     def text(self):
         return self._text
 
+    def _flags(self):
+        # Real paths have no spaces — wrap anywhere and elide the head.
+        # Placeholders are a single elided line so a 42px card never clips
+        # "Checkpoint to start from…" into three half-visible rows.
+        if self._text:
+            return Qt.TextWrapAnywhere | Qt.AlignLeft
+        return Qt.AlignLeft | Qt.TextSingleLine
+
     def _fitted(self, fm, w):
         s = self._text
         if not s:
-            return self._placeholder
+            return fm.elidedText(self._placeholder, Qt.ElideRight, max(w, 10))
         avail = self.MAX_LINES * fm.height() + 1
-        flags = Qt.TextWrapAnywhere | Qt.AlignLeft
+        flags = self._flags()
         while len(s) > 4:
             r = fm.boundingRect(QRect(0, 0, max(w, 10), 100000), flags, s)
             if r.height() <= avail:
@@ -294,8 +307,9 @@ class _WrapLabel(QWidget):
         p.setFont(f)
         t = theme_manager.theme
         p.setPen(css_color(t.text if self._text else t.text_muted))
-        s = self._fitted(QFontMetrics(f), self.width())
-        p.drawText(self.rect(), Qt.TextWrapAnywhere | Qt.AlignLeft | Qt.AlignVCenter, s)
+        fm = QFontMetrics(f)
+        s = self._fitted(fm, self.width())
+        p.drawText(self.rect(), self._flags() | Qt.AlignVCenter, s)
         p.end()
 
 
@@ -469,6 +483,12 @@ class _IconTextButton(QPushButton):
         h.addWidget(self._lbl, 0, Qt.AlignVCenter)
         self._refresh()
 
+    def fit_contents(self, height=40, h_pad=28):
+        """Lock height; width hugs the icon + label plus side padding."""
+        self._content.adjustSize()
+        self.setFixedSize(self._content.width() + h_pad, height)
+        self._refresh()
+
     def _refresh(self):
         t = theme_manager.theme
         c = t.text if self._hovered else t.text_dim
@@ -523,6 +543,7 @@ class _PathRow(QFrame):
         hl.setContentsMargins(12, 0, 14, 0)
         hl.setSpacing(0)
         hl.addWidget(_lbl_with_info(label, tooltip))
+        hl.addSpacing(CONFIG_VALUE_GAP)
         self._val = _WrapLabel(placeholder)
         hl.addWidget(self._val, 1)
         self._btn = EllipsisButton()
@@ -532,9 +553,10 @@ class _PathRow(QFrame):
     def add_extra(self, w):
         """Dock a widget (e.g. the LATEST chip) between the value and '···'."""
         hl = self.layout()
-        hl.insertSpacing(2, 8)
-        hl.insertWidget(3, w, 0, Qt.AlignVCenter)
-        hl.insertSpacing(4, 4)
+        i = hl.count() - 1
+        hl.insertSpacing(i, 8)
+        hl.insertWidget(i + 1, w, 0, Qt.AlignVCenter)
+        hl.insertSpacing(i + 2, 4)
 
     # — values —
     def paths(self):
@@ -666,6 +688,7 @@ class _EditRow(QFrame):
         hl.setContentsMargins(12, 0, 14, 0)
         hl.setSpacing(0)
         hl.addWidget(_lbl_with_info(label, tooltip))
+        hl.addSpacing(CONFIG_VALUE_GAP)
         self.edit = QLineEdit()
         self.edit.setPlaceholderText(placeholder)
         self.edit.setStyleSheet(_edit_ss())
@@ -699,6 +722,7 @@ class _ComboRowT(QFrame):
         hl.setContentsMargins(12, 0, 14, 0)
         hl.setSpacing(0)
         hl.addWidget(_lbl_with_info(label, tooltip))
+        hl.addSpacing(CONFIG_VALUE_GAP)
         self.combo = _ComboBox()
         for key, disp in items:
             self.combo.addItem(disp, key)
@@ -756,6 +780,7 @@ class _ChevronRow(QFrame):
             hl.addSpacing(10)
         if label:
             hl.addWidget(_lbl_with_info(label, tooltip))
+            hl.addSpacing(CONFIG_VALUE_GAP)
         self._val = QLabel(placeholder)
         self._val.setWordWrap(True)
         self._val.setStyleSheet(_value_ss(muted=False))
@@ -800,14 +825,7 @@ class _CheckRow(QFrame):
         lb.setStyleSheet(_lbl_ss())
         hl.addWidget(lb, 0, Qt.AlignVCenter)
         if tooltip:
-            # ⓘ on the same vertical line as the standard rows' dots: those
-            # start at 12 (row margin) + label budget + 5 (spacing); this
-            # row's text starts at 14 (margin) + 16 (check) + 12 (gap), so
-            # give the label exactly the width that lands the dot there.
-            dot_x = 12 + (LABEL_W - 8 - _InfoDot.SLOT_W) + 5
-            lb.setWordWrap(True)
-            lb.setFixedWidth(dot_x - 14 - self._check.width() - 12 - 6)
-            hl.addSpacing(6)
+            hl.addSpacing(CONFIG_DOT_SLOT - _InfoDot.W)
             hl.addWidget(_InfoDot(tooltip), 0, Qt.AlignVCenter)
         hl.addStretch()
 
@@ -1037,6 +1055,39 @@ def _option_row(check, title, desc=""):
     return w
 
 
+def _pill_switch(off_text, on_text, checked=False):
+    """Architecture-vs-Target pill: off_text | switch | on_text."""
+    wrap = QWidget()
+    wrap.setStyleSheet("background:transparent;")
+    hl = QHBoxLayout(wrap)
+    hl.setContentsMargins(0, 0, 0, 0)
+    hl.setSpacing(5)
+    off_lbl = QLabel(off_text)
+    on_lbl = QLabel(on_text)
+    sw = _MiniSwitch(checked, wrap)
+
+    def relabel(_on=None):
+        on = sw.is_checked()
+        accent = theme_manager.accent
+        dim = theme_manager.theme.text_muted
+        base = ("font-family:'Montserrat';font-size:8px;font-weight:600;"
+                "margin-top:1px;background:transparent;")
+        off_lbl.setStyleSheet(base + f"color:{dim if on else accent};")
+        on_lbl.setStyleSheet(base + f"color:{accent if on else dim};")
+
+    sw.toggled.connect(relabel)
+    off_lbl.setCursor(Qt.PointingHandCursor)
+    on_lbl.setCursor(Qt.PointingHandCursor)
+    off_lbl.mousePressEvent = lambda e: sw.set_checked(False)
+    on_lbl.mousePressEvent = lambda e: sw.set_checked(True)
+    hl.addWidget(off_lbl, 0, Qt.AlignVCenter)
+    hl.addWidget(sw, 0, Qt.AlignVCenter)
+    hl.addWidget(on_lbl, 0, Qt.AlignVCenter)
+    wrap._sw = sw
+    relabel()
+    return wrap
+
+
 class _MultiSelectDialog(_DialogBase):
     """Pick several entries from a catalogue (losses / metrics)."""
 
@@ -1080,7 +1131,7 @@ class _MultiSelectDialog(_DialogBase):
             row = QHBoxLayout()
             row.setContentsMargins(2, 2, 2, 0)
             row.setSpacing(10)
-            self._toggle_sw = _MiniSwitch(checked)
+            self._toggle_sw = _MiniSwitch(checked, self)
             row.addWidget(self._toggle_sw)
             tl = QLabel(label)
             tl.setToolTip(tip)
@@ -1105,11 +1156,18 @@ class _MultiSelectDialog(_DialogBase):
         return self._toggle_sw.is_checked() if self._toggle_sw is not None else False
 
 
+_LAUNCHER_ITEMS = [
+    ("standard", "Standard — train.py (DataParallel if several GPUs)"),
+    ("ddp", "DDP — train_ddp.py (one process per selected GPU)"),
+    ("accelerate", "Accelerate — older train_accelerate.py loop"),
+]
+
+
 class _RunOptionsDialog(_DialogBase):
     """GPUs / workers / seed plus the run flags train.py accepts."""
 
     def __init__(self, state, parent=None):
-        super().__init__("GPUS / WORKERS / SEED", parent, size=(500, 600))
+        super().__init__("GPUS / WORKERS / SEED", parent, size=(520, 760))
         t = theme_manager.theme
         self._gpu_checks = {}
         self._switches = {}
@@ -1126,6 +1184,31 @@ class _RunOptionsDialog(_DialogBase):
             lb.setStyleSheet(_card_title_ss())
             vl.addSpacing(4)
             vl.addWidget(lb)
+
+        def combo(items, current, tip):
+            box = _ComboBox()
+            for key, label in items:
+                box.addItem(label, key)
+            box.setStyleSheet(_combo_ss())
+            box.setToolTip(tip)
+            idx = box.findData(current)
+            if idx >= 0:
+                box.setCurrentIndex(idx)
+            return box
+
+        def linedit(text, placeholder, password=False):
+            edit = QLineEdit(text or "")
+            edit.setPlaceholderText(placeholder)
+            edit.setFixedHeight(30)
+            if password:
+                edit.setEchoMode(QLineEdit.Password)
+            edit.setStyleSheet(
+                f"QLineEdit{{font-family:'Montserrat';font-size:11px;color:{t.text};"
+                f"background:{t.input_bg};border:1px solid {t.border_visible};"
+                f"border-radius:6px;padding:0 8px;}}"
+                f"QLineEdit::placeholder{{color:{t.text_muted};}}"
+            )
+            return edit
 
         section("Devices")
         gpus = [g for g in list_gpus() if not g.startswith("CPU")]
@@ -1149,6 +1232,21 @@ class _RunOptionsDialog(_DialogBase):
             cpu.set_checked(state.get("force_cpu", False))
             self._gpu_checks["cpu"] = cpu
             vl.addWidget(_option_row(cpu, "CPU only", "Hide the GPUs from the job (CUDA_VISIBLE_DEVICES=\"\")."))
+
+        section("Launcher")
+        self._launcher = combo(
+            _LAUNCHER_ITEMS, state.get("launcher") or "standard",
+            "standard: train.py (current). ddp: one process per GPU via "
+            "CUDA_VISIBLE_DEVICES. accelerate: older train_accelerate.py "
+            "(no LoRA / freeze / custom backends).")
+        vl.addWidget(self._launcher)
+        acc_note = QLabel(
+            "Accelerate falls back to Standard when LoRA, freeze layers, or a "
+            "custom backend is on, or when the accelerate package is missing.")
+        acc_note.setWordWrap(True)
+        acc_note.setStyleSheet(
+            f"font-family:'Montserrat';font-size:9px;color:{t.text_muted};background:transparent;")
+        vl.addWidget(acc_note)
 
         section("Data loading")
         grid = QGridLayout()
@@ -1184,7 +1282,7 @@ class _RunOptionsDialog(_DialogBase):
             row = QHBoxLayout()
             row.setContentsMargins(2, 0, 2, 0)
             row.setSpacing(10)
-            sw = _MiniSwitch(bool(state.get(key, default)))
+            sw = _MiniSwitch(bool(state.get(key, default)), self)
             self._switches[key] = sw
             row.addWidget(sw)
             lb = QLabel(label)
@@ -1196,15 +1294,95 @@ class _RunOptionsDialog(_DialogBase):
             vl.addLayout(row)
 
         switch_row("pin_memory", "Pin memory", "--pin_memory: faster host→GPU copies.")
+        switch_row("persistent_workers", "Persistent workers",
+                   "--persistent_workers: keep DataLoader workers alive between epochs.")
         section("Run options")
         switch_row("pre_valid", "Validate before training", "--pre_valid: run validation once before the first epoch.")
         switch_row("save_every_epoch", "Save weights every epoch", "--save_weights_every_epoch: keep a checkpoint per epoch (with all metrics in the name).")
         switch_row("each_metrics_in_name", "Per-stem metrics in checkpoint names", "--each_metrics_in_name.")
+        switch_row("safe_mode", "Safe mode", "--safe_mode: ignore forward errors and keep training.")
+        section("LoRA")
+        mode = (state.get("lora_mode") or "off")
+        lora_on = mode not in ("off", "", None)
+        lora_head = QHBoxLayout()
+        lora_head.setContentsMargins(2, 0, 2, 0)
+        lora_head.setSpacing(10)
+        lora_lb = QLabel("LoRA")
+        lora_lb.setToolTip(
+            "PEFT or loralib fine-tuning. A lora: block is written into the "
+            "run config when missing.")
+        lora_lb.setStyleSheet(
+            f"font-family:'Montserrat';font-size:11px;color:{t.text};background:transparent;")
+        lora_head.addWidget(lora_lb, 1)
+        self._lora_on_wrap = _pill_switch("Off", "On", lora_on)
+        self._lora_on_sw = self._lora_on_wrap._sw
+        lora_head.addWidget(self._lora_on_wrap, 0, Qt.AlignVCenter)
+        vl.addLayout(lora_head)
+
+        self._lora_kind_host = QWidget()
+        self._lora_kind_host.setStyleSheet("background:transparent;")
+        kind_hl = QHBoxLayout(self._lora_kind_host)
+        kind_hl.setContentsMargins(2, 0, 2, 0)
+        kind_hl.setSpacing(10)
+        kind_lb = QLabel("LoRA type")
+        kind_lb.setToolTip("PEFT (--train_lora_peft) or loralib (--train_lora_loralib).")
+        kind_lb.setStyleSheet(
+            f"font-family:'Montserrat';font-size:11px;color:{t.text};background:transparent;")
+        kind_hl.addWidget(kind_lb, 1)
+        self._lora_kind_wrap = _pill_switch("PEFT", "loralib", mode == "loralib")
+        self._lora_kind_sw = self._lora_kind_wrap._sw
+        kind_hl.addWidget(self._lora_kind_wrap, 0, Qt.AlignVCenter)
+        vl.addWidget(self._lora_kind_host)
+
+        self._lora_ckpt_host = QWidget()
+        self._lora_ckpt_host.setStyleSheet("background:transparent;")
+        lora_row = QHBoxLayout(self._lora_ckpt_host)
+        lora_row.setContentsMargins(0, 0, 0, 0)
+        lora_row.setSpacing(6)
+        self._lora_ckpt = linedit(
+            state.get("lora_checkpoint") or "", "Optional LoRA adapter checkpoint…")
+        lora_row.addWidget(self._lora_ckpt, 1)
+        lora_btn = EllipsisButton()
+        lora_btn.clicked.connect(self._browse_lora)
+        lora_row.addWidget(lora_btn)
+        vl.addWidget(self._lora_ckpt_host)
+
+        def _sync_lora(_on=None):
+            on = self._lora_on_sw.is_checked()
+            self._lora_kind_host.setVisible(on)
+            self._lora_ckpt_host.setVisible(on)
+        self._lora_on_sw.toggled.connect(_sync_lora)
+        _sync_lora()
+
+        class _LoRAModeView:
+            def currentData(inner_self):
+                if not self._lora_on_sw.is_checked():
+                    return "off"
+                return "loralib" if self._lora_kind_sw.is_checked() else "peft"
+        self._lora_mode = _LoRAModeView()
+
+        section("Freeze layers")
+        self._freeze = linedit(
+            state.get("freeze_layers") or "",
+            "Prefixes, space-separated (e.g. layer1 attn)")
+        self._freeze.setToolTip("--freeze_layers: freeze parameters whose names start with these prefixes.")
+        vl.addWidget(self._freeze)
+
+        section("Weights & Biases")
+        self._wandb_key = linedit(
+            state.get("wandb_key") or "", "API key (empty = wandb disabled)",
+            password=True)
+        vl.addWidget(self._wandb_key)
+        switch_row("wandb_offline", "Offline wandb",
+                   "--wandb_offline: log locally without uploading.")
+
         section("When resuming from a checkpoint")
         switch_row("load_optimizer", "Load optimizer state", "--load_optimizer")
         switch_row("load_scheduler", "Load scheduler state", "--load_scheduler")
         switch_row("load_epoch", "Continue epoch numbering", "--load_epoch")
         switch_row("load_best_metric", "Load best metric so far", "--load_best_metric")
+        switch_row("load_all_metrics", "Load all metrics", "--load_all_metrics")
+        switch_row("load_all_losses", "Load all losses", "--load_all_losses")
         vl.addStretch()
         sc.setWidget(inner)
         self.body.addWidget(sc, 1)
@@ -1215,14 +1393,29 @@ class _RunOptionsDialog(_DialogBase):
         self.body.addWidget(sep)
         self.add_buttons("Apply", self.accept)
 
+    def _browse_lora(self):
+        start = self._lora_ckpt.text() or ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "LoRA adapter checkpoint", start,
+            "Checkpoints (*.ckpt *.pth *.pt *.bin *.safetensors);;All files (*.*)")
+        if path:
+            self._lora_ckpt.setText(path)
+
     def values(self):
         ids = sorted(i for i, cb in self._gpu_checks.items() if i != "cpu" and cb.is_checked())
         cpu = self._gpu_checks.get("cpu")
+        launcher = self._launcher.currentData()
+        lora_mode = self._lora_mode.currentData()
         out = {
             "device_ids": ids or [0],
             "force_cpu": bool(cpu.is_checked()) if cpu is not None else False,
             "num_workers": self._workers.value(),
             "seed": self._seed.value(),
+            "launcher": launcher if launcher in ("standard", "ddp", "accelerate") else "standard",
+            "lora_mode": lora_mode if lora_mode in ("off", "peft", "loralib") else "off",
+            "lora_checkpoint": self._lora_ckpt.text().strip(),
+            "freeze_layers": self._freeze.text().strip(),
+            "wandb_key": self._wandb_key.text().strip(),
         }
         for k, sw in self._switches.items():
             out[k] = sw.is_checked()
@@ -1312,7 +1505,7 @@ class _ExportWeightsDialog(_DialogBase):
         row = QHBoxLayout()
         row.setContentsMargins(0, 6, 0, 0)
         row.setSpacing(10)
-        self._fp16 = _MiniSwitch(False)
+        self._fp16 = _MiniSwitch(False, self)
         row.addWidget(self._fp16)
         lb = QLabel("Store weights as float16 (half the file size, same quality for inference)")
         lb.setStyleSheet(_value_ss())
@@ -1402,12 +1595,7 @@ class TrainingPage(QWidget):
         self.setStyleSheet(f"#trainingPage{{background:{theme_manager.theme.bg};}}")
         self._runner = None
         self._log_file = None
-        self._run_opts = {
-            "device_ids": [0], "force_cpu": False, "num_workers": 4, "seed": 0,
-            "pin_memory": False, "pre_valid": False, "save_every_epoch": False,
-            "each_metrics_in_name": False, "load_optimizer": False,
-            "load_scheduler": False, "load_epoch": False, "load_best_metric": False,
-        }
+        self._run_opts = dict(DEFAULT_RUN_OPTS)
         self._losses = catalog.default_losses()
         self._use_standard_loss = False
         self._metrics = catalog.default_metrics()
@@ -1436,22 +1624,15 @@ class TrainingPage(QWidget):
             "TRAINING",
             "TRAIN & FINE-TUNE SEPARATION MODELS",
             highlight="SEPARATION MODELS",
+            help_key="training",
         ))
         root.addWidget(header_w)
+        root.addSpacing(UIConstants.HEADER_CONTENT_GAP)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet(
-            "QScrollArea{background:transparent;border:none;}"
-            "QScrollBar:vertical{width:4px;background:transparent;margin:0;}"
-            f"QScrollBar::handle:vertical{{background:{t.scrollbar_handle};"
-            "border-radius:2px;min-height:30px;}"
-            f"QScrollBar::handle:vertical:hover{{background:{t.scrollbar_hover};}}"
-            "QScrollBar::add-line:vertical{height:0;}"
-            "QScrollBar::sub-line:vertical{height:0;}"
-            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}"
-        )
+        scroll.setStyleSheet(_page_edge_scroll_ss())
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         content = QWidget()
         content.setStyleSheet("background:transparent;")
@@ -1477,7 +1658,7 @@ class TrainingPage(QWidget):
         return w, vl
 
     def _build_config_column(self):
-        w, ll = self._column((32, 32, 10, 16))
+        w, ll = self._column((32, 16, 10, 16))
         # Same header rhythm as the INFERENCE page: the 7px push-down makes
         # CONFIGURATION start at the same height as the INFERENCE tab's
         # section headers, so switching tabs doesn't jump.
@@ -1495,7 +1676,7 @@ class TrainingPage(QWidget):
         cfg.addWidget(self._model_row)
 
         self._config_row = _PathRow(
-            "Config path", "Select or drop a model YAML config…",
+            "Config path", "Select a model YAML config…",
             mode="file", file_filter="YAML config (*.yaml *.yml);;All files (*.*)",
             tooltip="Model / training YAML (--config_path).\n"
                     "The TRAINING SETTINGS column is filled from it.",
@@ -1504,19 +1685,19 @@ class TrainingPage(QWidget):
         cfg.addWidget(self._config_row)
 
         self._results_row = _PathRow(
-            "Results path", "Select or drop the results folder…", mode="folder",
+            "Results path", "Select the results folder…", mode="folder",
             tooltip="Where checkpoints, metadata cache and the training log go\n(--results_path).")
         self._results_row.changed.connect(self._refresh_latest_chip)
         cfg.addWidget(self._results_row)
 
         self._data_row = _PathRow(
-            "Data path", "Select or drop the training dataset folder(s)…", mode="folder",
+            "Data path", "Select the training dataset folder(s)…", mode="folder",
             tooltip="Training dataset root(s) (--data_path).\n"
                     "Drop several folders to train on all of them.", multi=True)
         cfg.addWidget(self._data_row)
 
         self._valid_row = _PathRow(
-            "Valid path", "Select or drop the validation folder(s)…", mode="folder",
+            "Valid path", "Select the validation folder(s)…", mode="folder",
             tooltip="Validation set (--valid_path): one folder per song with\n"
                     "every stem plus mixture.wav.", multi=True)
         cfg.addWidget(self._valid_row)
@@ -1525,13 +1706,6 @@ class TrainingPage(QWidget):
             "Dataset type", [(k, k) for k, _d in DATASET_TYPES],
             tooltip="Dataset layout (--dataset_type):\n" + "\n".join(d for _k, d in DATASET_TYPES))
         cfg.addWidget(self._dataset_row)
-
-        self._augment_row = _CheckRow(
-            "Use augmentation for training",
-            tooltip="Sets augmentations.enable in the config used for the run.\n"
-                    "The augmentation details themselves live in the YAML.",
-            checked=True)
-        cfg.addWidget(self._augment_row)
 
         self._gpu_row = _ChevronRow(
             "GPUs / Workers / Seed",
@@ -1542,13 +1716,13 @@ class TrainingPage(QWidget):
         cfg.addWidget(self._gpu_row)
 
         self._ckpt_row = _ClickablePathRow(
-            "Resume checkpoint", "Optional: checkpoint to start from…",
+            "Resume", "Checkpoint to start from…",
             mode="file", file_filter="Checkpoints (*.ckpt *.pth *.pt *.bin *.th *.chpt);;All files (*.*)",
             tooltip="Initial weights (--start_check_point). Leave empty to train\n"
-                    "from scratch. LATEST picks the newest checkpoint in the\n"
+                    "from scratch. LAST picks the newest checkpoint in the\n"
                     "results folder; the > arrow browses the pre-trained catalog.",
             picker=True)
-        self._latest_chip = QPushButton("Latest")
+        self._latest_chip = QPushButton("Last")
         self._latest_chip.setFixedHeight(18)
         self._latest_chip.setCursor(Qt.PointingHandCursor)
         self._latest_chip.setToolTip("Use the newest checkpoint from the results folder")
@@ -1573,18 +1747,27 @@ class TrainingPage(QWidget):
         self._ckpt_row.add_extra(self._clear_ckpt_btn)
         self._ckpt_row.changed.connect(self._on_ckpt_changed)
         self._ckpt_row.pick_requested.connect(self._open_pretrained)
-        cfg.addWidget(self._ckpt_row)
+
+        opt = OptionalFold(fill_leftover=False)
+        opt.addWidget(self._ckpt_row)
+
+        self._augment_row = _SwitchRow(
+            "Augmentation", "Disabled", "Enabled",
+            tooltip="Sets augmentations.enable in the config used for the run.\n"
+                    "The augmentation details themselves live in the YAML.",
+            checked=True, make_label=_lbl_with_info)
+        opt.addWidget(self._augment_row)
 
         self._edit_row = _ChevronRow("", placeholder="Edit Configuration", icon=_PencilIcon())
         self._edit_row.clicked.connect(self._open_config_editor)
-        cfg.addWidget(self._edit_row)
+        opt.addWidget(self._edit_row)
 
         ll.addLayout(cfg)
-        ll.addStretch()
+        ll.addWidget(opt, 1)
         return w
 
     def _build_settings_column(self):
-        w, ml = self._column((10, 32, 10, 16))
+        w, ml = self._column((10, 16, 10, 16))
         # 7px push-down + 19px gap: TRAINING SETTINGS starts at exactly the
         # same height as CONFIGURATION / TRAINING MONITOR (and the INFERENCE
         # tab's headers) — the three columns share one baseline.
@@ -1662,7 +1845,7 @@ class TrainingPage(QWidget):
 
     def _build_monitor_column(self):
         t = theme_manager.theme
-        w, rl = self._column((10, 32, 32, 16))
+        w, rl = self._column((10, 16, 32, 16))
         # Same 7px push-down + 19px gap as the other two columns so all
         # three section headers and their first cards line up.
         rl.addSpacing(7)
@@ -1742,14 +1925,14 @@ class TrainingPage(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
         btn_row.setContentsMargins(0, 0, 0, 0)
-        self.btn_run = GlyphButton("Start Training", "▶", _solid_icon_color,
-                                   glyph_size=18, text_size=12)
-        self.btn_run.setFixedSize(200, 44)
+        self.btn_run = GlyphButton("Train", "▶", _solid_icon_color,
+                                   glyph_size=18, text_size=12, parent=self)
         self.btn_run.setStyleSheet(solid_button_ss())
+        self.btn_run.fit_contents()
         self.btn_run.clicked.connect(self._run)
         self.btn_stop = GlyphButton("Stop", "■", _stop_icon_color,
-                                    glyph_size=16, text_size=12)
-        self.btn_stop.setFixedSize(100, 44)
+                                    glyph_size=16, text_size=12, parent=self)
+        self.btn_stop.fit_contents()
         self.btn_stop.setEnabled(False)
         self.btn_stop.setStyleSheet(
             "QPushButton{"
@@ -1773,13 +1956,13 @@ class TrainingPage(QWidget):
         right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(12)
         self.btn_results = _IconTextButton("Open Results Folder", "folder")
-        self.btn_results.setFixedSize(196, 40)
+        self.btn_results.fit_contents()
         self.btn_results.clicked.connect(self._open_results)
         self.btn_logs = _IconTextButton("View Logs", "doc")
-        self.btn_logs.setFixedSize(150, 40)
+        self.btn_logs.fit_contents()
         self.btn_logs.clicked.connect(self._open_logs)
         self.btn_export = _IconTextButton("Export Weights", "export")
-        self.btn_export.setFixedSize(170, 40)
+        self.btn_export.fit_contents()
         self.btn_export.setToolTip(T_EXPORT_WEIGHTS)
         self.btn_export.clicked.connect(self._export_weights)
         right.addWidget(self.btn_export)
@@ -1791,6 +1974,8 @@ class TrainingPage(QWidget):
 
     def reapply_theme(self):
         self.setStyleSheet(f"#trainingPage{{background:{theme_manager.theme.bg};}}")
+        for row in self.findChildren(_SwitchRow):
+            row.reapply_theme()
 
     # ── Config / settings plumbing ───────────────────────────────────────
     def _on_config_changed(self):
@@ -1838,7 +2023,7 @@ class TrainingPage(QWidget):
         self._reduce_row.set_value(tr.get("reduce_factor"))
         aug = cfg.get("augmentations")
         if isinstance(aug, dict) and "enable" in aug:
-            self._augment_row.set_checked(bool(aug.get("enable")))
+            self._augment_row.set_on(bool(aug.get("enable")))
 
     def _refresh_loss_text(self):
         names = [k.replace("_", " ") for k in self._losses]
@@ -1871,7 +2056,11 @@ class TrainingPage(QWidget):
         else:
             dev = ", ".join(names.get(i, f"GPU {i}") for i in o["device_ids"]) or "GPU 0"
         n = 1 if (o.get("force_cpu") or not gpus) else len(o["device_ids"])
-        self._gpu_row.set_text(f"{dev}\n{n} / {o['num_workers']} / {o['seed']}")
+        launcher = o.get("launcher") or "standard"
+        extra = f" · {launcher}"
+        if (o.get("lora_mode") or "off") != "off":
+            extra += f" · lora {o['lora_mode']}"
+        self._gpu_row.set_text(f"{dev}\n{n} / {o['num_workers']} / {o['seed']}{extra}")
 
     def _open_pretrained(self):
         self._ckpt_row.set_picker_active(True)   # keep the > chevron lit underneath
@@ -2018,7 +2207,7 @@ class TrainingPage(QWidget):
             "data_paths": self._data_row.paths(),
             "valid_paths": self._valid_row.paths(),
             "dataset_type": self._dataset_row.key(),
-            "augment": self._augment_row.is_checked(),
+            "augment": self._augment_row.is_on(),
             "run_options": dict(self._run_opts),
             "checkpoint": self._ckpt_row.value(),
             "batch_size": self._batch_row.value(),
@@ -2048,7 +2237,7 @@ class TrainingPage(QWidget):
         self._valid_row.set_paths(d.get("valid_paths") or [])
         if d.get("dataset_type"):
             self._dataset_row.set_key(str(d["dataset_type"]))
-        self._augment_row.set_checked(d.get("augment", True))
+        self._augment_row.set_on(d.get("augment", True))
         ro = d.get("run_options") or {}
         if isinstance(ro, dict):
             self._run_opts.update({k: v for k, v in ro.items() if k in self._run_opts})
@@ -2319,9 +2508,11 @@ class TrainingPage(QWidget):
             tr["optimizer"] = self._optim_row.key()
         aug = cfg.get("augmentations")
         if isinstance(aug, dict):
-            aug["enable"] = bool(self._augment_row.is_checked())
-        elif self._augment_row.is_checked() is False:
+            aug["enable"] = bool(self._augment_row.is_on())
+        elif self._augment_row.is_on() is False:
             cfg["augmentations"] = {"enable": False}
+        if (self._run_opts.get("lora_mode") or "off") != "off":
+            inject_lora_defaults(cfg)
         return cfg
 
     def _run(self):
@@ -2373,50 +2564,31 @@ class TrainingPage(QWidget):
         sched = self._sched_row.key() or metrics[0]
         if sched not in metrics:
             metrics.append(sched)
-        cmd = [
-            get_python_exe(), TRAIN_SCRIPT,
-            "--model_type", model_type,
-            "--config_path", cfg_path,
-            "--results_path", results,
-            "--data_path", *self._data_row.paths(),
-            "--valid_path", *self._valid_row.paths(),
-            "--dataset_type", str(self._dataset_row.key() or "1"),
-            "--num_workers", str(o["num_workers"]),
-            "--seed", str(o["seed"]),
-            "--device_ids", *[str(i) for i in (o["device_ids"] or [0])],
-            "--metrics", *metrics,
-            "--metric_for_scheduler", sched,
-            "--loss", *self._losses,
-        ]
-        ckpt = self._ckpt_row.value()
-        if ckpt:
-            cmd += ["--start_check_point", ckpt]
-        # Fork architectures: when the fine-tune start comes from a pre-trained
-        # download whose repo ships an author backend file (bs_roformer.py /
-        # model.py next to the config), train from that architecture instead
-        # of the bundled code so the fork checkpoint loads cleanly.
-        _src_cfg = self._config_row.value()
-        _backend_dir = ""
-        if _src_cfg and os.path.isfile(_src_cfg):
-            for _name in ("bs_roformer.py", "model.py", "models.py"):
-                if os.path.isfile(os.path.join(os.path.dirname(_src_cfg), _name)):
-                    _backend_dir = os.path.dirname(_src_cfg)
-                    break
-        if _backend_dir:
-            cmd += ["--custom_backend", _backend_dir]
-        flags = {
-            "pin_memory": "--pin_memory", "pre_valid": "--pre_valid",
-            "save_every_epoch": "--save_weights_every_epoch",
-            "each_metrics_in_name": "--each_metrics_in_name",
-            "load_optimizer": "--load_optimizer", "load_scheduler": "--load_scheduler",
-            "load_epoch": "--load_epoch", "load_best_metric": "--load_best_metric",
-        }
-        for key, flag in flags.items():
-            if o.get(key):
-                cmd.append(flag)
-        if self._use_standard_loss:
-            cmd.append("--use_standard_loss")
-        env = {"CUDA_VISIBLE_DEVICES": ""} if o.get("force_cpu") else None
+        custom_backend = detect_custom_backend(self._config_row.value())
+        launcher, warn = resolve_launcher(
+            o, has_custom_backend=bool(custom_backend),
+            accelerate_ok=accelerate_available(get_python_exe()))
+        if warn:
+            self._append_log(f"[LAUNCHER] {warn}")
+            QMessageBox.information(self, "Launcher", warn)
+        cmd = build_train_command(
+            python_exe=get_python_exe(),
+            opts=o,
+            model_type=model_type,
+            config_path=cfg_path,
+            results_path=results,
+            data_paths=self._data_row.paths(),
+            valid_paths=self._valid_row.paths(),
+            dataset_type=self._dataset_row.key() or "1",
+            metrics=metrics,
+            metric_for_scheduler=sched,
+            losses=self._losses,
+            checkpoint=self._ckpt_row.value(),
+            custom_backend=custom_backend,
+            use_standard_loss=self._use_standard_loss,
+            launcher=launcher,
+        )
+        env = subprocess_env(o, launcher)
 
         self._persist()
         self._reset_monitor()

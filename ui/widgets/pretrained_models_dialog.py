@@ -25,9 +25,64 @@ from PySide6.QtWidgets import (
 )
 
 from ui.theme import theme_manager
-from ui.pages.inference_page import _LinkBadge
+from ui.widgets.common import (
+    _type_badge_ss, _type_title, MODEL_TYPE_COLORS, _optional_scroll_ss,
+    ScoresRefreshButton,
+)
+from ui.pages.inference_page import _LinkBadge, _MetricColumns
 from backend import pretrained_catalog as catalog
 from backend import settings as settings_store
+
+# Catalog metric cells look like "SDR vocals: 10.17" or
+# "Multisong avg: 9.16 (bass: 11.76, drums: 10.88 vocals: 8.24 other: 5.74)".
+_METRIC_PAIR = re.compile(
+    r"([A-Za-z][A-Za-z0-9_+/-]*(?:\s*\([^)]*\))?(?:\s+[A-Za-z][A-Za-z0-9_+/-]*)*)"
+    r"\s*:\s*(-?\d+\.\d+)"
+)
+_METRIC_PREFIXES = ("si-sdr", "si_sdr", "sdr", "l1-freq", "l1_freq", "l1freq")
+_METRIC_SKIP = {
+    "avg", "test", "musdb", "multisong", "drumsep", "dnr", "score",
+    "si-sdr", "si_sdr", "sdr", "l1", "l1freq",
+}
+
+
+def _metrics_to_scores(text, instruments=""):
+    """Turn a pretrained-doc Metrics cell into the dict `_MetricColumns` uses."""
+    if not text or not str(text).strip():
+        return None, "sdr"
+    text = str(text).replace("<br>", " ").replace("<br/>", " ").replace("<br />", " ")
+    low = text.lower()
+    metric = "sdr"
+    if "si-sdr" in low or "si_sdr" in low:
+        metric = "si_sdr"
+    elif "l1" in low:
+        metric = "l1_freq"
+
+    stems = {}
+    for raw_name, raw_val in _METRIC_PAIR.findall(text):
+        name = raw_name.strip().lower()
+        parts = [p.strip("(),+") for p in name.replace("(", " ").split() if p.strip("(),+")]
+        parts = [p for p in parts if p not in _METRIC_SKIP]
+        if not parts:
+            continue
+        # "SDR vocals" → vocals; "cymbals (ride + crash)" → cymbals.
+        stem = parts[-1] if name.split()[:1] and name.split()[0] in _METRIC_PREFIXES else parts[0]
+        if not stem or stem in _METRIC_SKIP:
+            continue
+        try:
+            stems[stem] = float(raw_val)
+        except ValueError:
+            continue
+
+    if not stems:
+        m = re.search(r"(-?\d+\.\d+)", text)
+        if m:
+            inst = (instruments or "").split("/")[0].strip() or "score"
+            stems[inst.lower()] = float(m.group(1))
+    if not stems:
+        return None, metric
+    order = list(stems.keys())
+    return {"stems": order, "metrics": {s: {metric: v} for s, v in stems.items()}}, metric
 
 # Upstream doc page per catalog source — the ⓘ-style link badge on each model
 # row opens the exact table the entry came from.
@@ -185,19 +240,39 @@ class _ModelRow(QFrame):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 12, 20, 12)
-        root.setSpacing(8)
+        root.setSpacing(0)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
 
-        # ── Top: name + GitHub link + INSTALLED + action buttons ──
-        # The two buttons sit on the same line as the name, so a card is
-        # three rows tall (title, arch, metrics) instead of four.
-        top = QHBoxLayout()
-        top.setSpacing(8)
+        # Name + SDR stack on the left (2px, like Model Library). Badge
+        # and actions stay on the right of the title — putting SDR under
+        # the 32px Install row was the hole in the previous layout.
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(8)
+        body.setAlignment(Qt.AlignTop)
+
+        left = QVBoxLayout()
+        left.setContentsMargins(0, 0, 0, 0)
+        left.setSpacing(2)
+        left.setAlignment(Qt.AlignTop)
+
+        name_row = QHBoxLayout()
+        name_row.setContentsMargins(0, 6, 0, 0)
+        name_row.setSpacing(8)
+        self._name_full = model.name
         self._name_lbl = QLabel(model.name)
+        self._name_lbl.setToolTip(model.name)
+        self._name_lbl.setMinimumWidth(0)
+        # Maximum: hug the (possibly elided) title so the link sits flush
+        # after it. sizeHint of the card ignores the full name — see
+        # minimumSizeHint — so long titles cannot stretch the list.
+        self._name_lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+        self._name_lbl.setMaximumWidth(240)
         self._name_lbl.setStyleSheet(
             "font-family:'Montserrat',sans-serif;font-size:13px;font-weight:bold;"
             f"color:{theme_manager.theme.text};background:transparent;border:none;"
         )
-        top.addWidget(self._name_lbl)
+        name_row.addWidget(self._name_lbl, 0, Qt.AlignVCenter)
 
         # Link badge → the upstream doc table this entry was parsed from.
         doc = _GITHUB_LINKS.get(getattr(model, "source", "pretrained"),
@@ -205,16 +280,55 @@ class _ModelRow(QFrame):
         doc_name = "mel_roformer_experiments.md" if "mel_roformer" in doc else "pretrained_models.md"
         self._link_badge = _LinkBadge(f"Open the upstream table ({doc_name})")
         self._link_badge.clicked.connect(lambda u=doc: QDesktopServices.openUrl(QUrl(u)))
-        top.addWidget(self._link_badge, 0, Qt.AlignVCenter)
+        name_row.addWidget(self._link_badge, 0, Qt.AlignVCenter)
+        name_row.addStretch(1)
+        left.addLayout(name_row)
 
-        top.addStretch()
+        self._metrics_lbl = None
+        self._metrics_cols = None
+        if model.metrics:
+            scores, metric = _metrics_to_scores(model.metrics, model.instruments)
+            if scores:
+                cols = _MetricColumns(pixel=10, weight=600, left=0, right=0)
+                cols.set_scores(scores, metric)
+                self._metrics_cols = cols
+                left.addWidget(cols, 0, Qt.AlignLeft)
+            else:
+                self._metrics_lbl = QLabel(model.metrics)
+                self._metrics_lbl.setStyleSheet(
+                    "font-family:'Montserrat';font-size:10px;"
+                    f"color:{theme_manager.theme.text_dim};background:transparent;border:none;"
+                )
+                self._metrics_lbl.setWordWrap(True)
+                left.addWidget(self._metrics_lbl)
+
+        body.addLayout(left, 1)
+
+        actions = QWidget()
+        actions.setFixedHeight(32)
+        actions.setStyleSheet("background:transparent;")
+        al = QHBoxLayout(actions)
+        al.setContentsMargins(0, 0, 0, 0)
+        al.setSpacing(8)
+
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet(
             "font-family:'Montserrat';font-size:10px;color:"
             f"{theme_manager.accent if self._installed else theme_manager.theme.text_muted};"
             "background:transparent;border:none;"
         )
-        top.addWidget(self._status_lbl)
+        al.addWidget(self._status_lbl)
+
+        type_key = _model_type_key(model)
+        if type_key:
+            tag = QLabel(_type_title(type_key))
+            tag.setToolTip(model.instruments or type_key)
+            tag.setStyleSheet(_type_badge_ss(type_key))
+            tag.setFixedHeight(17)
+            self._type_tag = tag
+            al.addWidget(tag, 0, Qt.AlignVCenter)
+        else:
+            self._type_tag = None
 
         self._install_btn = QPushButton("Install")
         self._install_btn.setFixedHeight(32)
@@ -222,7 +336,7 @@ class _ModelRow(QFrame):
         self._install_btn.setCursor(Qt.PointingHandCursor)
         self._install_btn.setStyleSheet(_pill_btn_ss(accent=True))
         self._install_btn.clicked.connect(lambda: self.install_clicked.emit(self._model))
-        top.addWidget(self._install_btn)
+        al.addWidget(self._install_btn)
 
         self._use_btn = QPushButton("Use for fine-tuning")
         self._use_btn.setFixedHeight(32)
@@ -230,36 +344,13 @@ class _ModelRow(QFrame):
         self._use_btn.setCursor(Qt.PointingHandCursor)
         self._use_btn.setStyleSheet(_pill_btn_ss(accent=False))
         self._use_btn.clicked.connect(lambda: self.use_clicked.emit(self._model))
-        top.addWidget(self._use_btn)
-        root.addLayout(top)
-
-        # ── Meta line: arch • instruments • metrics ──
-        bits = []
-        if model.arch_hint:
-            hint = model.arch_hint.replace(" Architecture", "").replace(" Model", "")
-            bits.append(hint)
-        if model.instruments:
-            bits.append(model.instruments)
-        meta = "   ·   ".join(bits)
-        if meta:
-            self._meta_lbl = QLabel(meta)
-            self._meta_lbl.setStyleSheet(
-                "font-family:'Montserrat';font-size:10px;"
-                f"color:{theme_manager.theme.text_sec};background:transparent;border:none;"
-            )
-            root.addWidget(self._meta_lbl)
-
-        if model.metrics:
-            self._metrics_lbl = QLabel(model.metrics)
-            self._metrics_lbl.setStyleSheet(
-                "font-family:'Montserrat';font-size:10px;"
-                f"color:{theme_manager.theme.text_dim};background:transparent;border:none;"
-            )
-            self._metrics_lbl.setWordWrap(True)
-            root.addWidget(self._metrics_lbl)
+        al.addWidget(self._use_btn)
+        self._actions = actions
+        body.addWidget(actions, 0, Qt.AlignTop)
+        root.addLayout(body)
 
         # ── Install status line (download progress / message) ── Hidden until
-        # a download starts, so an idle card stays only three rows tall.
+        # a download starts, so an idle card stays title + metrics.
         self._status_row = QWidget()
         self._status_row.setStyleSheet("background:transparent;")
         prog = QHBoxLayout(self._status_row)
@@ -285,6 +376,49 @@ class _ModelRow(QFrame):
 
         # Buttons exist now — render the installed/available state.
         self._refresh_status()
+
+    def _name_cap(self):
+        """How wide the title may paint without pushing the card past the
+        list viewport (actions + link keep their natural width)."""
+        actions_w = self._actions.sizeHint().width() if self._actions else 280
+        link_w = self._link_badge.sizeHint().width() if self._link_badge else 18
+        m = self.layout().contentsMargins() if self.layout() else None
+        pad = (m.left() + m.right() + 8) if m else 48
+        host = self.parentWidget()
+        while host is not None and not isinstance(host, QScrollArea):
+            host = host.parentWidget()
+        view_w = 0
+        if host is not None:
+            view_w = host.viewport().width()
+        elif self.width() > 80:
+            view_w = self.width()
+        if view_w <= 80:
+            return 240
+        return max(40, view_w - actions_w - link_w - pad)
+
+    def _elide_name(self):
+        avail = self._name_cap()
+        self._name_lbl.setMaximumWidth(avail)
+        fm = QFontMetrics(self._name_lbl.font())
+        self._name_lbl.setText(fm.elidedText(self._name_full, Qt.ElideRight, avail))
+
+    def minimumSizeHint(self):
+        h = super().minimumSizeHint().height()
+        aw = self._actions.minimumSizeHint().width() if self._actions else 280
+        return QSize(aw + 80, h)
+
+    def sizeHint(self):
+        h = super().sizeHint().height()
+        aw = self._actions.sizeHint().width() if self._actions else 280
+        return QSize(aw + 80, h)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._elide_name()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._elide_name()
 
     def _refresh_status(self):
         if self._installed:
@@ -527,6 +661,87 @@ class _ChipBar(QFrame):
         return getattr(self, "_current", None)
 
 
+_STEM_TYPE_ALIAS = {
+    "vocal": "vocals",
+    "vocals": "vocals",
+    "instrum": "instrumental",
+    "instrumental": "instrumental",
+    "dry": "dereverb / deecho",
+    "dereverb": "dereverb / deecho",
+    "deecho": "dereverb / deecho",
+    "de-reverb": "dereverb / deecho",
+    "kick": "drums",
+    "snare": "drums",
+    "toms": "drums",
+    "hh": "drums",
+    "cymbals": "drums",
+    "ride": "drums",
+    "crash": "drums",
+    "hh-cymbals": "drums",
+}
+_NOT_A_TYPE = {"other", "rest"}
+
+
+def _norm_stem_type(stem):
+    s = (stem or "").strip().lower()
+    if not s or s in _NOT_A_TYPE:
+        return ""
+    if s in _STEM_TYPE_ALIAS:
+        return _STEM_TYPE_ALIAS[s]
+    if s in MODEL_TYPE_COLORS:
+        return s
+    return s
+
+
+def _model_type_key(m):
+    """Library type key for a catalog row (vocals, drums, multi stems, …)."""
+    sec = (m.section or "").lower()
+    hint = (getattr(m, "arch_hint", None) or "").lower()
+    if "dereverb" in sec or "deecho" in sec or "de-reverb" in sec:
+        return "dereverb / deecho"
+    if "denoise" in sec:
+        return "denoise"
+    if "karaoke" in sec:
+        return "karaoke"
+    if "super resolution" in sec or "apollo" in hint:
+        return "super resolution"
+    if "phantom" in sec:
+        return "phantom centre"
+
+    raw = [s.strip().lower() for s in re.split(r"[/,+]", m.instruments or "") if s.strip()]
+    types = []
+    for s in raw:
+        n = _norm_stem_type(s)
+        if n and n not in types:
+            types.append(n)
+
+    if not types:
+        # Catalog "other" is the complement stem — Model Library shows that
+        # as Instrumental. Skip it when vocals/drums/… are also listed so a
+        # vocals+other row stays a Vocals badge.
+        if raw and all(s in _NOT_A_TYPE for s in raw):
+            return "instrumental"
+        if m.metrics:
+            scores, _ = _metrics_to_scores(m.metrics, m.instruments)
+            metric_stems = [str(s).strip().lower()
+                            for s in (scores or {}).get("stems") or []]
+            if metric_stems and all(s in _NOT_A_TYPE for s in metric_stems):
+                return "instrumental"
+        if "vocal" in sec:
+            return "vocals"
+        if "multi" in sec:
+            return "multi stems"
+        return ""
+
+    if all(t == "drums" for t in types):
+        return "drums"
+    if types == ["vocals"] or (len(types) == 1 and types[0] == "vocals"):
+        return "vocals"
+    if len(types) == 1:
+        return types[0]
+    return "multi stems"
+
+
 def _target_key(m):
     """Which target group a model belongs to — the stem layout it separates.
     Falls back to the doc section, so MUSDB18HQ multi-stem rows without an
@@ -624,13 +839,10 @@ class PretrainedModelsDialog(QDialog):
         title_row.addWidget(title_lbl)
         title_row.addStretch()
 
-        self._refresh_btn = QPushButton("Refresh")
-        self._refresh_btn.setFixedHeight(32)
-        self._refresh_btn.setMinimumWidth(96)
-        self._refresh_btn.setCursor(Qt.PointingHandCursor)
-        self._refresh_btn.setStyleSheet(_pill_btn_ss(accent=False))
+        self._refresh_btn = ScoresRefreshButton(
+            tooltip="Reload the ZFTurbo pre-trained catalog")
         self._refresh_btn.clicked.connect(self._refresh)
-        title_row.addWidget(self._refresh_btn)
+        title_row.addWidget(self._refresh_btn, 0, Qt.AlignVCenter)
 
         self._close_btn = QPushButton("Close")
         self._close_btn.setFixedHeight(32)
@@ -686,15 +898,7 @@ class PretrainedModelsDialog(QDialog):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.NoFrame)
-        self._scroll.setStyleSheet(
-            "QScrollArea{background:transparent;border:none;}"
-            "QScrollBar:vertical{width:4px;background:transparent;margin:0;}"
-            f"QScrollBar::handle:vertical{{background:{t.scrollbar_handle};"
-            "border-radius:2px;min-height:30px;}"
-            "QScrollBar::add-line:vertical{height:0;}"
-            "QScrollBar::sub-line:vertical{height:0;}"
-            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}"
-        )
+        self._scroll.setStyleSheet(_optional_scroll_ss())
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._content = QWidget()
         self._content.setStyleSheet("background:transparent;")
@@ -706,6 +910,7 @@ class PretrainedModelsDialog(QDialog):
         root.addWidget(self._scroll, 1)
 
     def _start_fetch(self):
+        self._refresh_btn.set_busy(True)
         self._status_lbl.setText("Loading pre-trained catalog…")
         self._models = []
         self._populate([])
@@ -722,6 +927,7 @@ class PretrainedModelsDialog(QDialog):
     def _on_fetch_finished(self, thread):
         if self._fetch_thread is thread:
             self._fetch_thread = None
+        self._refresh_btn.set_busy(False)
 
     def _refresh(self):
         if self._fetch_thread and self._fetch_thread.isRunning():

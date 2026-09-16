@@ -6,46 +6,124 @@ a status line naming the current startup phase, and a thin progress bar that
 tracks it (interface build, settings load, runtime probe).
 
 Driven from main(): MainWindow forwards its startup progress callbacks here.
-`set_stage()` pumps the event loop so each step actually repaints while the
-UI thread is busy constructing the pages synchronously.
+`set_stage()` repaints the splash in place — it must not pump the event loop,
+or combo popups and other tiny native windows appear beside it.
 """
 
 from __future__ import annotations
 
 import os
+import sys
+import ctypes
+from ctypes import wintypes
 
 from PySide6.QtCore import (
     Qt, QTimer, QPropertyAnimation, QEasingCurve, QRectF,
 )
 from PySide6.QtGui import QPixmap, QPainter, QColor, QPen
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QProgressBar, QApplication,
+    QApplication, QWidget, QVBoxLayout, QLabel, QProgressBar,
 )
 
 from ui.theme import theme_manager
+
+# Hide extra native windows that belong to this process while the splash is
+# the only UI that should be on screen. System helper classes stay put.
+_SWEEP_STRAYS = False
+_SKIP_NATIVE_CLASSES = {
+    "IME", "MSCTFIME UI", "GDI+ Hook Window Class",
+    "CicMarshalWndClass", "OleMainThreadWndClass", "OleDdeWndClass",
+    "Message", "STATIC", "ConsoleWindowClass",
+}
+
+
+def set_stray_sweep(active: bool):
+    global _SWEEP_STRAYS
+    _SWEEP_STRAYS = bool(active)
+
+
+def hide_startup_strays(*keep_widgets):
+    """SW_HIDE every visible top-level HWND of this PID except keep/console."""
+    if not _SWEEP_STRAYS or sys.platform != "win32":
+        return
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    pid = os.getpid()
+    keep = set()
+    named = []
+    try:
+        app = QApplication.instance()
+        if app is not None:
+            named = [
+                w for w in app.topLevelWidgets()
+                if w.objectName() in {
+                    "startupSplash", "mainWindow", "themeSwitchOverlay",
+                }
+            ]
+    except Exception:
+        named = []
+    for keep_widget in list(keep_widgets) + named:
+        if keep_widget is None:
+            continue
+        try:
+            hwnd = int(keep_widget.internalWinId() or 0)
+            if not hwnd:
+                hwnd = int(keep_widget.winId())
+            if hwnd:
+                keep.add(hwnd)
+        except Exception:
+            pass
+    try:
+        console = int(kernel32.GetConsoleWindow() or 0)
+        if console:
+            keep.add(console)
+    except Exception:
+        pass
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _enum(hwnd, _lp):
+        proc = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc))
+        if proc.value != pid or int(hwnd) in keep:
+            return True
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        buf = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, buf, 256)
+        if buf.value in _SKIP_NATIVE_CLASSES:
+            return True
+        user32.ShowWindow(int(hwnd), 0)
+        return True
+
+    try:
+        user32.EnumWindows(_enum, 0)
+    except Exception:
+        pass
+
 
 
 class SplashPanel(QWidget):
     """Frameless, always-on-top startup card."""
 
+    _FLAGS = (
+        Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        | Qt.NoDropShadowWindowHint | Qt.CustomizeWindowHint
+    )
+
     def __init__(self, base_dir: str, version: str = "", parent=None):
+        # No window flags in QWidget() — that creates and maps a tiny HWND
+        # before WA_DontShowOnScreen can be set. Hide first, then apply flags.
         super().__init__(parent)
+        self.setObjectName("startupSplash")
         self._base_dir = base_dir
         self._closing = False
-        self.setObjectName("startupSplash")
-
-        self.setFixedSize(430, 430)
-        # Set the native window type and all visibility-related attributes
-        # before any layout/pixmap work. On Windows, creating a translucent
-        # Qt.SplashScreen can otherwise briefly expose a captioned app-name
-        # window beside the real splash while the native handle is created.
-        self.setWindowFlags(
-            Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-        )
-        self.setAttribute(Qt.WA_NativeWindow, True)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_DontShowOnScreen, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setWindowFlags(self._FLAGS)
+        self.setAttribute(Qt.WA_DontShowOnScreen, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setFixedSize(430, 430)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(40, 64, 40, 40)
@@ -121,9 +199,29 @@ class SplashPanel(QWidget):
         self._fade.finished.connect(self._on_fade_done)
 
         self._center_on_screen()
-        # The native handle now exists without being exposed. Clear the
-        # suppression immediately before main() explicitly calls show().
+
+    def _native_hwnd(self):
+        try:
+            return int(self.internalWinId() or 0) or int(self.winId())
+        except Exception:
+            return 0
+
+    def _apply_win32_frame(self):
+        hwnd = self._native_hwnd()
+        if not hwnd:
+            return
+        try:
+            from backend.win_startup import keep_hwnd, strip_native_chrome
+            keep_hwnd(hwnd)
+            strip_native_chrome(hwnd)
+        except Exception:
+            pass
+
+    def show(self):
+        self._apply_win32_frame()
         self.setAttribute(Qt.WA_DontShowOnScreen, False)
+        super().show()
+        self._apply_win32_frame()
 
     # ── placement ────────────────────────────────────────────────────────────
     def _center_on_screen(self):
@@ -143,18 +241,20 @@ class SplashPanel(QWidget):
 
     # ── progress API ─────────────────────────────────────────────────────────
     def set_stage(self, message: str, percent: int):
-        """Advance the splash: update status text + bar and repaint NOW.
+        """Advance the splash: update status text + bar and paint NOW.
 
-        processEvents() here is what keeps the bar live while startup work
-        runs synchronously on the UI thread (page construction, settings
-        load). Clamps to 0-100 and is ignored once closing has begun.
+        Does not pump the event loop — processEvents() during page
+        construction maps combo popups and other tiny native windows.
         """
-        if self._closing or not self.isVisible():
+        if self._closing:
             return
         pct = max(0, min(100, int(percent)))
         self._status.setText(message)
         self._bar.setValue(pct)
-        QApplication.processEvents()
+        if self.isVisible():
+            self.repaint()
+        self._apply_win32_frame()
+        hide_startup_strays(self)
 
     def finish(self, message: str = "Ready"):
         """Show 100% briefly, then fade out and release the widget."""
@@ -163,7 +263,7 @@ class SplashPanel(QWidget):
         self._closing = True
         self._status.setText(message)
         self._bar.setValue(100)
-        QApplication.processEvents()
+        self.repaint()
         QTimer.singleShot(650, self._fade.start)
 
     def close_now(self):

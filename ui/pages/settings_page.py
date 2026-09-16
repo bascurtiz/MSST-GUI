@@ -2046,7 +2046,9 @@ class SettingsPage(QWidget):
         self._mgr_sort_metric = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(32, 32, 32, 68)
+        root.setContentsMargins(32, 32, 32, 32)
+        # Bottom 32px matches INFERENCE's column margin, so the lists end
+        # on the same line as the Separate / Stop buttons.
         # 32px gap under the page header (the columns then carry the usual
         # +1px, so the content lands at 168px — the exact same y as the
         # INFERENCE page's MODEL LIBRARY row).
@@ -2092,6 +2094,7 @@ class SettingsPage(QWidget):
             "SETTINGS",
             "ADD OR DELETE & CONFIGURE MODELS",
             highlight="MODELS",
+            help_key="settings",
         )
         header.add_extra(update_w)
         root.addWidget(header)
@@ -2378,14 +2381,14 @@ class SettingsPage(QWidget):
         ll.addSpacing(8)
 
         self._reg_btn = GlyphButton("Register Model", "+", _solid_icon_color,
-                                    glyph_size=18, text_size=12)
+                                    glyph_size=18, text_size=12, parent=self)
         self._reg_btn.setFixedHeight(44)
         self._reg_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._reg_btn.setStyleSheet(solid_button_ss())
         self._reg_btn.clicked.connect(self._register)
 
         self._download_btn = GlyphButton("Download Model", DOWNLOAD_GLYPH, _solid_icon_color,
-                                         glyph_size=18, text_size=12)
+                                         glyph_size=18, text_size=12, parent=self)
         self._download_btn.setFixedHeight(44)
         self._download_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._download_btn.setStyleSheet(solid_button_ss())
@@ -2946,6 +2949,7 @@ class SettingsPage(QWidget):
             model["ckpt"], model["yaml"],
             backend_module=model.get("backend_module", ""),
             custom_backend_enabled=model.get("custom_backend_enabled", False),
+            parent=self._list_layout.parentWidget(),
         )
         item.remove_requested.connect(self._remove_model)
         item.type_changed.connect(self._on_type_changed)

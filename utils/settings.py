@@ -251,6 +251,8 @@ def parse_args_inference(dict_args: Union[Dict, None]) -> argparse.Namespace:
                         help="Comma-separated config_stem=output_suffix pairs renaming the stems in the "
                              "output filenames (mvsep quality-checker naming); '*=suffix' is a catch-all")
     parser.add_argument("--lora_checkpoint_loralib", type=str, default='', help="Initial checkpoint to LoRA weights")
+    parser.add_argument("--skip_errors", action='store_true',
+                        help="Log unreadable inputs and continue instead of failing the batch.")
     if dict_args is not None:
         args = parser.parse_args([])
         args_dict = vars(args)

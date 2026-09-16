@@ -908,13 +908,14 @@ class _WaveformTrack(QWidget):
         self._path = ""
         self._duration_ms = 0
         self._pending_seek_ms = None
+        self._releasing_source = False
         self._player = None
         self._audio_output = None
         self._chip_hovered = False
         self._chip_rect = None
         self._track_hovered = False
-        self.setMinimumHeight(110)
-        self.setMaximumHeight(130)
+        self.setMinimumHeight(1)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setCursor(Qt.PointingHandCursor)
         self.setMouseTracking(True)
 
@@ -968,6 +969,7 @@ class _WaveformTrack(QWidget):
             self._player.positionChanged.connect(self._on_position)
             self._player.durationChanged.connect(self._on_duration)
             self._player.playbackStateChanged.connect(self._on_state)
+            self._player.mediaStatusChanged.connect(self._on_media_status)
         if self._path and self._player.source().isEmpty():
             self._player.setSource(QUrl.fromLocalFile(self._path))
         return self._player
@@ -995,30 +997,27 @@ class _WaveformTrack(QWidget):
             p.pause()
             return
         h = self._host()
-        target = None
-        if h is not None:
-            shared = h.shared_position()
+        shared = h.shared_position() if h is not None else (p.position() or 0)
+        dur = p.duration() or self._duration_ms or 0
+        if dur > 0 and shared >= dur - 120:
+            # Song already played to the end: restart from the top.
+            shared = 0
+            if h is not None:
+                h.sync_position(0)
+        if shared > 0:
+            self._pending_seek_ms = shared
             if p.duration() > 0:
-                if shared >= p.duration() - 120:
-                    # Song already played to the end: restart from the top.
-                    target = 0
-                    h.sync_position(0)
-                else:
-                    target = min(shared, max(0, p.duration() - 50))
-            elif shared > 0:
-                # Duration not known yet; apply the seek once it is.
-                self._pending_seek_ms = shared
-        else:
-            if p.duration() > 0 and p.position() >= p.duration() - 120:
-                target = 0
-        if target is not None and p.duration() > 0:
-            p.setPosition(target)
+                p.setPosition(min(shared, max(0, p.duration() - 50)))
         p.play()
 
     def pause(self):
         if self._player is None:
             return
         if self._player.playbackState() == QMediaPlayer.PlayingState:
+            h = self._host()
+            pos = self._player.position()
+            if h is not None and pos > 0:
+                h.sync_position(pos)
             self._player.pause()
         self._release_player_source()
 
@@ -1026,8 +1025,12 @@ class _WaveformTrack(QWidget):
         """Drop the QMediaPlayer source so Windows releases the file handle."""
         if self._player is None:
             return
-        self._player.stop()
-        self._player.setSource(QUrl())
+        self._releasing_source = True
+        try:
+            self._player.stop()
+            self._player.setSource(QUrl())
+        finally:
+            self._releasing_source = False
         if self._playing:
             self._playing = False
             self._apply_play_style()
@@ -1039,29 +1042,80 @@ class _WaveformTrack(QWidget):
     def is_playing(self):
         return self._player is not None and self._player.playbackState() == QMediaPlayer.PlayingState
 
+    def live_position(self):
+        if self._player is None:
+            return 0
+        return max(0, int(self._player.position()))
+
+    def _apply_pending_seek(self):
+        """Seek to the shared playhead once the decoder actually has a duration.
+
+        QMediaPlayer often ignores setPosition until the source is loaded, so
+        the target is kept until a later duration/status/playing signal.
+        """
+        ms = self._pending_seek_ms
+        if ms is None or self._player is None:
+            return
+        dur = self._player.duration() or self._duration_ms or 0
+        if dur <= 0:
+            return
+        target = min(int(ms), max(0, dur - 50))
+        self._player.setPosition(target)
+        if self._player.duration() > 0 and abs(self._player.position() - target) <= 250:
+            self._pending_seek_ms = None
+
+    def _on_media_status(self, status):
+        if status in (QMediaPlayer.MediaStatus.LoadedMedia,
+                      QMediaPlayer.MediaStatus.BufferedMedia,
+                      QMediaPlayer.MediaStatus.BufferingMedia):
+            self._apply_pending_seek()
+
     def _on_state(self, state):
+        if self._releasing_source:
+            return
         playing = state == QMediaPlayer.PlayingState
         if playing != self._playing:
             self._playing = playing
             self._apply_play_style()
             self.play_toggled.emit(self, playing)
+        if playing:
+            self._apply_pending_seek()
         if state == QMediaPlayer.StoppedState:
-            h = self._host()
-            if h is not None:
-                h.sync_position(0)
-            else:
-                self._playback_progress = 0.0
-                self._time_bubble_text = ""
-                self.update()
-            # Playback finished (or was stopped): release WMF's file handle.
+            dur = self._duration_ms or (
+                self._player.duration() if self._player is not None else 0)
+            pos = self._player.position() if self._player is not None else 0
+            if dur > 0 and pos >= dur - 120:
+                h = self._host()
+                if h is not None:
+                    h.sync_position(0)
+                else:
+                    self._playback_progress = 0.0
+                    self._time_bubble_text = ""
+                    self.update()
+            # Natural end: release WMF's file handle.
             if self._player is not None and not self._player.source().isEmpty():
-                self._player.setSource(QUrl())
+                self._releasing_source = True
+                try:
+                    self._player.setSource(QUrl())
+                finally:
+                    self._releasing_source = False
                 if self._playing:
                     self._playing = False
                     self._apply_play_style()
                     self.play_toggled.emit(self, False)
 
     def _on_position(self, pos):
+        if self._releasing_source:
+            return
+        if self._pending_seek_ms is not None:
+            target = self._pending_seek_ms
+            if pos == 0:
+                return
+            if abs(pos - target) <= 250:
+                self._pending_seek_ms = None
+            else:
+                self._apply_pending_seek()
+                return
         h = self._host()
         if h is not None:
             h.sync_position(pos)
@@ -1071,12 +1125,9 @@ class _WaveformTrack(QWidget):
             self.update()
 
     def _on_duration(self, dur):
-        self._duration_ms = dur if dur > 0 else 0
-        if self._pending_seek_ms is not None:
-            ms = self._pending_seek_ms
-            self._pending_seek_ms = None
-            if self._duration_ms > 0:
-                self._player.setPosition(min(ms, max(0, self._duration_ms - 50)))
+        if dur > 0:
+            self._duration_ms = dur
+        self._apply_pending_seek()
 
     def seek_to(self, ratio):
         ratio = min(1.0, max(0.0, ratio))
@@ -1226,22 +1277,29 @@ class _WaveformTrack(QWidget):
                     p.setFont(QFont(FONT_FAMILY, 8))
                     p.drawText(bx, by, bubble_w, bubble_h, Qt.AlignCenter, self._time_bubble_text)
 
-                # Small musical note under the play button while this stem is
-                # the one actually audible; hidden otherwise.
+                # Compact musical note under the play button while this stem
+                # is the one actually audible. Sized to stay fully inside
+                # short 6-stem rows (the old 18px offset clipped the head).
                 if self._playing:
-                    btn_bottom = (self.height() - 34) // 2 + 34
+                    btn = self._play_btn.geometry()
+                    s = 0.58
+                    stem_h, head_below, gap = 11.0 * s, 3.0 * s, 3.0
+                    head_y = btn.y() + btn.height() + gap + stem_h
+                    if head_y + head_below > h - 2:
+                        head_y = h - 2 - head_below
                     note = QPainterPath()
                     note.setFillRule(Qt.WindingFill)
-                    hx, hy = 23.0, btn_bottom + 18.0
-                    note.addEllipse(QRectF(hx - 3.5, hy - 2.0, 7, 5))
-                    note.addRect(QRectF(hx + 0.5, hy - 11, 2, 10))
-                    note.moveTo(hx + 2.5, hy - 11)
-                    note.quadTo(hx + 9, hy - 7, hx + 5, hy - 2)
-                    note.quadTo(hx + 3, hy - 4, hx + 2.5, hy - 5.5)
+                    note.addEllipse(QRectF(-3.5, -2.0, 7, 5))
+                    note.addRect(QRectF(0.5, -11, 2, 10))
+                    note.moveTo(2.5, -11)
+                    note.quadTo(9, -7, 5, -2)
+                    note.quadTo(3, -4, 2.5, -5.5)
                     note.closeSubpath()
                     p.save()
                     p.setPen(Qt.NoPen)
                     p.setBrush(QColor(theme_manager.accent))
+                    p.translate(btn.x() + btn.width() / 2.0, head_y)
+                    p.scale(s, s)
                     p.drawPath(note)
                     p.restore()
 
@@ -1273,6 +1331,13 @@ class _WaveformTrack(QWidget):
 # ── waveform container ────────────────────────────────────────────
 
 class _WaveformContainer(QFrame):
+    """Stem waveforms share the Console detail pane.
+
+    1–6 visible tracks split the viewport so every stem is on screen. 7+
+    keep the 6-stem row height and scroll for the extras.
+    """
+
+    FIT_STEMS = 6
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1280,6 +1345,7 @@ class _WaveformContainer(QFrame):
         self._tracks = []
         self._shared_pos_ms = 0
         self._load_gen = 0  # bump per load; stale async results are dropped
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # Poll for worker-thread envelope results (see _ENVELOPE_RESULTS).
         self._load_timer = QTimer(self)
@@ -1302,6 +1368,37 @@ class _WaveformContainer(QFrame):
         self._track_layout.setContentsMargins(0, 0, 0, 0)
         self._track_layout.setSpacing(0)
         layout.addLayout(self._track_layout, 1)
+
+    def visible_tracks(self):
+        return [t for t in self._tracks if t.isVisibleTo(self)]
+
+    def visible_count(self):
+        return len(self.visible_tracks())
+
+    def fit_to_viewport(self, viewport_h):
+        """Size visible tracks so 1–6 stems fill `viewport_h`; extra stems
+        keep the 6-stem row height and overflow (the scroll area scrolls)."""
+        vis = self.visible_tracks()
+        n = len(vis)
+        if n <= 0:
+            return
+        vp = max(1, int(viewport_h))
+        slots = min(n, self.FIT_STEMS)
+        row_h = max(1, vp // slots)
+        if n <= self.FIT_STEMS:
+            extra = vp - row_h * n
+            total = vp
+        else:
+            extra = 0
+            total = n * row_h
+        self.setFixedHeight(total)
+        for i, t in enumerate(vis):
+            h = row_h + (extra if i == len(vis) - 1 else 0)
+            t.setFixedHeight(h)
+        shown = set(vis)
+        for t in self._tracks:
+            if t not in shown:
+                t.setFixedHeight(0)
 
     def shared_position(self):
         return self._shared_pos_ms
@@ -1366,7 +1463,7 @@ class _WaveformContainer(QFrame):
                                  samples=(cached[0] if cached else _LAZY))
                 track.play_toggled.connect(self._on_track_toggle)
                 self._tracks.append(track)
-                self._track_layout.addWidget(track)
+                self._track_layout.addWidget(track, 1)
         for i in range(len(tracks), old_count):
             self._tracks[i].setVisible(False)
             self._tracks[i].stop_and_unload()
@@ -1399,7 +1496,7 @@ class _WaveformContainer(QFrame):
                                  samples=(cached[0] if cached else _LAZY))
                 track.play_toggled.connect(self._on_track_toggle)
                 self._tracks.append(track)
-                self._track_layout.addWidget(track)
+                self._track_layout.addWidget(track, 1)
         for i in range(len(tracks), old_count):
             self._tracks[i].setVisible(False)
             self._tracks[i].stop_and_unload()
@@ -1462,10 +1559,20 @@ class _WaveformContainer(QFrame):
             track.update()
 
     def _on_track_toggle(self, track, playing):
-        if playing:
-            for t in self._tracks:
-                if t is not track:
-                    t.pause()
+        if not playing:
+            return
+        pos = self._shared_pos_ms
+        for t in self._tracks:
+            if t is track:
+                continue
+            live = t.live_position() if t.is_playing() else 0
+            if live > 0:
+                pos = live
+            t.pause()
+        if pos > 0:
+            self._shared_pos_ms = pos
+            track._pending_seek_ms = pos
+            track._apply_pending_seek()
 
     def pause(self):
         for t in self._tracks:
@@ -2439,11 +2546,12 @@ class _DetailView(QFrame):
         wave_row.setSpacing(0)
 
         self._waveform = _WaveformContainer()
-        wave_row.addWidget(self._waveform, 1, Qt.AlignTop)
+        wave_row.addWidget(self._waveform, 1)
 
         self._wave_scroll = QScrollArea()
         self._wave_scroll.setWidgetResizable(True)
         self._wave_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._wave_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._wave_scroll.setStyleSheet(
             "QScrollArea{border:none;background:transparent;}"
         )
@@ -2513,6 +2621,7 @@ class _DetailView(QFrame):
                            or (files[0] if files else ""))
         self._path_lbl.setText(self._full_path)
         QTimer.singleShot(0, self._elide)
+        QTimer.singleShot(0, self._fit_waveforms)
 
         is_complete = card._is_complete
         is_failed = card._failed
@@ -2541,8 +2650,8 @@ class _DetailView(QFrame):
             self._wf_lbl.setVisible(True)
             self._spinner.stop()
             if n > 0:
-                self._waveform.setFixedHeight(n * 130)
                 self._waveform.setVisible(True)
+                self._fit_waveforms()
             else:
                 self._waveform.setVisible(False)
         else:
@@ -2563,6 +2672,26 @@ class _DetailView(QFrame):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._elide()
+        self._fit_waveforms()
+
+    def _fit_waveforms(self):
+        """Split the WAVEFORM pane across visible stems (cap at 6-stem row)."""
+        wf = getattr(self, "_waveform", None)
+        scroll = getattr(self, "_wave_scroll", None)
+        if wf is None or scroll is None or not wf.isVisible():
+            return
+        n = wf.visible_count()
+        if n <= 0:
+            return
+        scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOff if n <= _WaveformContainer.FIT_STEMS
+            else Qt.ScrollBarAsNeeded)
+        vp = scroll.viewport().height()
+        if vp <= 0:
+            vp = self._view_stack.height()
+        if vp <= 0:
+            return
+        wf.fit_to_viewport(vp)
 
     def _refresh_waveform(self):
         if not self._card or not self._waveform:
@@ -2573,8 +2702,9 @@ class _DetailView(QFrame):
         self._view_stack.setCurrentIndex(0)
         self._wf_lbl.setVisible(True)
         if n > 0:
-            self._waveform.setFixedHeight(n * 130)
             self._waveform.setVisible(True)
+            self._fit_waveforms()
+            QTimer.singleShot(0, self._fit_waveforms)
 
     def _show_empty(self):
         self._waveform.stop_and_unload()
@@ -3076,6 +3206,7 @@ class ConsolePage(QWidget):
             "CONSOLE",
             "PROCESSING, PLAY & REVIEW OUTPUT",
             highlight="OUTPUT",
+            help_key="console",
         )
 
         self._btn_log = QPushButton("Log")

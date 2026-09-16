@@ -54,9 +54,19 @@ def main():
 
     # Other switches are untouched (only the resume group is armed).
     for k in ("pin_memory", "pre_valid", "save_every_epoch",
-              "each_metrics_in_name"):
+              "each_metrics_in_name", "safe_mode", "persistent_workers",
+              "wandb_offline", "load_all_metrics", "load_all_losses"):
         check(not page._run_opts.get(k),
               f"unrelated switch '{k}' was armed")
+
+    check(page._run_opts.get("launcher") == "standard",
+          "launcher defaults to standard")
+    check(page._run_opts.get("lora_mode") == "off",
+          "LoRA defaults off")
+    check(dlg._launcher.currentData() == "standard",
+          "dialog launcher combo is standard")
+    check(dlg._lora_mode.currentData() == "off",
+          "dialog LoRA combo is off")
 
     # Clearing the checkpoint keeps the armed flags (harmless no-ops for a
     # from-scratch run — the engine only reads them with --start_check_point).

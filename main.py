@@ -316,34 +316,79 @@ from PySide6.QtGui import QIcon
 
 import backend.settings as settings_store
 import backend.runtime_setup  # noqa: F401  (sets PYTHONNOUSERSITE early when frozen)
+from backend.win_startup import install_show_hook, uninstall_show_hook
 from ui.main_window import MainWindow
 from ui.theme import theme_manager, apply_palette
+from ui.widgets.splash import SplashPanel, set_stray_sweep, hide_startup_strays
 
 
 class _SuppressUntitledWindows(QObject):
-    """Hide transient native windows Qt creates with the app-name title.
+    """Hide leftover top-level helpers Windows captions as the app name.
 
-    Some Windows/Qt combinations briefly expose an untitled helper widget as
-    a small captioned ``MSST`` window while the splash and pages are being
-    constructed. Real dialogs set their own title; the named splash is the
-    only intentional exception.
+    Only intercept Show of widgets that are *still* parentless windows.
+    Hiding on Polish/WinIdChange (or reparenting onto a hidden host) also
+    catches GlyphButtons and other controls built before addWidget — they
+    then stay hidden once the real layout takes them.
     """
 
-    _APP_TITLES = {"MSST", "MSST GUI"}
+    _ALLOWED = {
+        "startupSplash", "styledToolTip", "themeSwitchOverlay", "mainWindow",
+    }
+    _APP_TITLES = {"", "MSST", "MSST GUI"}
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._active = True
+
+    def disable(self):
+        self._active = False
+
+    def _is_stray(self, obj):
+        from PySide6.QtWidgets import QDialog, QMainWindow, QMenu
+        if obj.objectName() in self._ALLOWED:
+            return False
+        if isinstance(obj, (QDialog, QMainWindow, QMenu)):
+            return False
+        if not obj.isWindow():
+            return False
+        wt = obj.windowType()
+        if wt in (
+            Qt.WindowType.Popup,
+            Qt.WindowType.ToolTip,
+            Qt.WindowType.SplashScreen,
+            Qt.WindowType.SubWindow,
+        ):
+            return False
+        title = (obj.windowTitle() or "").strip()
+        names = set(self._APP_TITLES)
+        app = QApplication.instance()
+        if app:
+            names.add((app.applicationName() or "").strip())
+        return title in names
+
+    @staticmethod
+    def _hide_native(widget):
+        widget.hide()
+        if sys.platform != "win32":
+            return
+        try:
+            hwnd = int(widget.internalWinId() or 0)
+            if hwnd:
+                import ctypes
+                ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+        except Exception:
+            pass
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.Show and isinstance(obj, QWidget):
-            # An untitled top-level QWidget receives the application name as
-            # its native caption on Windows (usually "MSST"), even though
-            # QWidget.windowTitle() is empty. Treat that as the transient
-            # helper-window case too; explicitly named app windows remain.
-            if obj.isWindow() and obj.parentWidget() is None and (
-                    not obj.windowTitle().strip()
-                    or obj.windowTitle().strip() in self._APP_TITLES):
-                if obj.objectName() not in {
-                        "startupSplash", "mainWindow", "styledToolTip"}:
-                    QTimer.singleShot(0, obj.hide)
-                    return True
+        if not self._active or not isinstance(obj, QWidget):
+            return False
+        if not self._is_stray(obj):
+            return False
+        et = event.type()
+        if et in (QEvent.Type.Show, QEvent.Type.ShowToParent,
+                  QEvent.Type.WindowActivate):
+            self._hide_native(obj)
+            return True
         return False
 
 
@@ -358,6 +403,8 @@ def main():
         ctypes.windll.kernel32.CreateMutexW(None, False, "MSST-GUI-Mutex")
     except Exception:
         pass
+
+    install_show_hook()
 
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -399,22 +446,30 @@ def main():
 
     # Startup splash: logo + title + a live progress bar over the heavy
     # synchronous startup phases (page construction, settings load).
-    from ui.widgets.splash import SplashPanel
     try:
         from backend import update_checker as _uc
         _version = _uc.app_version()
     except Exception:
         _version = ""
     splash = SplashPanel(BASE, version=_version)
+    set_stray_sweep(True)
     splash.set_stage("Starting application...", 5)
     splash.show()
     app.processEvents()
+    hide_startup_strays(splash)
 
     try:
         window = MainWindow(progress_cb=splash.set_stage)
     except Exception:
+        set_stray_sweep(False)
+        uninstall_show_hook()
         splash.close_now()
         raise
+    # Drop the nuclear Win32 show-hook (it would swallow dialogs) but keep
+    # the Qt filter: theme rebuilds still spawn untitled helper HWNDs.
+    set_stray_sweep(False)
+    uninstall_show_hook()
+    window.setAttribute(Qt.WA_DontShowOnScreen, False)
     window.show()
     splash.raise_()
     # Startup phases are done — theme rebuilds must not drive the splash.

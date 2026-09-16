@@ -3,18 +3,25 @@ ui/pages/auto_ensemble_page.py
 Auto Ensemble page — modern card-based redesign.
 """
 import os
+import math
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushButton,
     QFileDialog, QScrollArea, QSizePolicy, QGridLayout, QButtonGroup,
     QLayout, QWidgetItem,
 )
 from PySide6.QtCore import Qt, Signal, QPointF, QRectF, QSize, QTimer
-from PySide6.QtGui import QPainter, QColor, QPen, QFont, QFontMetrics
+from PySide6.QtGui import QPainter, QColor, QPen, QFont, QFontMetrics, QPainterPath
 
 from backend.yaml_analyzer import get_stems_for_type
 from backend.auto_ensemble_runner import AutoEnsembleRunner
 from ui.theme import theme_manager, UIConstants
-from ui.widgets.common import PageHeader, _type_badge_ss, _custom_badge_ss, _type_title
+from ui.widgets.common import (
+    PageHeader, _type_badge_ss, _custom_badge_ss, _type_title,
+    _page_edge_scroll_ss, GlyphButton, solid_button_ss,
+    FOLDER_GLYPH,
+    _solid_icon_color, _stop_icon_color, _pause_icon_color,
+)
+from ui.pages.inference_page import _MiniSwitch, _switch_side_ss
 
 def _accent():
     return theme_manager.accent
@@ -66,7 +73,7 @@ def _elide_text(text, max_width, font=None):
 # ── Icon Widget ──────────────────────────────────────────────────────────────
 
 class _IconWidget(QWidget):
-    WAVEFORM, FOLDER, SLIDERS, TARGET = range(4)
+    WAVEFORM, FOLDER, SLIDERS, TARGET, COG = range(5)
 
     def __init__(self, icon_type, size=20):
         super().__init__()
@@ -115,6 +122,33 @@ class _IconWidget(QWidget):
             p.drawEllipse(QPointF(cx, cy), w * 0.15, h * 0.15)
             p.drawLine(QPointF(cx, 0), QPointF(cx, h))
             p.drawLine(QPointF(0, cy), QPointF(w, cy))
+
+        elif self._type == self.COG:
+            cx, cy = w / 2.0, h / 2.0
+            n = 8
+            r_valley = min(w, h) * 0.30
+            r_tip = min(w, h) * 0.44
+            r_hole = min(w, h) * 0.13
+            path = QPainterPath()
+            for i in range(n):
+                a = i * (2 * math.pi / n)
+                t = 2 * math.pi / n
+                pts = (
+                    (r_valley, a + t * 0.12),
+                    (r_tip, a + t * 0.30),
+                    (r_tip, a + t * 0.45),
+                    (r_valley, a + t * 0.63),
+                )
+                for j, (r, ang) in enumerate(pts):
+                    x = cx + r * math.cos(ang)
+                    y = cy + r * math.sin(ang)
+                    if i == 0 and j == 0:
+                        path.moveTo(x, y)
+                    else:
+                        path.lineTo(x, y)
+            path.closeSubpath()
+            p.drawPath(path)
+            p.drawEllipse(QPointF(cx, cy), r_hole, r_hole)
         p.end()
 
 # ── Card Container ───────────────────────────────────────────────────────────
@@ -197,8 +231,8 @@ class _CardContainer(QFrame):
 # ── Stem Type Button ─────────────────────────────────────────────────────────
 
 class _StemTypeButton(QPushButton):
-    def __init__(self, label, type_name, count=0, selected=False):
-        super().__init__()
+    def __init__(self, label, type_name, count=0, selected=False, parent=None):
+        super().__init__(parent)
         self._type_name = type_name
         self._selected = selected
         self._count = count
@@ -271,8 +305,8 @@ class _StemTypeButton(QPushButton):
 class _ToggleCheck(QPushButton):
     toggled = Signal(bool)
 
-    def __init__(self, checked=False, enabled=True):
-        super().__init__()
+    def __init__(self, checked=False, enabled=True, parent=None):
+        super().__init__(parent)
         self._checked = checked
         self._enabled = enabled
         self._hovered = False
@@ -351,8 +385,8 @@ def _rgba_color(hex_str, alpha):
 # ── Model Card ───────────────────────────────────────────────────────────────
 
 class _ModelCard(QFrame):
-    def __init__(self, model):
-        super().__init__()
+    def __init__(self, model, parent=None):
+        super().__init__(parent)
         self._model = model
         self.setCursor(Qt.PointingHandCursor)
         self.setObjectName("modelRow")
@@ -362,7 +396,7 @@ class _ModelCard(QFrame):
         root.setContentsMargins(16, 0, 10, 0)
         root.setSpacing(10)
 
-        self._cb = _ToggleCheck(checked=False, enabled=True)
+        self._cb = _ToggleCheck(checked=False, enabled=True, parent=self)
         self._cb.toggled.connect(self._on_toggle)
         root.addWidget(self._cb, 0, Qt.AlignCenter)
 
@@ -589,22 +623,66 @@ class _BrowseButton(QPushButton):
         self._update_style()
 
 
-# ── TTA Button ───────────────────────────────────────────────────────────────
+# ── Off / On pill (same control as Inference Architecture vs Target) ──────────
 
-def _tta_btn_style(active):
-    if active:
-        return (
-            f"QPushButton{{background:{_accent()};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;font-weight:600;"
-            f"border-radius:{UIConstants.BTN_RADIUS}px;padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
-        )
-    else:
-        return (
-            f"QPushButton{{background:{theme_manager.theme.surface};border:1px solid {theme_manager.theme.border_visible};"
-            f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.BTN_FONT_SIZE}px;font-weight:600;"
-            f"color:{theme_manager.theme.text_sec};border-radius:{UIConstants.BTN_RADIUS}px;padding:{UIConstants.BTN_FONT_SIZE - 4}px {UIConstants.BTN_PADDING_H + 4}px;}}"
-            f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};border-color:{theme_manager.theme.border_dim};color:{theme_manager.theme.text};}}"
-        )
+class _OffOnSwitch(QWidget):
+    toggled = Signal(bool)
+
+    def __init__(self, checked=False, parent=None):
+        super().__init__(parent)
+        hl = QHBoxLayout(self)
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(5)
+        self._off_lbl = QLabel("Off")
+        self._on_lbl = QLabel("On")
+        self._sw = _MiniSwitch(checked, self)
+        self._sw.toggled.connect(self._on_sw)
+        self._off_lbl.setCursor(Qt.PointingHandCursor)
+        self._on_lbl.setCursor(Qt.PointingHandCursor)
+        hl.addWidget(self._off_lbl, 0, Qt.AlignVCenter)
+        hl.addWidget(self._sw, 0, Qt.AlignVCenter)
+        hl.addWidget(self._on_lbl, 0, Qt.AlignVCenter)
+        self._relabel()
+        self.setCursor(Qt.PointingHandCursor)
+
+    def _on_sw(self, on):
+        self._relabel()
+        self.toggled.emit(on)
+
+    def _relabel(self):
+        on = self._sw.is_checked()
+        self._off_lbl.setStyleSheet(_switch_side_ss(not on))
+        self._on_lbl.setStyleSheet(_switch_side_ss(on))
+
+    def is_on(self):
+        return self._sw.is_checked()
+
+    def set_on(self, on):
+        self._sw.set_checked(bool(on))
+
+    def mousePressEvent(self, e):
+        child = self.childAt(e.pos())
+        w = child
+        while w is not None and w is not self:
+            if w is self._sw:
+                super().mousePressEvent(e)
+                return
+            if w is self._off_lbl:
+                self.set_on(False)
+                super().mousePressEvent(e)
+                return
+            if w is self._on_lbl:
+                self.set_on(True)
+                super().mousePressEvent(e)
+                return
+            w = w.parentWidget()
+        self.set_on(not self.is_on())
+        super().mousePressEvent(e)
+
+    def reapply_theme(self):
+        self._sw.update()
+        self._relabel()
+
 
 # ── Quality Button ───────────────────────────────────────────────────────────
 
@@ -725,28 +803,26 @@ class AutoEnsemblePage(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
+        header_w = QWidget()
+        header_w.setStyleSheet("background:transparent;")
+        hh = QHBoxLayout(header_w)
+        hh.setContentsMargins(32, 32, 32, 0)
+        self._build_header(hh)
+        outer.addWidget(header_w)
+        outer.addSpacing(UIConstants.HEADER_CONTENT_GAP)
+
         self._page_scroll = QScrollArea()
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setFrameShape(QFrame.NoFrame)
-        self._page_scroll.setStyleSheet(
-            "QScrollArea{background:transparent;border:none;}"
-            "QScrollBar:vertical{width:4px;background:transparent;margin:0;}"
-            f"QScrollBar::handle:vertical{{background:{theme_manager.theme.scrollbar_handle};"
-            f"border-radius:2px;min-height:30px;}}"
-            f"QScrollBar::handle:vertical:hover{{background:{theme_manager.theme.scrollbar_hover};}}"
-            "QScrollBar::add-line:vertical{height:0;}"
-            "QScrollBar::sub-line:vertical{height:0;}"
-            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}"
-        )
+        self._page_scroll.setStyleSheet(_page_edge_scroll_ss())
         self._page_scroll.viewport().setStyleSheet("background:transparent;border:none;")
 
         content = QWidget()
         content.setStyleSheet("background:transparent;")
         root = QVBoxLayout(content)
-        root.setContentsMargins(32, 32, 32, 12)
+        root.setContentsMargins(32, 8, 32, 12)
         root.setSpacing(24)
 
-        self._build_header(root)
         self._build_row1(root)
         self._build_row2(root)
         self._build_row3(root)
@@ -764,10 +840,11 @@ class AutoEnsemblePage(QWidget):
             "AUTOMATICALLY COMBINE COMPATIBLE MODELS",
             highlight="COMPATIBLE MODELS",
             back=True,
+            help_key="auto_ensemble",
         )
         self._back_btn = hdr.back_btn
         self._back_btn.clicked.connect(self.navigate_back.emit)
-        root.addWidget(hdr, 0)
+        root.addWidget(hdr, 1)
 
     def _build_row1(self, root):
         row_w = QWidget()
@@ -801,8 +878,8 @@ class AutoEnsemblePage(QWidget):
         row.addWidget(stem_card)
 
         # ── INPUT/OUTPUT card ──
-        io_card = _CardContainer("INPUT / OUTPUT", "Configure input and output settings",
-                                  icon_type=_IconWidget.FOLDER)
+        io_card = _CardContainer("SETTINGS", "Configure input and output settings",
+                                  icon_type=_IconWidget.COG)
         io_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         io_card.setMaximumHeight(245)
         io_card.layout().setContentsMargins(20, 12, 20, 14)
@@ -811,7 +888,7 @@ class AutoEnsemblePage(QWidget):
         self._io_layout.setSpacing(10)
 
         # Input
-        self._input_row = _InfoRow("INPUT AUDIO", "No file selected",
+        self._input_row = _InfoRow("INPUT", "No file selected",
                                     right_widget=_BrowseButton("Browse"))
         self._input_row.findChild(_BrowseButton).clicked.connect(self._browse_input)
         self._io_layout.addWidget(self._input_row)
@@ -822,7 +899,7 @@ class AutoEnsemblePage(QWidget):
         self._io_layout.addWidget(sep1)
 
         # Output
-        self._output_row = _InfoRow("OUTPUT DIRECTORY", "./ensemble/",
+        self._output_row = _InfoRow("OUTPUT", "./ensemble/",
                                      right_widget=_BrowseButton("Browse"))
         self._output_row.findChild(_BrowseButton).clicked.connect(self._browse_output)
         self._io_layout.addWidget(self._output_row)
@@ -836,28 +913,15 @@ class AutoEnsemblePage(QWidget):
         tta_row = QHBoxLayout()
         tta_row.setContentsMargins(0, 0, 0, 0)
         tta_row.setSpacing(10)
-        tta_lbl = QLabel("TTA (Test Time Augmentation)")
+        tta_lbl = QLabel("TTA")
         tta_lbl.setStyleSheet(
             "font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;"
             f"color:{theme_manager.theme.text_label};background:transparent;letter-spacing:1px;"
         )
         tta_row.addWidget(tta_lbl)
         tta_row.addStretch()
-        self._tta_group = QButtonGroup(self)
-        self._tta_off = QPushButton("Off")
-        self._tta_off.setCheckable(True)
-        self._tta_off.setChecked(True)
-        self._tta_off.setCursor(Qt.PointingHandCursor)
-        self._tta_on = QPushButton("On")
-        self._tta_on.setCheckable(True)
-        self._tta_on.setChecked(False)
-        self._tta_on.setCursor(Qt.PointingHandCursor)
-        self._tta_group.addButton(self._tta_off)
-        self._tta_group.addButton(self._tta_on)
-        self._tta_group.buttonClicked.connect(self._on_tta_changed)
-        self._update_tta_style()
-        tta_row.addWidget(self._tta_off)
-        tta_row.addWidget(self._tta_on)
+        self._tta_sw = _OffOnSwitch(False)
+        tta_row.addWidget(self._tta_sw)
         self._io_layout.addLayout(tta_row)
 
         sep3 = QFrame()
@@ -869,7 +933,7 @@ class AutoEnsemblePage(QWidget):
         quality_row = QHBoxLayout()
         quality_row.setContentsMargins(0, 0, 0, 0)
         quality_row.setSpacing(8)
-        qlbl = QLabel("OUTPUT QUALITY")
+        qlbl = QLabel("FORMAT")
         qlbl.setStyleSheet(
             "font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;"
             f"color:{theme_manager.theme.text_label};background:transparent;letter-spacing:1px;"
@@ -988,56 +1052,42 @@ class AutoEnsemblePage(QWidget):
         bar_container = QWidget()
         bar_container.setObjectName("actionBar")
         bar_container.setStyleSheet(
-            f"QWidget#actionBar{{background:{_card()};border:none;}}"
+            f"QWidget#actionBar{{background:{_bg()};border:none;}}"
         )
+        bar_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._action_bar = bar_container
 
         bar = QHBoxLayout(bar_container)
-        bar.setContentsMargins(UIConstants.ACTION_BAR_MARGIN_LR, UIConstants.ACTION_BAR_MARGIN_TOP, UIConstants.ACTION_BAR_MARGIN_LR, UIConstants.ACTION_BAR_MARGIN_BOTTOM)
-        bar.setSpacing(UIConstants.ACTION_BAR_SPACING)
+        # Same inset as Iterative Ensemble: 32px page gutter, 16px gap from
+        # the content plus 8px above the buttons, 32px below.
+        bar.setContentsMargins(32, 24, 32, 32)
+        bar.setSpacing(8)
 
-        self._start_btn = QPushButton("Start Ensemble")
+        self._start_btn = GlyphButton("Auto Ensemble", "\u25B6", _solid_icon_color,
+                                      glyph_size=18, text_size=12, parent=self)
         self._start_btn.setCursor(Qt.PointingHandCursor)
-        self._start_btn.setMinimumWidth(200)
-        self._start_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
-        self._start_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self._start_btn.setStyleSheet(
-            f"QPushButton{{background:{theme_manager.accent};color:{theme_manager._accent_text};border:none;"
-            f"font-family:'Montserrat',sans-serif;font-weight:600;font-size:{UIConstants.ACTION_FONT_SIZE}px;"
-            f"border-radius:{UIConstants.ACTION_RADIUS}px;}}"
-            f"QPushButton:hover{{background:{theme_manager.accent};}}"
-            f"QPushButton:pressed{{background:{theme_manager.accent};}}"
-            f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
-        )
+        self._start_btn.setStyleSheet(solid_button_ss())
+        self._start_btn.fit_contents()
         self._start_btn.clicked.connect(self._start)
         bar.addWidget(self._start_btn)
 
-        self._stop_btn = QPushButton("Stop")
-        self._stop_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
-        self._stop_btn.setMinimumWidth(90)
-        self._stop_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self._stop_btn = GlyphButton("Stop", "\u25A0", _stop_icon_color,
+                                     glyph_size=16, text_size=12, parent=self)
         self._stop_btn.setCursor(Qt.PointingHandCursor)
         self._stop_btn.setEnabled(False)
         self._stop_btn.clicked.connect(self._stop)
         self._update_stop_style()
+        self._stop_btn.fit_contents()
         bar.addWidget(self._stop_btn)
 
-        self._pause_btn = QPushButton("Pause")
-        self._pause_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
-        self._pause_btn.setMinimumWidth(90)
-        self._pause_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self._pause_btn.setCursor(Qt.PointingHandCursor)
-        self._pause_btn.setEnabled(False)
-        self._pause_btn.clicked.connect(self._toggle_pause)
-        self._update_pause_style()
-        bar.addWidget(self._pause_btn)
+        bar.addStretch(1)
 
-        self._open_btn = QPushButton("Open Output")
-        self._open_btn.setMinimumHeight(UIConstants.BTN_HEIGHT)
-        self._open_btn.setMinimumWidth(110)
-        self._open_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self._open_btn = GlyphButton("Open Output", FOLDER_GLYPH, _pause_icon_color,
+                                     glyph_size=16, text_size=10, parent=self)
         self._open_btn.setCursor(Qt.PointingHandCursor)
         self._open_btn.clicked.connect(self._open_output)
         self._update_open_style()
+        self._open_btn.fit_contents()
         bar.addWidget(self._open_btn)
 
         outer.addWidget(bar_container, 0)
@@ -1045,22 +1095,17 @@ class AutoEnsemblePage(QWidget):
     # ── Action Bar helpers ────────────────────────────────────────────────
 
     def _update_stop_style(self):
+        t = theme_manager.theme
         self._stop_btn.setStyleSheet(
-            f"QPushButton{{background:{theme_manager.theme.error};color:{theme_manager.theme.text};border:none;"
-            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
-            "border-radius:8px;}"
-            f"QPushButton:hover{{background:{theme_manager.theme.error};}}"
-            f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
-        )
-
-    def _update_pause_style(self):
-        self._pause_btn.setStyleSheet(
-            f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
-            f"border:1px solid {theme_manager.theme.border};"
-            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:11px;"
-            "border-radius:8px;}"
-            f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
-            f"QPushButton:disabled{{background:{theme_manager.theme.disabled_bg};color:{theme_manager.theme.disabled_text};}}"
+            "QPushButton{"
+            f"background:{t.surface};color:{t.text_muted};"
+            f"border:1px solid {t.border};border-radius:6px;"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:12px;}"
+            "QPushButton:enabled{"
+            f"color:{t.error};border:1px solid {t.error};}}"
+            f"QPushButton:hover:enabled{{background:{t.surface_alt};}}"
+            f"QPushButton:disabled{{color:{t.text_muted};}}"
         )
 
     def _update_open_style(self):
@@ -1068,18 +1113,11 @@ class AutoEnsemblePage(QWidget):
             f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
             f"border:1px solid {theme_manager.theme.border};"
             "font-family:'Montserrat',sans-serif;font-weight:600;font-size:10px;"
-            "border-radius:8px;}"
+            "border-radius:6px;}"
             f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
         )
 
     # ── Slots ─────────────────────────────────────────────────────────────
-
-    def _update_tta_style(self):
-        self._tta_off.setStyleSheet(_tta_btn_style(self._tta_off.isChecked()))
-        self._tta_on.setStyleSheet(_tta_btn_style(self._tta_on.isChecked()))
-
-    def _on_tta_changed(self, btn):
-        self._update_tta_style()
 
     def _on_quality(self, btn):
         for b in self._quality_btns:
@@ -1224,7 +1262,7 @@ class AutoEnsemblePage(QWidget):
         MAX_PER_COL = 3
         CARD_W = 400
         for i, model in enumerate(filtered):
-            card = _ModelCard(model)
+            card = _ModelCard(model, self._model_container)
             card._cb.toggled.connect(self._update_start_button)
             self._model_cards.append(card)
             card.setFixedWidth(CARD_W)
@@ -1267,7 +1305,8 @@ class AutoEnsemblePage(QWidget):
         for i, t in enumerate(STEM_TYPES):
             label = t.capitalize() if t != "dual target (instrumental & vocals)" else "Vocals / Inst"
             count = sum(1 for m in self._models if m.get("type", "").lower() == t.lower())
-            btn = _StemTypeButton(label, t, count=count, selected=(t == self._stem_type))
+            btn = _StemTypeButton(label, t, count=count, selected=(t == self._stem_type),
+                                  parent=self)
             btn.clicked.connect(lambda checked, k=t: self._on_stem_type(k))
             row = i // 3
             col = i % 3
@@ -1319,9 +1358,6 @@ class AutoEnsemblePage(QWidget):
         self._start_btn.setEnabled(True)
         self.process_running.emit(False)
 
-    def _toggle_pause(self):
-        pass
-
     def _open_output(self):
         path = self._output_dir or os.path.join(os.getcwd(), "ensemble")
         if os.path.isdir(path):
@@ -1366,9 +1402,18 @@ class AutoEnsemblePage(QWidget):
             card.reapply_theme()
         for btn in self._quality_btns:
             btn.reapply_theme()
+        if hasattr(self, "_tta_sw"):
+            self._tta_sw.reapply_theme()
         self._input_row.findChild(_BrowseButton).reapply_theme()
+        if hasattr(self, "_action_bar"):
+            self._action_bar.setStyleSheet(
+                f"QWidget#actionBar{{background:{_bg()};border:none;}}"
+            )
         if hasattr(self, "_start_btn"):
+            self._start_btn.setStyleSheet(solid_button_ss())
+            self._start_btn._refresh_icon()
             self._update_stop_style()
-            self._update_pause_style()
             self._update_open_style()
+            self._stop_btn._refresh_icon()
+            self._open_btn._refresh_icon()
         self._output_row.findChild(_BrowseButton).reapply_theme()

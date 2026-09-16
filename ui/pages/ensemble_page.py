@@ -247,6 +247,7 @@ class EnsembleLandingPage(QWidget):
             "ENSEMBLE",
             "COMBINE MULTIPLE MODELS FOR BETTER RESULTS",
             highlight="MULTIPLE MODELS",
+            help_key="ensemble",
         )
         root.addWidget(hdr)
 

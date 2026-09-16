@@ -350,6 +350,7 @@ _INTERACTIVE_BASES = (
 # signal (matched by class name to avoid importing page modules here).
 _CLICKABLE_CLASS_NAMES = {
     "_ComboRow",       # inference: row click opens the combo popup
+    "_SwitchRow",      # inference: row click toggles the pill switch
     "_ModelItem",      # inference: row click selects the model
     "_OutputStemsRow", # inference: row click opens the stem dialog
 }
@@ -640,6 +641,9 @@ class UIConstants:
     INNER_SPACING = 14
     ITEM_SPACING = 8
     GRID_SPACING = 8
+    # Empty band under PageHeader; lives outside page scrollers so it
+    # stays put while content moves (Iterative Ensemble's header gap).
+    HEADER_CONTENT_GAP = 16
 
     # ── Separators ──
     SEP_HEIGHT = 1
