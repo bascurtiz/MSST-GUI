@@ -6,7 +6,7 @@ Separate audio into stems (vocals, instrumental, drums, bass, guitar, piano, …
 
 The app **vendors** ZFTurbo's MSST scripts (`inference.py`, `train.py`, `valid.py`, `ensemble.py` plus `utils/` / `models/` / `configs/`). Jobs spawn those local files; this is not a wrapper around `pip install msst`.
 
-![MSST GUI in action](msst-gui-ani-v4.gif)
+![MSST GUI in action](msst-gui-ani-v5.gif)
 
 ## Features
 

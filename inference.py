@@ -322,7 +322,7 @@ def run_folder(
             if args.draw_spectro > 0:
                 output_img_path = os.path.join(output_dir, f"{fname}.jpg")
                 draw_spectrogram(estimates.T, sr_out, args.draw_spectro, output_img_path)
-                print("Wrote file:", output_img_path)
+                print("Wrote spectrogram:", output_img_path)
 
         # Clean up per-track tensors and GPU cache to prevent VRAM accumulation & fragmentation
         # across consecutive files in a batch

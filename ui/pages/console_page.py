@@ -1806,6 +1806,10 @@ class _TaskCard(QFrame):
         self._pct_lbl.setText(f"{pct}%")
 
     def add_output(self, path):
+        # Spectro JPGs (and any other non-audio export) share the stem
+        # filename; they must never become waveform rows.
+        if os.path.splitext(path)[1].lower() not in _AUDIO_EXTS:
+            return False
         basename = os.path.basename(path)
         if basename not in self._output_files:
             self._output_files.append(basename)
@@ -3865,7 +3869,10 @@ class ConsolePage(QWidget):
 
         export = _extract_export(text)
         if export:
-            self._attach_export(None, export)
+            # Engine spectro previews are logged as "Wrote file: …jpg";
+            # only audio stems belong on the waveform card.
+            if self._is_media_file(export):
+                self._attach_export(None, export)
             return
 
     def _active_card(self):
