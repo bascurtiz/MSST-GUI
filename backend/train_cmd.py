@@ -160,13 +160,39 @@ def _cli_device_ids(opts: Mapping, launcher: str) -> list[int]:
 
 
 def subprocess_env(opts: Mapping, launcher: str) -> Optional[dict]:
-    """Extra env for the job, or None when the parent env is fine."""
+    """Extra env for the job, or None when the parent env is fine.
+
+    The wandb API key is injected as WANDB_API_KEY rather than ``--wandb_key``
+    so it never appears in the spawned command line or the training log.
+    """
+    env: dict[str, str] = {}
     if opts.get("force_cpu"):
-        return {"CUDA_VISIBLE_DEVICES": ""}
-    ids = [int(i) for i in (opts.get("device_ids") or [0])]
-    if launcher in ("ddp", "accelerate") and ids:
-        return {"CUDA_VISIBLE_DEVICES": ",".join(str(i) for i in ids)}
-    return None
+        env["CUDA_VISIBLE_DEVICES"] = ""
+    else:
+        ids = [int(i) for i in (opts.get("device_ids") or [0])]
+        if launcher in ("ddp", "accelerate") and ids:
+            env["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in ids)
+    key = str(opts.get("wandb_key") or "").strip()
+    if key:
+        env["WANDB_API_KEY"] = key
+    return env or None
+
+
+def redact_train_cmd(cmd: Sequence[str]) -> list[str]:
+    """Copy argv with ``--wandb_key`` values stripped for log output."""
+    out: list[str] = []
+    hide_next = False
+    for c in cmd:
+        if hide_next:
+            out.append("<redacted>")
+            hide_next = False
+            continue
+        if c == "--wandb_key":
+            out.append(c)
+            hide_next = True
+            continue
+        out.append(c)
+    return out
 
 
 def _append_standard_flags(cmd: list[str], opts: Mapping, *,
@@ -195,9 +221,6 @@ def _append_standard_flags(cmd: list[str], opts: Mapping, *,
     freeze = str(opts.get("freeze_layers") or "").split()
     if freeze:
         cmd += ["--freeze_layers", *freeze]
-    key = str(opts.get("wandb_key") or "").strip()
-    if key:
-        cmd += ["--wandb_key", key]
     if opts.get("wandb_offline"):
         cmd.append("--wandb_offline")
 
@@ -214,9 +237,6 @@ def _append_accelerate_flags(cmd: list[str], opts: Mapping, *,
         cmd.append("--use_mse_loss")
     if "l1_loss" in losses:
         cmd.append("--use_l1_loss")
-    key = str(opts.get("wandb_key") or "").strip()
-    if key:
-        cmd += ["--wandb_key", key]
 
 
 def build_train_command(
@@ -231,7 +251,7 @@ def build_train_command(
     dataset_type: str | int = "1",
     metrics: Sequence[str] = ("sdr",),
     metric_for_scheduler: str = "sdr",
-    losses: Sequence[str] = ("masked_loss",),
+    losses: Sequence[str] = ("multi_l1_snr_db_loss", "fullness_penalty_loss"),
     checkpoint: str = "",
     custom_backend: str = "",
     use_standard_loss: bool = False,
@@ -241,7 +261,7 @@ def build_train_command(
     data_paths = list(data_paths)
     valid_paths = list(valid_paths)
     metrics = list(metrics) or ["sdr"]
-    losses = list(losses) or ["masked_loss"]
+    losses = list(losses) or ["multi_l1_snr_db_loss", "fullness_penalty_loss"]
     device_ids = _cli_device_ids(opts, launcher)
     num_workers = int(opts.get("num_workers", 4))
     seed = int(opts.get("seed", 0))

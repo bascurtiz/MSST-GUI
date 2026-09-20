@@ -343,7 +343,7 @@ def _parse_mel_doc(text: str) -> list[PretrainedModel]:
             name=name,
             section=section,
             instruments="bass / drums / vocals / other",
-            metrics=f"SDR: {avg}" if avg else "",
+            metrics=f"Average SDR: {avg}" if avg else "",
             config_url=config_url,
             checkpoint_url=ckpt_url,
             source="mel_roformer",
@@ -352,6 +352,62 @@ def _parse_mel_doc(text: str) -> list[PretrainedModel]:
         models.append(model)
 
     return models
+
+
+# Catalog `arch_hint` strings (and the chip keys derived from them) are
+# display labels, not engine `--model_type` keys. Map the common ones so a
+# wizard lock on `htdemucs` still matches a "Demucs Architecture" row.
+_ARCH_HINT_TO_ENGINE = {
+    "melband_roformer": "mel_band_roformer",
+    "mel_band_roformer": "mel_band_roformer",
+    "bs_roformer": "bs_roformer",
+    "scnet": "scnet",
+    "demucs": "htdemucs",
+    "ht_demucs": "htdemucs",
+    "htdemucs": "htdemucs",
+    "mdx23c": "mdx23c",
+    "bsmamba2": "bs_mamba2",
+    "bs_mamba2": "bs_mamba2",
+    "vitlarge23": "segm_models",
+    "swin_upernet": "swin_upernet",
+    "conformer": "conformer",
+    "dttnet": "dttnet",
+    "dtt_net": "dttnet",
+    "apollo": "apollo",
+    "bandit": "bandit",
+}
+
+
+def _engine_type_from_arch_hint(hint: str) -> str:
+    """Normalize a catalog arch_hint to an engine model_type, or ""."""
+    h = (hint or "").replace(" Architecture", "").replace(" Model", "")
+    h = h.strip().lower()
+    h = re.sub(r"[\s_\-]+", "_", h)
+    if not h:
+        return ""
+    return _ARCH_HINT_TO_ENGINE.get(h, h)
+
+
+def matches_model_type(model: PretrainedModel, model_type: str) -> bool:
+    """True when a catalog row belongs to the engine `--model_type`.
+
+    Config and checkpoint URLs are guessed first (longest engine key wins
+    inside the filename). The display name is only used when the URLs do
+    not guess. A concrete guess of a *different* engine type hides the row
+    even if the arch_hint would alias. Families are not collapsed:
+    `conformer` does not stand in for `bs_conformer`.
+    """
+    wanted = (model_type or "").strip().lower()
+    if not wanted:
+        return True
+    from backend.msst_catalog import guess_model_type_from_name
+    for blob in (model.config_url, model.checkpoint_url, model.name):
+        if not blob:
+            continue
+        guessed = guess_model_type_from_name(blob)
+        if guessed:
+            return guessed == wanted
+    return _engine_type_from_arch_hint(model.arch_hint) == wanted
 
 
 def _guess_arch(blob: str) -> str:

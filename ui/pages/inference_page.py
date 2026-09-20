@@ -59,7 +59,7 @@ from utils.stem_planning import (
     resolve_target, rest_needed,
 )
 from ui.strings import T_MULTI_SELECT_MODE
-from ui.theme import theme_manager, UIConstants, FONT_STACK
+from ui.theme import theme_manager, UIConstants
 from ui.widgets.common import (
     ConsoleLog, SpectrogramPanel, WaveformPanel, ProcessingStatusPanel, PageHeader,
     outline_button_ss, solid_button_ss, paint_chevron, EllipsisButton,
@@ -2468,6 +2468,14 @@ class _ModelItem(QFrame):
     _SCORE_ROW_MIN_H = 32  # minimum height for the two-line per-stem block
     _DIVIDER_H = 1
 
+    def _name_label_ss(self):
+        """Montserrat 12 / 700, same secondary text color as CONFIGURATION
+        INPUT / OUTPUT row labels."""
+        return (
+            "font-family:'Montserrat';font-size:12px;font-weight:700;"
+            f"color:{theme_manager.theme.text_sec};background:transparent;border:none;"
+        )
+
     def _bootstrap_scores_from_store(self):
         """Load cached mvsep scores directly on the row — do not rely on the
         page-level sync finishing before the arch card is expanded."""
@@ -2620,11 +2628,7 @@ class _ModelItem(QFrame):
         self._display = display or name
         self._lbl = _ElidingName(self._display, row)
         self._lbl.setObjectName("modelItemLabel")
-        self._lbl.setStyleSheet(
-            f"font-family:{FONT_STACK};font-size:12px;"
-            "font-weight:600;letter-spacing:0.5px;"
-            f"color:{theme_manager.theme.text_sec};background:transparent;"
-        )
+        self._lbl.setStyleSheet(self._name_label_ss())
         hl.addWidget(self._lbl)
         self._link = None
         if scores_url:
@@ -2858,28 +2862,10 @@ class _ModelItem(QFrame):
 
     def _update_style(self):
         t = theme_manager.theme
-        if self._is_selected:
-            self.setStyleSheet(
-                f"QFrame{{background:{t.border};border:none;}}"
-            )
-            self._divider.setStyleSheet(
-                f"background:{t.border};border:none;")
-            self._lbl.setStyleSheet(
-                f"font-family:{FONT_STACK};font-size:12px;"
-                "font-weight:600;letter-spacing:0.5px;"
-                f"color:{t.text};background:transparent;"
-            )
-        else:
-            self.setStyleSheet(
-                "QFrame{background:transparent;border:none;}"
-            )
-            self._divider.setStyleSheet(
-                f"background:{t.border};border:none;")
-            self._lbl.setStyleSheet(
-                f"font-family:{FONT_STACK};font-size:12px;"
-                "font-weight:600;letter-spacing:0.5px;"
-                f"color:{t.text_sec};background:transparent;"
-            )
+        bg = t.border if self._is_selected else "transparent"
+        self.setStyleSheet(f"QFrame{{background:{bg};border:none;}}")
+        self._divider.setStyleSheet(f"background:{t.border};border:none;")
+        self._lbl.setStyleSheet(self._name_label_ss())
 
     def enterEvent(self, e):
         if not self._is_selected:
@@ -3720,6 +3706,14 @@ class InferencePage(QWidget):
         self._score_retry_timer.setSingleShot(True)
         self._score_retry_timer.setInterval(500)
         self._score_retry_timer.timeout.connect(self._retry_unattached_scores)
+        # scores_ready arrives once per checkpoint. Applying each signal with
+        # a full library walk + height refresh pegs the UI for tens of
+        # seconds on startup (the splash sat on Ready until that drained).
+        self._score_ready_pending = set()
+        self._score_ready_timer = QTimer(self)
+        self._score_ready_timer.setSingleShot(True)
+        self._score_ready_timer.setInterval(0)
+        self._score_ready_timer.timeout.connect(self._flush_scores_ready)
         # Coalesced library re-render: model_registered arrives ~60x during a
         # cold settings load; rendering per signal made startup and theme
         # switches take ~5s. One flush per event-loop pass instead.
@@ -4185,11 +4179,7 @@ class InferencePage(QWidget):
                 "background:transparent;padding:6px 12px;")
             # Model items
             for item in card.findChildren(_ModelItem):
-                item._lbl.setStyleSheet(
-                    f"font-family:{FONT_STACK};font-size:12px;"
-                    "font-weight:600;letter-spacing:0.5px;"
-                    f"color:{t.text_sec};background:transparent;"
-                )
+                item._lbl.setStyleSheet(item._name_label_ss())
                 item._dots.setStyleSheet(
                     "QPushButton{background:transparent;"
                     f"color:{t.text_muted};"
@@ -4203,11 +4193,6 @@ class InferencePage(QWidget):
                     item._noval_lbl.setStyleSheet(item._noval_ss())
                 if item._is_selected:
                     item.setStyleSheet(f"QFrame{{background:{t.border};border:none;}}")
-                    item._lbl.setStyleSheet(
-                        f"font-family:{FONT_STACK};font-size:12px;"
-                        "font-weight:600;letter-spacing:0.5px;"
-                        f"color:{t.text};background:transparent;"
-                    )
                 else:
                     item.setStyleSheet("QFrame{background:transparent;border:none;}")
                 # Update type/CUSTOM tags
@@ -4433,22 +4418,27 @@ class InferencePage(QWidget):
         self._sync_library_scores()
 
     def _on_scores_ready(self, filename):
-        """Scores for one checkpoint landed in the background — refresh every
-        row showing it (a model appears in both the arch and target grouping)
-        and re-apply the active metric sort."""
-        basename = (filename or "").lower()
-        sc = self._scores_store.get(basename)
+        """Queue one checkpoint; flush once per event-loop pass."""
+        self._score_ready_pending.add((filename or "").lower())
+        if not self._score_ready_timer.isActive():
+            self._score_ready_timer.start()
+
+    def _flush_scores_ready(self):
+        pending = self._score_ready_pending
+        self._score_ready_pending = set()
+        if not pending:
+            return
         touched = set()
         for card in list(self._arch_cards.values()) + list(self._target_cards.values()):
             for i in range(card._list_vl.count()):
                 w = card._list_vl.itemAt(i).widget()
-                if isinstance(w, _ModelItem):
-                    if basename not in _score_keys_for_item(w, self._friendly_names):
-                        continue
-                    if sc is None:
-                        continue
-                    self._apply_score_to_item(w)
-                    touched.add(card)
+                if not isinstance(w, _ModelItem):
+                    continue
+                keys = _score_keys_for_item(w, self._friendly_names)
+                if pending.isdisjoint(keys):
+                    continue
+                self._apply_score_to_item(w)
+                touched.add(card)
         for card in touched:
             card._update_expanded_height()
         self._refresh_expanded_card_heights()

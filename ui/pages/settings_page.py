@@ -1746,6 +1746,7 @@ class _FolderManagerWidget(QWidget):
             name_row.setSpacing(6)
             name_row.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             name_lbl = _ElidedLabel(info.full_name)
+            name_lbl.setObjectName("mgrModelName")
             name_lbl.setStyleSheet(
                 f"font-family:'Montserrat';font-size:12px;font-weight:700;"
                 f"color:{theme_manager.theme.text};background:transparent;border:none;"
@@ -1765,6 +1766,16 @@ class _FolderManagerWidget(QWidget):
             # (same pattern as Model Library _ModelItem rows).
             name_row.addStretch(1)
             left_col.addLayout(name_row)
+
+            if info.stem_type:
+                type_tag = QLabel(_type_title(info.stem_type))
+                type_tag.setObjectName("mgrTypeTag")
+                type_tag.setToolTip(info.stem_type)
+                type_tag.setStyleSheet(_type_badge_ss(info.stem_type))
+                type_tag.setFixedHeight(17)
+                type_tag.setWordWrap(False)
+                type_tag.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+                left_col.addWidget(type_tag, 0, Qt.AlignLeft)
 
             # Files
             yaml_name = info.config_url.split("/")[-1].split("?")[0]
@@ -1880,15 +1891,6 @@ class _FolderManagerWidget(QWidget):
 
             main_row.addLayout(left_col, 1)
 
-            if info.stem_type:
-                type_tag = QLabel(_type_title(info.stem_type))
-                type_tag.setObjectName("mgrTypeTag")
-                type_tag.setToolTip(info.stem_type)
-                type_tag.setStyleSheet(_type_badge_ss(info.stem_type))
-                type_tag.setFixedHeight(17)
-                type_tag.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-                main_row.addWidget(type_tag, 0, Qt.AlignVCenter)
-
             if installed:
                 inst_btn = QPushButton("✓ Installed")
                 inst_btn.setFixedHeight(30)
@@ -1909,10 +1911,17 @@ class _FolderManagerWidget(QWidget):
                 )
                 inst_btn.clicked.connect(lambda _, x=info: self._install(x))
             inst_btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-            main_row.addWidget(inst_btn, 0, Qt.AlignVCenter)
+            main_row.addWidget(inst_btn, 0, Qt.AlignTop)
 
             clo.addLayout(main_row)
             if updated_row.count():
+                if no_validation or metric_text:
+                    rule = QFrame()
+                    rule.setObjectName("mgrMetricRule")
+                    rule.setFixedHeight(1)
+                    rule.setStyleSheet(
+                        f"background:{theme_manager.theme.border};border:none;")
+                    clo.addWidget(rule)
                 clo.addLayout(updated_row)
 
             col.addWidget(card)

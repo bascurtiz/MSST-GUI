@@ -100,14 +100,14 @@ model:
   multi_stft_hop_size: 147
   multi_stft_normalized: False
   mlp_expansion_factor: 4
-  use_torch_checkpoint: True # activation checkpointing: needed to fit PolarFormer training on 32 GB GPUs
+  use_torch_checkpoint: False # it allows to greatly reduce GPU memory consumption during training (not fully tested)
   skip_connection: False # Enable skip connection between transformer blocks - can solve problem with gradients and probably faster training
   # use_shared_bias: True
   use_pope: True
 
 training:
-  batch_size: 1
-  gradient_accumulation_steps: 2
+  batch_size: 2
+  gradient_accumulation_steps: 1
   grad_clip: 0
   instruments: ['vocals', 'other']
   patience: 2

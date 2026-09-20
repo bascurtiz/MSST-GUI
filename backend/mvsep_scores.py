@@ -619,9 +619,13 @@ class ScoresStore(QObject):
         _save_cache(self._cache)
 
     def _poll(self) -> None:
-        while self._results:
+        # Cap per tick so a cold cache dump cannot monopolize the GUI thread
+        # (library rows used to re-layout once per checkpoint).
+        n = 0
+        while self._results and n < 12:
             fn, parsed = self._results.pop(0)
             self.scores_ready.emit(fn)
+            n += 1
 
 
 # Module-level singleton: created lazily on first use (needs a QApplication

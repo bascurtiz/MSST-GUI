@@ -18,7 +18,7 @@ import ctypes
 from ctypes import wintypes
 
 from PySide6.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QRectF,
+    Qt, QPropertyAnimation, QEasingCurve, QRectF,
 )
 from PySide6.QtGui import QPixmap, QPainter, QColor, QPen
 from PySide6.QtWidgets import (
@@ -257,14 +257,19 @@ class SplashPanel(QWidget):
         hide_startup_strays(self)
 
     def finish(self, message: str = "Ready"):
-        """Show 100% briefly, then fade out and release the widget."""
+        """Mark 100% and drop the overlay immediately.
+
+        A delayed fade needs the event loop. The first exec() pass is often
+        busy attaching mvsep scores to the Model Library, so a 650 ms timer
+        can sit behind tens of seconds of UI work while this card still says
+        Ready on top of a finished window.
+        """
         if self._closing or not self.isVisible():
             return
-        self._closing = True
         self._status.setText(message)
         self._bar.setValue(100)
         self.repaint()
-        QTimer.singleShot(650, self._fade.start)
+        self.close_now()
 
     def close_now(self):
         """Immediate teardown (used if window construction fails)."""

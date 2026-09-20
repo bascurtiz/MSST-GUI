@@ -5,11 +5,14 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
 from ui.strings import PAGE_HELP, HELP_REQUIRED_CAPTION, HELP_OPTIONAL_CAPTION
 from ui.theme import theme_manager
-from ui.widgets.common import HelpButton, PageHeader, PageHelpDialog, OptionalFold
+from ui.widgets.common import (
+    HelpButton, PageHeader, PageHelpDialog, OptionalFold, _HELP_SCROLL_LANE,
+)
 import ui.widgets.common as common
 
 
@@ -74,6 +77,93 @@ def main():
         and dlg.findChild(QFrame, "helpOptional") is not None,
     )
 
+    three = PageHelpDialog({
+        "title": "TEST",
+        "heading": "GPUS / WORKERS / SEED  ·  TEST",
+        "intro": "Three columns.",
+        "required": ["Pick a GPU."],
+        "middle": ["Set workers."],
+        "optional": ["Flip a flag."],
+        "required_title": "GPUS",
+        "middle_title": "WORKERS / SEED",
+        "required_caption": "Devices.",
+        "middle_caption": "DataLoader.",
+        "optional_caption": "Flags.",
+    })
+    three_labels = [l.text() for l in three.findChildren(QLabel)]
+    check("three-col GPUS badge", "GPUS" in three_labels)
+    check("three-col WORKERS / SEED badge", "WORKERS / SEED" in three_labels)
+    check("three-col OPTIONAL badge", "OPTIONAL" in three_labels)
+    check(
+        "three-col keeps two required panes",
+        len([f for f in three.findChildren(QFrame)
+             if f.objectName() == "helpRequired"]) == 2,
+    )
+
+    stacked = PageHelpDialog({
+        "title": "TEST",
+        "heading": "GPUS / WORKERS / SEED  ·  TEST",
+        "intro": "Optional below.",
+        "required": ["Pick a GPU."],
+        "middle": ["Set workers."],
+        "optional": ["Flip a flag."],
+        "required_title": "GPUS",
+        "middle_title": "WORKERS / SEED",
+        "required_caption": "Devices.",
+        "middle_caption": "DataLoader.",
+        "optional_caption": "Flags.",
+        "optional_below": True,
+    })
+    stacked.show()
+    app.processEvents()
+    stacked_labels = [l.text() for l in stacked.findChildren(QLabel)]
+    check("stacked OPTIONAL badge", "OPTIONAL" in stacked_labels)
+    check(
+        "stacked does not grow a third side pane",
+        len([f for f in stacked.findChildren(QFrame)
+             if f.objectName() == "helpRequired"]) == 2
+        and len([f for f in stacked.findChildren(QFrame)
+                 if f.objectName() == "helpOptional"]) == 1,
+    )
+
+    def _lab_pos(dlg, text):
+        for lab in dlg.findChildren(QLabel):
+            if lab.text() == text:
+                return lab.mapTo(dlg, lab.rect().topLeft())
+        return None
+
+    gpus = _lab_pos(stacked, "GPUS")
+    opt = _lab_pos(stacked, "OPTIONAL")
+    check("stacked optional is below GPUS",
+          gpus is not None and opt is not None and opt.y() > gpus.y() + 20)
+    stacked.close()
+
+    tall = PageHelpDialog({
+        "title": "TEST",
+        "heading": "SCROLL  ·  TEST",
+        "intro": "Tall enough to grow a vertical bar.",
+        "required": ["Pick a GPU."],
+        "middle": ["Set workers."],
+        "optional": [f"Optional step {i}." for i in range(40)],
+        "required_title": "GPUS",
+        "middle_title": "WORKERS / SEED",
+        "required_caption": "Devices.",
+        "middle_caption": "DataLoader.",
+        "optional_caption": "Flags.",
+        "optional_below": True,
+    })
+    tall.show()
+    app.processEvents()
+    check(
+        "tall sheet enables a vertical bar",
+        tall._sc.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded,
+    )
+    check(
+        "inner width leaves the scrollbar lane",
+        tall._inner.width() + _HELP_SCROLL_LANE <= tall._sc.width() + 1,
+    )
+    tall.close()
+
     console = PageHelpDialog(PAGE_HELP["console"])
     clabels = [l.text() for l in console.findChildren(QLabel)]
     check(
@@ -86,10 +176,22 @@ def main():
     )
 
     train_opt = PAGE_HELP["training"]["optional"][0]
+    train_lines = train_opt.split("\n")
+    check(
+        "training splits losses onto the next line",
+        train_lines[0].endswith("optimizer,")
+        and train_lines[1].startswith("losses, and metrics"),
+    )
     check(
         "training splits YAML onto the next line",
-        "and metrics —" in train_opt.split("\n")[0]
-        and train_opt.split("\n")[1].startswith("YAML values"),
+        train_lines[2].startswith("YAML values"),
+    )
+    wizard_opt = PAGE_HELP["training"]["optional"][5]
+    wizard_lines = wizard_opt.split("\n")
+    check(
+        "training splits Fit GPU onto the next line",
+        wizard_lines[0].endswith("wandb,")
+        and wizard_lines[1].startswith("Fit GPU, and Train."),
     )
     ens_opt = PAGE_HELP["ensemble"]["optional"][0]
     ens_lines = ens_opt.split("\n")

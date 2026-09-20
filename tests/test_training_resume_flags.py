@@ -14,9 +14,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtGui import QFontMetrics  # noqa: E402
+from PySide6.QtWidgets import QApplication, QFrame, QLabel  # noqa: E402
 
 from ui.pages.training_page import TrainingPage, _RunOptionsDialog  # noqa: E402
+from ui.widgets.common import _HELP_SCROLL_LANE  # noqa: E402
 
 FAILURES = []
 CHECKS = 0
@@ -67,6 +70,91 @@ def main():
           "dialog launcher combo is standard")
     check(dlg._lora_mode.currentData() == "off",
           "dialog LoRA combo is off")
+
+    labels = [l.text() for l in dlg.findChildren(QLabel)]
+    check("GPUS" in labels, "help GPUS column")
+    check("WORKERS / SEED" in labels, "help WORKERS / SEED column")
+    check("OPTIONAL" in labels, "help OPTIONAL column")
+    check("REQUIRED" not in labels, "REQUIRED split into GPUS / WORKERS / SEED")
+    check(any("GPUS / WORKERS / SEED" in (l or "") for l in labels),
+          "help heading")
+    req_frames = [f for f in dlg.findChildren(QFrame)
+                  if f.objectName() == "helpRequired"]
+    opt_frames = [f for f in dlg.findChildren(QFrame)
+                  if f.objectName() == "helpOptional"]
+    check(len(req_frames) == 2, "GPUS and WORKERS / SEED are required panes")
+    check(len(opt_frames) == 1, "training flags stay in OPTIONAL")
+
+    dlg.show()
+    app.processEvents()
+
+    def pos(key):
+        w = dlg._switches[key]
+        return w.mapTo(dlg, w.rect().topLeft())
+
+    def pos_label(text):
+        for lab in dlg.findChildren(QLabel):
+            if lab.text() == text:
+                return lab.mapTo(dlg, lab.rect().topLeft())
+        return None
+
+    run, freeze = pos_label("RUN OPTIONS"), pos_label("FREEZE LAYERS")
+    check(run is not None and freeze is not None, "run / freeze group labels")
+    gpus, workers = pos_label("GPUS"), pos_label("WORKERS / SEED")
+    check(gpus is not None and workers is not None, "GPUS / WORKERS badges")
+    check(workers.y() > gpus.y() + 20, "workers sits below GPUS")
+    check(abs(workers.x() - gpus.x()) <= 8, "workers aligns under GPUS")
+    optional = pos_label("OPTIONAL")
+    check(optional is not None, "OPTIONAL badge")
+    check(optional.x() > gpus.x() + 40, "OPTIONAL sits next to GPUS")
+    check(abs(optional.y() - gpus.y()) <= 8, "OPTIONAL aligns with GPUS")
+    lora, wandb = pos_label("LORA"), pos_label("WEIGHTS & BIASES (wandb)")
+    check(lora is not None and wandb is not None, "LoRA / wandb group labels")
+    resume = pos_label("WHEN RESUMING FROM A CHECKPOINT")
+    check(resume is not None, "resume group label")
+    check(resume.x() > run.x() + 40, "resume sits next to run options")
+    check(abs(resume.y() - run.y()) <= 8, "resume aligns with run options")
+    check(lora.y() > run.y() + 20, "LoRA sits below run options")
+    check(abs(lora.x() - run.x()) <= 8, "LoRA aligns under run options")
+    check(freeze.y() > lora.y() + 20, "freeze sits below LoRA")
+    check(abs(freeze.x() - run.x()) <= 8, "freeze aligns under run options")
+    check(wandb.y() > freeze.y() + 20, "wandb sits below freeze")
+    check(abs(wandb.x() - freeze.x()) <= 8, "wandb aligns under freeze")
+    check(dlg.width() >= 1120, "sheet is wide enough for the resume title")
+    check(dlg.width() <= 1180, "sheet is not over-wide")
+    opt_right = opt_frames[0].mapTo(dlg, opt_frames[0].rect().topRight()).x()
+    left_w = resume.x() - run.x()
+    right_w = opt_right - resume.x()
+    check(left_w > right_w, "left optional column is wider than resume")
+    resume_lab = next(
+        lab for lab in dlg.findChildren(QLabel)
+        if lab.text() == "WHEN RESUMING FROM A CHECKPOINT")
+    check(resume_lab.text() == "WHEN RESUMING FROM A CHECKPOINT",
+          "resume title text is complete")
+    if dlg._inner.height() <= dlg._sc.height() + 1:
+        check(dlg._sc.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff,
+              "sheet drops the vertical bar when content fits")
+    h0, bar0 = dlg.height(), dlg._sc.verticalScrollBarPolicy()
+    dlg._lora_on_sw.set_checked(True)
+    app.processEvents()
+    check(dlg.height() == h0, "LoRA on keeps the same modal height")
+    if dlg._inner.height() <= dlg._sc.height() + 1:
+        check(dlg._sc.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff,
+              "LoRA extras keep the vertical bar hidden")
+    dlg._lora_on_sw.set_checked(False)
+    app.processEvents()
+    check(dlg.height() <= h0 + 8, "LoRA off returns to the compact height")
+
+    opt, sch = pos("load_optimizer"), pos("load_scheduler")
+    check(sch.y() > opt.y() + 8, "scheduler sits below optimizer")
+    check(abs(sch.x() - opt.x()) <= 8, "scheduler aligns under optimizer")
+    met, loss = pos("load_all_metrics"), pos("load_all_losses")
+    check(loss.y() > met.y() + 8, "all losses sits below all metrics")
+    check(abs(loss.x() - met.x()) <= 8, "all losses aligns under all metrics")
+    if dlg._sc.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded:
+        check(dlg._inner.width() + _HELP_SCROLL_LANE <= dlg._sc.width() + 1,
+              "freeze/wandb fields leave the scrollbar lane")
+    dlg.close()
 
     # Clearing the checkpoint keeps the armed flags (harmless no-ops for a
     # from-scratch run — the engine only reads them with --start_check_point).

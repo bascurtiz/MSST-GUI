@@ -105,6 +105,8 @@ def css_color(value, fallback="#808080"):
 DOWNLOAD_GLYPH = "download"  # marker: draw a download icon instead of text
 PAUSE_GLYPH = "pause"        # two vertical bars
 FOLDER_GLYPH = "folder"      # outline folder
+CHIP_GLYPH = "chip"          # memory / IC package
+BOLT_GLYPH = "bolt"          # lightning bolt
 
 
 def run_blurred_dialog(dialog):
@@ -149,10 +151,10 @@ class _GlyphWidget(QWidget):
     centered 18px '+' floats ~3px above its 12px text label; the offset is
     computed from the font metrics so the glyph's ink center lands on the
     text's cap-height center (what the eye compares against).
-    The special DOWNLOAD_GLYPH / PAUSE_GLYPH / FOLDER_GLYPH markers draw
-    icons instead of text."""
+    The special DOWNLOAD_GLYPH / PAUSE_GLYPH / FOLDER_GLYPH / CHIP_GLYPH /
+    BOLT_GLYPH markers draw icons instead of text."""
 
-    _CUSTOM = {DOWNLOAD_GLYPH, PAUSE_GLYPH, FOLDER_GLYPH}
+    _CUSTOM = {DOWNLOAD_GLYPH, PAUSE_GLYPH, FOLDER_GLYPH, CHIP_GLYPH, BOLT_GLYPH}
 
     def __init__(self, text, size, family, parent=None):
         super().__init__(parent)
@@ -195,6 +197,10 @@ class _GlyphWidget(QWidget):
                 self._paint_pause(p)
             elif self._text == FOLDER_GLYPH:
                 self._paint_folder(p)
+            elif self._text == CHIP_GLYPH:
+                self._paint_chip(p)
+            elif self._text == BOLT_GLYPH:
+                self._paint_bolt(p)
             else:
                 self._paint_download(p)
             p.end()
@@ -269,6 +275,44 @@ class _GlyphWidget(QWidget):
         path.lineTo(x0 + bw, y0)
         path.lineTo(x0 + bw, y0 + bh)
         path.lineTo(x0, y0 + bh)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def _paint_chip(self, p):
+        """Memory IC: body with three pins a side."""
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(self._color, max(1.3, self._size / 13.0))
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        bw = self.width() * 0.84
+        bh = self.height() * 0.56
+        x0 = (self.width() - bw) / 2.0
+        y0 = (self.height() - bh) / 2.0
+        body = QRectF(x0 + bw * 0.22, y0 + bh * 0.08, bw * 0.56, bh * 0.84)
+        p.drawRoundedRect(body, 1.2, 1.2)
+        for i in range(3):
+            y = y0 + bh * (0.26 + i * 0.24)
+            p.drawLine(QPointF(x0, y), QPointF(body.left(), y))
+            p.drawLine(QPointF(body.right(), y), QPointF(x0 + bw, y))
+
+    def _paint_bolt(self, p):
+        """Lightning bolt for Wizard."""
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(self._color)
+        bw = self.width() * 0.72
+        bh = self.height() * 0.58
+        x0 = (self.width() - bw) / 2.0
+        y0 = (self.height() - bh) / 2.0
+        path = QPainterPath()
+        path.moveTo(x0 + bw * 0.62, y0)
+        path.lineTo(x0 + bw * 0.18, y0 + bh * 0.46)
+        path.lineTo(x0 + bw * 0.46, y0 + bh * 0.46)
+        path.lineTo(x0 + bw * 0.32, y0 + bh)
+        path.lineTo(x0 + bw * 0.86, y0 + bh * 0.40)
+        path.lineTo(x0 + bw * 0.54, y0 + bh * 0.40)
         path.closeSubpath()
         p.drawPath(path)
 
@@ -522,6 +566,21 @@ def solid_button_ss(font_size=12):
         f"QPushButton:hover{{background:{theme_manager._accent_hover};}}"
         f"QPushButton:pressed{{background:{theme_manager._accent_hover};}}"
         f"QPushButton:disabled{{background:{t.disabled_bg};color:{t.disabled_text};}}"
+    )
+
+
+def accent_outline_btn_ss():
+    """Copy Log rest/hover: accent border + accent text, fill on hover."""
+    t = theme_manager.theme
+    return (
+        f"QPushButton{{background:{t.surface};color:{theme_manager.accent};"
+        f"border:1px solid {theme_manager.accent};border-radius:4px;"
+        "font-family:'Montserrat',sans-serif;font-weight:600;"
+        "font-size:9px;}"
+        f"QPushButton:hover{{background:{theme_manager.accent};"
+        f"color:{theme_manager._accent_text};border:1px solid {theme_manager.accent};}}"
+        f"QPushButton:pressed{{background:{theme_manager._accent_hover};"
+        f"color:{theme_manager._accent_text};border:1px solid {theme_manager.accent};}}"
     )
 
 
@@ -810,6 +869,23 @@ def _help_error_hover():
     return f"rgba({c.red()},{c.green()},{c.blue()},51)"
 
 
+def help_close_button(slot, parent=None):
+    """24px Help-sheet × — muted, red hover. Same control as page Help."""
+    t = theme_manager.theme
+    close = QPushButton("\u2715", parent)
+    close.setObjectName("helpCloseBtn")
+    close.setFixedSize(24, 24)
+    close.setCursor(Qt.PointingHandCursor)
+    close.setFlat(True)
+    close.setStyleSheet(
+        f"QPushButton{{background:transparent;color:{t.text_muted};"
+        "border:none;font-size:11px;border-radius:4px;}"
+        f"QPushButton:hover{{background:{_help_error_hover()};color:{t.error};}}"
+    )
+    close.clicked.connect(slot)
+    return close
+
+
 def _help_num_badge(num, accent=True):
     """Same 24×24 square chip as How Ensemble Works (INPUT / PROCESS)."""
     t = theme_manager.theme
@@ -859,7 +935,8 @@ class _HelpSection(QFrame):
     like How Ensemble Works' INPUT / PROCESS sections."""
     toggled = Signal()
 
-    def __init__(self, kind, items, caption, index=1, parent=None):
+    def __init__(self, kind, items, caption, index=1, parent=None, extra=None,
+                 title=None):
         super().__init__(parent)
         t = theme_manager.theme
         required = kind == "required"
@@ -874,14 +951,15 @@ class _HelpSection(QFrame):
 
         hr = QHBoxLayout()
         hr.setSpacing(8)
-        title = QLabel("REQUIRED" if required else "OPTIONAL")
-        title.setObjectName("helpRequiredBadge" if required else "helpOptionalBadge")
-        title.setStyleSheet(
+        badge_text = title or ("REQUIRED" if required else "OPTIONAL")
+        badge = QLabel(badge_text)
+        badge.setObjectName("helpRequiredBadge" if required else "helpOptionalBadge")
+        badge.setStyleSheet(
             f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;"
             "font-weight:bold;letter-spacing:1px;"
             f"color:{theme_manager.accent};background:transparent;"
         )
-        hr.addWidget(title)
+        hr.addWidget(badge)
         hr.addStretch()
         vl.addLayout(hr)
 
@@ -900,13 +978,15 @@ class _HelpSection(QFrame):
         bl = QVBoxLayout(self._body)
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(0)
-        for i, step in enumerate(items, 1):
+        for i, step in enumerate(items or [], 1):
             bl.addWidget(_help_step_row(i, step, required))
+        if extra is not None:
+            bl.addWidget(extra)
         vl.addWidget(self._body)
 
 
-def _help_section(kind, items, caption, index=1):
-    return _HelpSection(kind, items, caption, index=index)
+def _help_section(kind, items, caption, index=1, extra=None, title=None):
+    return _HelpSection(kind, items, caption, index=index, extra=extra, title=title)
 
 
 # Match inference/training CONFIGURATION row height so Optional cards are
@@ -1185,6 +1265,8 @@ _HELP_MAX_W = 960
 _HELP_PAD_L = 20
 _HELP_PAD_R = 14
 _HELP_PAD_Y = 20
+# Matches QScrollBar:vertical{width:16px} in _optional_scroll_ss.
+_HELP_SCROLL_LANE = 16
 
 
 def _help_line_px(text, font):
@@ -1205,29 +1287,63 @@ def _help_col_px(items, caption, font):
 
 
 def _help_preferred_width(data, parent=None):
-    """Dialog width from the two side-by-side columns (or one if a list
+    """Dialog width from the side-by-side columns (or one if a list
     is empty), clamped to the parent window so a short page stays compact."""
     font = QFont(FONT_FAMILY_DEFAULT, 13)
     intro_w = _help_line_px(data.get("intro") or "", font)
     req = data.get("required") or []
+    mid = data.get("middle") or []
     opt = data.get("optional") or []
     req_w = _help_col_px(req, data.get("required_caption") or HELP_REQUIRED_CAPTION, font)
+    mid_w = _help_col_px(mid, data.get("middle_caption") or "", font)
     opt_w = _help_col_px(opt, data.get("optional_caption") or HELP_OPTIONAL_CAPTION, font)
-    if req and opt:
-        content = req_w + _HELP_STEP_CHROME + _HELP_COL_GUTTER + opt_w + _HELP_STEP_CHROME
+    opt_below = bool(data.get("optional_below"))
+    side_opt = [] if opt_below else opt
+    n_cols = sum(1 for col in (req, mid, side_opt) if col)
+    opt_factor = max(1, int(data.get("right_stretch") or 1))
+    if opt_below and req and mid:
+        top = (req_w + _HELP_STEP_CHROME + _HELP_COL_GUTTER
+               + mid_w + _HELP_STEP_CHROME)
+        below_w = (opt_factor * (opt_w + _HELP_STEP_CHROME)
+                   + max(0, opt_factor - 1) * _HELP_COL_GUTTER)
+        content = max(top, below_w)
+        min_w = 760
+    elif n_cols >= 3:
+        content = (req_w + mid_w + opt_factor * opt_w
+                   + (2 + opt_factor) * _HELP_STEP_CHROME
+                   + (1 + opt_factor) * _HELP_COL_GUTTER)
+        min_w = 1100 if opt_factor >= 2 else 900
+    elif req and (mid or side_opt):
+        other_w = mid_w if mid else opt_w
+        content = req_w + _HELP_STEP_CHROME + _HELP_COL_GUTTER + other_w + _HELP_STEP_CHROME
+        min_w = 640
     else:
         content = max(req_w, opt_w) + _HELP_STEP_CHROME
+        min_w = _HELP_MIN_W
     content = max(content, intro_w + _HELP_PAD_L + _HELP_PAD_R)
     title_font = QFont(FONT_FAMILY_DEFAULT, UIConstants.SEC_TITLE_FONT_SIZE)
     title_font.setBold(True)
-    title = f"HELP  ·  {data.get('title', '')}"
-    title_w = _HELP_PAD_L + QFontMetrics(title_font).horizontalAdvance(title) + 8 + 24 + _HELP_PAD_R
-    min_w = 640 if req and opt else _HELP_MIN_W
+    title = (data.get("heading") or f"HELP  ·  {data.get('title', '')}").strip()
+    extra = 80 if data.get("primary_text") else 24
+    title_w = _HELP_PAD_L + QFontMetrics(title_font).horizontalAdvance(title) + 8 + extra + _HELP_PAD_R
+    extra_min = int(data.get("min_width") or 0)
+    min_w = max(min_w, extra_min)
     w = max(content, title_w, min_w)
-    max_w = _HELP_MAX_W
+    extra_max = int(data.get("max_width") or 0)
+    if extra_max > 0:
+        max_w = extra_max
+    elif opt_below:
+        max_w = _HELP_MAX_W
+    elif n_cols >= 3 and opt_factor >= 2:
+        max_w = 1280
+    elif n_cols >= 3:
+        max_w = 1100
+    else:
+        max_w = _HELP_MAX_W
     win = parent.window() if parent is not None else None
     if win is not None and win.width() > 280:
-        max_w = min(max_w, max(min_w, win.width() - 64))
+        edge = 24 if n_cols >= 3 and not opt_below else 64
+        max_w = min(max_w, max(min_w, win.width() - edge))
     return int(min(w, max_w))
 
 
@@ -1235,7 +1351,8 @@ class PageHelpDialog(QDialog):
     """Frameless Help sheet — How Ensemble Works layout: title + ×,
     REQUIRED and OPTIONAL side by side, no card chrome."""
 
-    def __init__(self, data, parent=None):
+    def __init__(self, data, parent=None, left=None, right=None, below=None,
+                 mid=None):
         super().__init__(parent)
         self.setObjectName("pageHelpDialog")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
@@ -1249,29 +1366,34 @@ class PageHelpDialog(QDialog):
             "border-width:1px;border-style:solid;"
             f"border-color:{t.border_dim};border-radius:8px;}}"
         )
+        pad_top = int(data.get("pad_top") or _HELP_PAD_Y)
+        pad_bottom = int(data.get("pad_bottom") or pad_top)
         root = QVBoxLayout(self)
-        root.setContentsMargins(_HELP_PAD_L, _HELP_PAD_Y, _HELP_PAD_R, _HELP_PAD_Y)
+        root.setContentsMargins(_HELP_PAD_L, pad_top, _HELP_PAD_R, pad_bottom)
         root.setSpacing(0)
 
         hdr = QHBoxLayout()
         hdr.setContentsMargins(0, 0, 0, 0)
         hdr.setSpacing(8)
-        title = QLabel(f"HELP  ·  {data.get('title', '')}".strip())
+        heading = (data.get("heading") or f"HELP  ·  {data.get('title', '')}").strip()
+        title = QLabel(heading)
         title.setStyleSheet(
             f"font-family:'Montserrat',sans-serif;font-size:{UIConstants.SEC_TITLE_FONT_SIZE}px;"
             f"font-weight:bold;color:{t.text};background:transparent;letter-spacing:1.5px;"
         )
         hdr.addWidget(title)
         hdr.addStretch()
-        close = QPushButton("\u2715")
-        close.setFixedSize(24, 24)
-        close.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{t.text_muted};"
-            "border:none;font-size:11px;border-radius:4px;}"
-            f"QPushButton:hover{{background:{_help_error_hover()};color:{t.error};}}"
-        )
-        close.clicked.connect(self.accept)
-        hdr.addWidget(close)
+        primary_text = data.get("primary_text") or ""
+        if primary_text:
+            apply = QPushButton(primary_text)
+            apply.setObjectName("helpPrimaryBtn")
+            apply.setCursor(Qt.PointingHandCursor)
+            apply.setFixedSize(70, 30)
+            apply.setStyleSheet(accent_outline_btn_ss())
+            apply.clicked.connect(self.accept)
+            hdr.addWidget(apply, 0, Qt.AlignVCenter)
+        hdr.addWidget(help_close_button(
+            self.reject if primary_text else self.accept))
         root.addLayout(hdr)
         root.addSpacing(16)
 
@@ -1279,11 +1401,11 @@ class PageHelpDialog(QDialog):
         sc.setWidgetResizable(False)
         sc.setFrameShape(QFrame.NoFrame)
         sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        sc.setStyleSheet(_optional_scroll_ss())
+        sc.setStyleSheet(_optional_scroll_ss(gutter=not data.get("hide_scrollbar")))
         inner = QWidget()
         inner.setStyleSheet("background:transparent;")
         body = QVBoxLayout(inner)
-        body.setContentsMargins(0, 0, 10, 0)
+        body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
 
         intro = QLabel(data.get("intro", ""))
@@ -1292,6 +1414,7 @@ class PageHelpDialog(QDialog):
             "font-family:'Montserrat';font-size:13px;"
             f"color:{t.text_sec};background:transparent;"
         )
+        self._intro = intro
         body.addWidget(intro)
         body.addSpacing(24)
 
@@ -1302,28 +1425,61 @@ class PageHelpDialog(QDialog):
         cols.setSpacing(_HELP_COL_GUTTER)
         cols.setAlignment(Qt.AlignTop)
         n = 1
-        if required:
-            cols.addWidget(_help_section(
+        if left is None and required:
+            left = _help_section(
                 "required", required,
                 data.get("required_caption") or HELP_REQUIRED_CAPTION,
                 index=n,
-            ), 1, Qt.AlignTop)
+                title=data.get("required_title"),
+            )
             n += 1
-        if required and optional:
-            vdiv = QFrame()
-            vdiv.setFixedWidth(1)
-            vdiv.setStyleSheet(f"background:{t.border_dim};border:none;")
-            cols.addWidget(vdiv)
-        if optional:
-            cols.addWidget(_help_section(
+        if mid is None and (data.get("middle") or []):
+            mid = _help_section(
+                "required", data.get("middle") or [],
+                data.get("middle_caption") or "",
+                index=n,
+                title=data.get("middle_title") or "WORKERS / SEED",
+            )
+            n += 1
+        if below is None and data.get("optional_below") and optional:
+            below = _help_section(
                 "optional", optional,
                 data.get("optional_caption") or HELP_OPTIONAL_CAPTION,
                 index=n,
-            ), 1, Qt.AlignTop)
+                title=data.get("optional_title"),
+            )
+        elif right is None and optional and not data.get("optional_below"):
+            right = _help_section(
+                "optional", optional,
+                data.get("optional_caption") or HELP_OPTIONAL_CAPTION,
+                index=n,
+                title=data.get("optional_title"),
+            )
+        panes = [w for w in (left, mid, right) if w is not None]
+        right_stretch = max(1, int(data.get("right_stretch") or 1))
+        for i, pane in enumerate(panes):
+            if i:
+                vdiv = QFrame()
+                vdiv.setFixedWidth(1)
+                vdiv.setStyleSheet(f"background:{t.border_dim};border:none;")
+                cols.addWidget(vdiv)
+            stretch = right_stretch if pane is right else 1
+            cols.addWidget(pane, stretch, Qt.AlignTop)
         body.addLayout(cols)
+        if below is not None:
+            body.addSpacing(24)
+            if data.get("optional_below"):
+                hdiv = QFrame()
+                hdiv.setFixedHeight(1)
+                hdiv.setStyleSheet(f"background:{t.border_dim};border:none;")
+                body.addWidget(hdiv)
+            body.addWidget(below)
         body.addStretch()
         sc.setWidget(inner)
-        root.addWidget(sc, 1)
+        self._content_bottom_gap = int(data.get("content_bottom_gap") or 0)
+        root.addWidget(sc, 0 if self._content_bottom_gap else 1)
+        if self._content_bottom_gap:
+            root.addSpacing(self._content_bottom_gap)
 
         self._help_data = data
         self._sc = sc
@@ -1357,38 +1513,60 @@ class PageHelpDialog(QDialog):
         sc = sc if sc is not None else self._sc
         inner = inner if inner is not None else self._inner
         width = _help_preferred_width(data, self.parentWidget())
-        inner_w = max(200, width - _HELP_PAD_L - _HELP_PAD_R)
-        inner.setMinimumSize(0, 0)
-        inner.setMaximumSize(16777215, 16777215)
-        inner.setFixedWidth(inner_w)
-        lay = inner.layout()
-        if lay is not None:
-            lay.invalidate()
-            lay.activate()
-        inner.adjustSize()
-        content_h = max(inner.sizeHint().height(), inner.minimumSizeHint().height())
-        if inner.hasHeightForWidth():
-            hfw = inner.heightForWidth(inner_w)
-            if hfw > 0:
-                content_h = max(content_h, hfw)
-        inner.setFixedSize(inner_w, content_h)
+        avail = max(200, width - _HELP_PAD_L - _HELP_PAD_R)
+
+        def size_inner(inner_w):
+            inner.setMinimumSize(0, 0)
+            inner.setMaximumSize(16777215, 16777215)
+            inner.setFixedWidth(inner_w)
+            lay = inner.layout()
+            if lay is not None:
+                lay.invalidate()
+                lay.activate()
+            inner.adjustSize()
+            if inner.hasHeightForWidth():
+                hfw = inner.heightForWidth(inner_w)
+                content_h = hfw if hfw > 0 else inner.sizeHint().height()
+            else:
+                content_h = max(
+                    inner.sizeHint().height(), inner.minimumSizeHint().height())
+            inner.setFixedSize(inner_w, content_h)
+            return content_h
 
         header_h = 24
-        chrome = _HELP_PAD_Y + _HELP_PAD_Y + header_h + 16
+        pad_top = int(data.get("pad_top") or _HELP_PAD_Y)
+        pad_bottom = int(data.get("pad_bottom") or pad_top)
+        bottom_gap = int(data.get("content_bottom_gap") or 0)
+        chrome = pad_top + pad_bottom + header_h + 16 + bottom_gap
 
         max_h = 820
         scr = self.screen()
         if scr is not None:
             max_h = min(max_h, max(chrome + 160, int(scr.availableGeometry().height() * 0.88)))
+        extra_max_h = int(data.get("max_height") or 0)
+        if extra_max_h > 0:
+            max_h = min(max_h, max(chrome + 160, extra_max_h))
+        content_h = size_inner(avail)
+        need_h = content_h + chrome
+        if data.get("expand_height"):
+            max_h = max(max_h, need_h)
+            if scr is not None:
+                max_h = min(max_h, max(chrome + 160, int(scr.availableGeometry().height() * 0.88)))
         if content_h <= max_h - chrome:
             sc.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            sc.setFixedSize(inner_w, content_h)
+            sc.setFixedSize(avail, content_h)
             self.setFixedSize(width, chrome + content_h)
         else:
+            # Viewport loses the 16px bar; shrink the pane so fields are not
+            # clipped under it. Remeasure — wrapping copy gets taller.
+            inner_w = max(200, avail - _HELP_SCROLL_LANE)
+            size_inner(inner_w)
             view_h = max_h - chrome
             sc.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            sc.setFixedSize(inner_w, view_h)
+            sc.setFixedSize(avail, view_h)
             self.setFixedSize(width, max_h)
+        if data.get("hide_scrollbar"):
+            sc.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
 
 def show_page_help(parent, page_key):

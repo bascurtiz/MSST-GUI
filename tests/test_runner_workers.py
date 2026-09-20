@@ -16,6 +16,7 @@ These checks run headless (offscreen QApplication) and spawn only
 `sys.executable` as the child process — no torch, no network.
 """
 import os
+import subprocess
 import sys
 import time
 
@@ -47,6 +48,28 @@ def pump_until(pred, timeout=10.0):
         time.sleep(0.005)
     QApplication.processEvents()
     return False
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _force_kill(pid):
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(pid)],
+                capture_output=True, timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        else:
+            os.kill(pid, 9)
+    except Exception:
+        pass
 
 
 def main():
@@ -92,7 +115,7 @@ def main():
     runner2.stop()
     ok = pump_until(lambda: codes2, timeout=8.0)
     check(ok, "stop() terminates child -> finished emitted")
-    check(codes2 == [-15] or codes2 == [1] or codes2 == [0],
+    check(bool(codes2),
           f"terminated child reports a code, got {codes2}")
     check(runner2 not in _ACTIVE_RUNNERS, "registry released after stop")
 
@@ -101,7 +124,61 @@ def main():
     runner3.stop()
     check(True, "stop() before start is safe")
 
-    # 4. The inference page's names fetcher got the same treatment.
+    # 4. stop() must finish when a grandchild inherits stdout and keeps
+    # it open. Parent-only terminate() leaves that writer alive, so the
+    # stdout iterator never EOFs and finished never fires (the training
+    # Stop hang: DataLoader workers holding the pipe).
+    parent_src = (
+        "import os, sys, time, subprocess\n"
+        "kw = {}\n"
+        "if os.name == 'nt':\n"
+        "    kw['creationflags'] = getattr(subprocess, 'CREATE_NO_WINDOW', 0)\n"
+        "child = subprocess.Popen(\n"
+        "    [sys.executable, '-c',\n"
+        "     'import sys,time; sys.stdout.write(\"grandchild\\\\n\");"
+        " sys.stdout.flush(); time.sleep(60)'],\n"
+        "    **kw)\n"
+        "print('child-pid', child.pid, flush=True)\n"
+        "print('parent-ready', flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    lines5, codes5 = [], []
+    runner5 = ProcessRunner([sys.executable, "-c", parent_src])
+    runner5.log_line.connect(lines5.append)
+    runner5.finished.connect(codes5.append)
+    child_pid = None
+    runner5.start()
+    try:
+        ready = pump_until(
+            lambda: any("parent-ready" in l for l in lines5), timeout=8.0)
+        check(ready, "grandchild-tree parent became ready")
+        for line in lines5:
+            if "child-pid" in line:
+                try:
+                    child_pid = int(line.split()[-1])
+                except ValueError:
+                    pass
+        runner5.stop()
+        ok = pump_until(lambda: codes5, timeout=12.0)
+        check(ok, "stop() with grandchild holding stdout emits finished")
+        check(bool(codes5),
+              f"tree-kill stop delivered a code, got {codes5}")
+        check(runner5 not in _ACTIVE_RUNNERS,
+              "registry released after tree-kill stop")
+        if child_pid is not None:
+            time.sleep(0.4)
+            QApplication.processEvents()
+            alive = _pid_alive(child_pid)
+            check(not alive,
+                  f"grandchild pid {child_pid} was killed with the tree")
+    finally:
+        if not codes5:
+            runner5.stop()
+            pump_until(lambda: codes5, timeout=5.0)
+        if child_pid is not None and _pid_alive(child_pid):
+            _force_kill(child_pid)
+
+    # 5. The inference page's names fetcher got the same treatment.
     import ui.pages.inference_page as ip
     check(not issubclass(ip._NamesFetchThread, QThread),
           "_NamesFetchThread is not a QThread")

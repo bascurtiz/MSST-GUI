@@ -13,6 +13,7 @@ from backend.train_cmd import (  # noqa: E402
     build_train_command,
     detect_custom_backend,
     inject_lora_defaults,
+    redact_train_cmd,
     resolve_launcher,
     subprocess_env,
 )
@@ -73,8 +74,15 @@ def main():
     check(fr[i + 1] == "layer1" and fr[i + 2] == "attn.q", "freeze prefixes split")
 
     wb = _cmd(_opts(wandb_key="secret", wandb_offline=True), "standard")
-    check("--wandb_key" in wb and "secret" in wb, "wandb key")
+    check("--wandb_key" not in wb and "secret" not in wb,
+          "wandb key stays off the command line")
     check("--wandb_offline" in wb, "wandb offline")
+    wb_env = subprocess_env(_opts(wandb_key="secret"), "standard")
+    check(wb_env == {"WANDB_API_KEY": "secret"},
+          "wandb key is injected as WANDB_API_KEY")
+    redacted = redact_train_cmd(["python", "train.py", "--wandb_key", "secret"])
+    check(redacted[-1] == "<redacted>" and "secret" not in redacted,
+          "redact_train_cmd hides --wandb_key values")
 
     extra = _cmd(_opts(safe_mode=True, persistent_workers=True,
                       load_all_metrics=True, load_all_losses=True), "standard")
@@ -132,6 +140,9 @@ def main():
 
     cpu_env = subprocess_env(_opts(force_cpu=True), "standard")
     check(cpu_env == {"CUDA_VISIBLE_DEVICES": ""}, "CPU-only hides GPUs")
+    cpu_wb = subprocess_env(_opts(force_cpu=True, wandb_key="secret"), "standard")
+    check(cpu_wb == {"CUDA_VISIBLE_DEVICES": "", "WANDB_API_KEY": "secret"},
+          "CPU-only still injects wandb env")
 
     if FAILURES:
         print(f"{len(FAILURES)}/{CHECKS} checks FAILED:")

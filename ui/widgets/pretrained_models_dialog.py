@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from ui.theme import theme_manager
 from ui.widgets.common import (
     _type_badge_ss, _type_title, MODEL_TYPE_COLORS, _optional_scroll_ss,
-    ScoresRefreshButton,
+    ScoresRefreshButton, help_close_button,
 )
 from ui.pages.inference_page import _LinkBadge, _MetricColumns
 from backend import pretrained_catalog as catalog
@@ -77,8 +77,14 @@ def _metrics_to_scores(text, instruments=""):
     if not stems:
         m = re.search(r"(-?\d+\.\d+)", text)
         if m:
-            inst = (instruments or "").split("/")[0].strip() or "score"
-            stems[inst.lower()] = float(m.group(1))
+            # Lone "SDR: 12.3" / "Average SDR" is an overall score (the
+            # experiments table), not the first listed instrument.
+            if re.search(r"\baverage\b|\bavg\b", low) or re.match(
+                    r"^\s*(?:si[_-]?sdr|sdr|l1(?:[_-]?freq)?)\s*:", low):
+                stems["average"] = float(m.group(1))
+            else:
+                inst = (instruments or "").split("/")[0].strip() or "score"
+                stems[inst.lower()] = float(m.group(1))
     if not stems:
         return None, metric
     order = list(stems.keys())
@@ -795,13 +801,16 @@ class PretrainedModelsDialog(QDialog):
     """Browse + install pre-trained checkpoints, then wire one into training."""
     use_for_training = Signal(str, str)   # config_path, checkpoint_path
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, architecture=""):
         super().__init__(parent)
         self._models: list = []
         self._rows: dict = {}       # id(model) -> _ModelRow
         self._fetch_thread: Optional[_FetchWorker] = None
         self._install_threads: list = []
         self._arch_keys = None      # arch chips currently shown (rebuild guard)
+        # Wizard step 02 passes the engine --model_type so this sheet only
+        # lists matching checkpoints. Empty = browse the full catalog.
+        self._lock_arch = (architecture or "").strip().lower()
         self.setWindowTitle("Pre-trained Models")
         self.setModal(True)
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
@@ -811,9 +820,11 @@ class PretrainedModelsDialog(QDialog):
         # can be applied immediately; the architecture set only exists once
         # the catalog is loaded, so it is deferred (self._pending_arch) until
         # _on_loaded, and only applied if still a valid choice there.
+        # A wizard lock must not restore (or later persist) an architecture
+        # chip — that filter is owned by the locked engine type.
         saved = settings_store.load_pretrained_filters()
         self._saved_target = saved.get("target")
-        self._pending_arch = saved.get("arch")
+        self._pending_arch = None if self._lock_arch else saved.get("arch")
         self._build_ui()
         valid_targets = {k for k, _ in self._target_bar._btns}
         if self._saved_target in valid_targets:
@@ -843,14 +854,7 @@ class PretrainedModelsDialog(QDialog):
             tooltip="Reload the ZFTurbo pre-trained catalog")
         self._refresh_btn.clicked.connect(self._refresh)
         title_row.addWidget(self._refresh_btn, 0, Qt.AlignVCenter)
-
-        self._close_btn = QPushButton("Close")
-        self._close_btn.setFixedHeight(32)
-        self._close_btn.setMinimumWidth(96)
-        self._close_btn.setCursor(Qt.PointingHandCursor)
-        self._close_btn.setStyleSheet(_pill_btn_ss(accent=True))
-        self._close_btn.clicked.connect(self.accept)
-        title_row.addWidget(self._close_btn)
+        title_row.addWidget(help_close_button(self.accept), 0, Qt.AlignVCenter)
         root.addLayout(title_row)
         root.addSpacing(10)
 
@@ -882,6 +886,8 @@ class PretrainedModelsDialog(QDialog):
         self._arch_bar.changed.connect(self._populate)
         self._arch_bar.changed.connect(self._persist_filters)
         root.addWidget(self._arch_bar)
+        if self._lock_arch:
+            self._arch_bar.hide()
         root.addSpacing(20)
         self._root_lay = root
 
@@ -948,6 +954,13 @@ class PretrainedModelsDialog(QDialog):
 
     def _persist_filters(self, *_):
         """Save the current filter selection for the next dialog session."""
+        if self._lock_arch:
+            saved = settings_store.load_pretrained_filters()
+            settings_store.save_pretrained_filters({
+                "target": self._target_bar.current() or "all",
+                "arch": saved.get("arch") or "all",
+            })
+            return
         settings_store.save_pretrained_filters({
             "target": self._target_bar.current() or "all",
             "arch": self._arch_bar.current() or "all",
@@ -994,14 +1007,20 @@ class PretrainedModelsDialog(QDialog):
                 item.widget().deleteLater()
         self._rows = {}
 
-        target = self._target_bar.current() or "all"
-        by_target = [m for m in self._models
-                     if target == "all" or _target_key(m) == target]
-        self._rebuild_arch_bar(by_target)
+        pool = self._models
+        if self._lock_arch:
+            pool = [m for m in pool if catalog.matches_model_type(m, self._lock_arch)]
 
-        arch = self._arch_bar.current() or "all"
-        visible = [m for m in by_target
-                   if arch == "all" or _arch_key(m) == arch]
+        target = self._target_bar.current() or "all"
+        by_target = [m for m in pool
+                     if target == "all" or _target_key(m) == target]
+        if self._lock_arch:
+            visible = by_target
+        else:
+            self._rebuild_arch_bar(by_target)
+            arch = self._arch_bar.current() or "all"
+            visible = [m for m in by_target
+                       if arch == "all" or _arch_key(m) == arch]
 
         # group by section, preserving order
         sections = []
@@ -1025,12 +1044,18 @@ class PretrainedModelsDialog(QDialog):
         self._list_layout.addStretch()
 
         if self._models:
-            total, shown = len(self._models), len(visible)
-            self._status_lbl.setText(
-                f"Showing {shown} of {total} pre-trained checkpoints."
-                if shown != total else
-                f"Loaded {total} pre-trained checkpoints."
-            )
+            total = len(pool) if self._lock_arch else len(self._models)
+            shown = len(visible)
+            if self._lock_arch and not pool:
+                self._status_lbl.setText(
+                    f"No pre-trained checkpoints for {self._lock_arch}."
+                )
+            else:
+                self._status_lbl.setText(
+                    f"Showing {shown} of {total} pre-trained checkpoints."
+                    if shown != total else
+                    f"Loaded {total} pre-trained checkpoints."
+                )
 
     def _on_install(self, model):
         row = self._rows.get(id(model))

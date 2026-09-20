@@ -69,7 +69,8 @@ def parse_args_train(dict_args: Union[argparse.Namespace, Dict, None]) -> argpar
         'masked_loss', 'mse_loss', 'l1_loss', 'multistft_loss', 'spec_masked_loss', 'spec_rmse_loss',
         'log_wmse_loss', 'l1_snr_loss', 'l1_snr_db_loss', 'stft_l1_snr_db_loss', 'multi_l1_snr_db_loss',
         'fullness_penalty_loss', 'bleedless_penalty_loss'
-    ], default=['masked_loss'], help="List of loss functions to use")
+    ], default=['multi_l1_snr_db_loss', 'fullness_penalty_loss'],
+                        help="List of loss functions to use")
     parser.add_argument("--masked_loss_coef", type=float, default=1., help="Coef for loss")
     parser.add_argument("--mse_loss_coef", type=float, default=1., help="Coef for loss")
     parser.add_argument("--l1_loss_coef", type=float, default=1., help="Coef for loss")
@@ -1359,14 +1360,23 @@ def gen_wandb_name(args, config) -> str:
     return name
 
 
+def _wandb_api_key(args: argparse.Namespace) -> str:
+    """API key from ``--wandb_key`` or ``WANDB_API_KEY`` (never log this)."""
+    key = getattr(args, "wandb_key", None)
+    key = "" if key is None else str(key).strip()
+    if key:
+        return key
+    return str(os.environ.get("WANDB_API_KEY") or "").strip()
+
+
 def wandb_init(args: argparse.Namespace, config: Union[ConfigDict, OmegaConf], batch_size: int) -> None:
     """
     Initialize Weights & Biases (wandb) for experiment tracking.
 
     Depending on the provided arguments, sets up wandb in one of three modes:
     - Offline mode when `args.wandb_offline` is True.
-    - Disabled mode when no valid `wandb_key` is provided.
-    - Online mode with authentication using `args.wandb_key`.
+    - Disabled mode when no valid API key is provided.
+    - Online mode with authentication using `--wandb_key` or `WANDB_API_KEY`.
 
     Args:
         args (argparse.Namespace): Parsed arguments containing wandb options
@@ -1379,16 +1389,17 @@ def wandb_init(args: argparse.Namespace, config: Union[ConfigDict, OmegaConf], b
     """
     import wandb
 
+    key = _wandb_api_key(args)
     if args.wandb_offline:
         wandb.init(mode='offline',
                    project='msst',
                    name=gen_wandb_name(args, config),
                    config={'config': config, 'args': args, 'device_ids': args.device_ids, 'batch_size': batch_size}
                    )
-    elif args.wandb_key is None or args.wandb_key.strip() == '':
+    elif not key:
         wandb.init(mode='disabled')
     else:
-        wandb.login(key=args.wandb_key)
+        wandb.login(key=key)
         wandb.init(
             project='msst',
             name=gen_wandb_name(args, config),

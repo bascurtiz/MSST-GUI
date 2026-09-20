@@ -10,6 +10,7 @@ screenshots of the site):    * Font: Montserrat (bundled in resources/, SIL OFL 
 """
 import html
 import os
+import re
 
 from PySide6.QtCore import (
     QObject, Signal, Qt, QEvent, SignalInstance,
@@ -454,6 +455,48 @@ def install_message_box_style():
 # so every tooltip is drawn by this custom label: a dark pill with white text
 # in both themes, matching mvsep.com's always-dark tooltip.
 
+_TOOLTIP_URL_RE = re.compile(r"https?://[^\s]+", re.I)
+_TOOLTIP_ABBREV_RE = re.compile(
+    r"\b(?:e\.g|i\.e|etc|vs|mr|ms|mrs|dr|prof)\.$", re.I)
+_TOOLTIP_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def wrap_tooltip_sentences(text):
+    """One sentence per line so a hover pill cannot grow ultra-wide.
+
+    Existing newlines are kept. URLs and abbreviations (e.g., i.e.) are
+    not treated as sentence ends.
+    """
+    if not text:
+        return ""
+    urls = []
+
+    def _stash(m):
+        urls.append(m.group(0))
+        return f"\x00U{len(urls) - 1}\x00"
+
+    protected = _TOOLTIP_URL_RE.sub(_stash, text)
+    lines = []
+    for para in protected.split("\n"):
+        if not para:
+            lines.append(para)
+            continue
+        chunks = _TOOLTIP_SENTENCE_RE.split(para)
+        merged = []
+        for chunk in chunks:
+            if merged and _TOOLTIP_ABBREV_RE.search(merged[-1].rstrip()):
+                merged[-1] = merged[-1] + " " + chunk
+            else:
+                merged.append(chunk)
+        lines.extend(merged)
+    out = "\n".join(lines)
+    for i, url in enumerate(urls):
+        out = out.replace(f"\x00U{i}\x00", url)
+    return out
+
+
+
+
 class _StyledToolTip(QLabel):
     """The one tooltip pill for the whole app.
 
@@ -509,16 +552,23 @@ class _StyledToolTip(QLabel):
         # between lines while letting the pill's own padding stay evenly
         # balanced top vs bottom (as in the reference mockup). Text is
         # escaped first: a tooltip must render verbatim, never as markup.
-        lines = (text or "").split("\n")
-        esc = [html.escape(x) for x in lines]
+        lines = wrap_tooltip_sentences(text).split("\n")
+
+        def _nowrap(line):
+            if not line:
+                return ""
+            return (
+                f'<span style="white-space:nowrap;">{html.escape(line)}</span>'
+            )
+
         if len(lines) > 1:
-            head = "<br>".join(esc[:-1])
+            head = "<br>".join(_nowrap(x) for x in lines[:-1])
             body = (
                 f'<p style="margin:0;line-height:{self.LINE_HEIGHT};">{head}</p>'
-                f'<p style="margin:0;">{esc[-1]}</p>'
+                f'<p style="margin:0;">{_nowrap(lines[-1])}</p>'
             )
         else:
-            body = f'<p style="margin:0;">{esc[0]}</p>'
+            body = f'<p style="margin:0;">{_nowrap(lines[0])}</p>'
         self.setText('<html><body>' + body + '</body></html>')
 
     def show_tip(self, pos, text):

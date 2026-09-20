@@ -406,7 +406,8 @@ def loss_descriptions():
 def default_losses():
     func = _find_function(_parse(_SETTINGS), "parse_args_train")
     d = _argparse_default(func, "--loss")
-    return list(d) if isinstance(d, (list, tuple)) else ["masked_loss"]
+    return list(d) if isinstance(d, (list, tuple)) else [
+        "multi_l1_snr_db_loss", "fullness_penalty_loss"]
 
 
 def metrics():
@@ -423,19 +424,50 @@ def default_metrics():
     return list(d) if isinstance(d, (list, tuple)) else ["sdr"]
 
 
+VOCAL_TUNING_METRICS = ("sdr", "bleedless", "fullness")
+
+# RoFormer stem-shift: freeze backbone prefixes, leave mask_estimators trainable.
+STEM_SHIFT_FREEZE_LAYERS = "layers band_split"
+
+
 def _pretty(key):
     return key.replace("_", " ")
 
 
+_LOSS_EXTRA_DESCS = {
+    "fullness_penalty_loss": (
+        "Penalizes thin or empty targets; meant to accompany a primary loss."
+    ),
+    "bleedless_penalty_loss": (
+        "Penalizes bleed from one stem into another; pair with a primary loss."
+    ),
+}
+
+_METRIC_DESCRIPTIONS = {
+    "k_sdr": "SDR with optional per-stem weighting.",
+    "sdr": "Signal-to-distortion ratio — general separation quality.",
+    "l1_freq": "L1 in the frequency domain (spectrogram-based).",
+    "si_sdr": "Scale-invariant SDR; ignores level scaling vs. the target.",
+    "log_wmse": "Log weighted MSE — perceptual spectral error.",
+    "aura_stft": "Perceptual STFT quality (Aura family).",
+    "aura_mrstft": "Multi-resolution Aura STFT — finer spectral detail.",
+    "bleedless": "How much the target bleeds into other stems (higher = less bleed).",
+    "fullness": "How full the target stem sounds (higher = fuller).",
+    "l1_snr": "Time-domain L1-SNR metric.",
+    "bleedless_mr": "Multi-resolution bleedless variant.",
+    "fullness_mr": "Multi-resolution fullness variant.",
+}
+
+
 def loss_choices():
     """[(key, label, description), ...] for the LOSS picker."""
-    descs = loss_descriptions()
+    descs = {**loss_descriptions(), **_LOSS_EXTRA_DESCS}
     return [(k, _pretty(k), descs.get(k, "")) for k in losses()]
 
 
 def metric_choices():
     """[(key, label, description), ...] for the METRICS picker."""
-    return [(k, _pretty(k), "") for k in metrics()]
+    return [(k, _pretty(k), _METRIC_DESCRIPTIONS.get(k, "")) for k in metrics()]
 
 
 # ── config-name → model type ──────────────────────────────────────────────────

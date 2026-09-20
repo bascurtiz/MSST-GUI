@@ -24,6 +24,14 @@ T_EXPORT_WEIGHTS = (
     "Strip a training checkpoint down to the model weights\n"
     "(no optimizer / scheduler / metrics history) for inference."
 )
+T_TRAIN_SETUP = (
+    "Guided wizard: scratch or resume, architecture, dataset,\n"
+    "wandb, Fit GPU, then Train if everything is in place."
+)
+T_OPEN_WANDB = (
+    "Open wandb.ai in the browser.\n"
+    "Paste an API key under GPUs / Workers / Seed or in Wizard to log runs."
+)
 
 # Page-header Help button.
 T_PAGE_HELP_TOOLTIP = "Show Help"
@@ -31,7 +39,7 @@ T_PAGE_HELP_TOOLTIP = "Show Help"
 # Shared captions in the Help dialog. Required vs optional stay visually
 # distinct (accent card vs muted card) so users do not mix the two lists.
 HELP_REQUIRED_CAPTION = "Complete these or the action will not start."
-HELP_OPTIONAL_CAPTION = "Already set to usable defaults. Change them only if you need to."
+HELP_OPTIONAL_CAPTION = "Already set to usable defaults. Change only if needed."
 
 # Per-page Help copy. `required` is the numbered to-do that unblocks the
 # page action; `optional` is everything else. Numbering restarts in each
@@ -51,14 +59,17 @@ PAGE_HELP = {
             "Stems — leave as all stems,\nor pick a subset (and optionally save the rest).",
             "Device — GPU is used when one is listed.",
             "TTA and Big Shifts — slower, often a bit cleaner.",
-            "Spectro preview length, skip-unreadable-files (on by default),\nand a LoRA adapter.",
-            "Quality Check — only if you need mvsep-style output names.",
+            "Spectro preview length, skip-unreadable-files (on by default), and a LoRA adapter.",
+            "Quality Check — mvsep.com/quality_checker filename syntax.",
             "Library search, filters, sort,\nand per-checkpoint chunk / overlap / batch.",
         ],
     },
     "training": {
         "title": "TRAINING",
-        "intro": "Train or fine-tune a separation model from a YAML config and a dataset.",
+        "intro": (
+            "Train or fine-tune a separation model from a YAML config and a dataset.\n"
+            "Full guide: https://msst-guide.pages.dev/"
+        ),
         "required": [
             "Pick a model type.",
             "Select a config YAML (premade or your own).",
@@ -68,9 +79,13 @@ PAGE_HELP = {
             "Click Train.",
         ],
         "optional": [
-            "Batch size, learning rate, epochs, patience, optimizer, losses, and metrics —\nYAML values apply until you override them.",
+            "Batch size, learning rate, epochs, patience, optimizer,\nlosses, and metrics —\nYAML values apply until you override them.",
+            "Training data: WAV or FLAC only (not MP3).\nType 2 stem folders suit most vocal/instrumental sets;\ntype 1 needs every stem in a song the same length.",
+            "Validation: type 1 — one folder per song with mixture.wav\nand every stem. Prefer 16-bit WAV.\nShort clips validate faster; full tracks score higher.",
             "Resume from a checkpoint.",
             "Run Options — launcher (Standard / DDP / Accelerate),\nLoRA, freeze layers, wandb, GPUs, workers.",
+            "Wizard walks scratch-or-resume through data, wandb,\nFit GPU, and Train.",
+            "Listen to separated outputs — metrics guide tuning\nbut do not replace your ears.",
             "Edit the YAML, pick a premade model,\nor export weights from a finished checkpoint.",
         ],
     },

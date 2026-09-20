@@ -138,9 +138,10 @@ def train_model(args):
     device_ids = args.device_ids
     batch_size = config.training.batch_size
 
-    # wandb
-    if accelerator.is_main_process and args.wandb_key is not None and args.wandb_key.strip() != '':
-        wandb.login(key = args.wandb_key)
+    # wandb — prefer --wandb_key, then WANDB_API_KEY (GUI passes the key via env)
+    wandb_key = (args.wandb_key or "").strip() or os.environ.get("WANDB_API_KEY", "").strip()
+    if accelerator.is_main_process and wandb_key:
+        wandb.login(key=wandb_key)
         wandb.init(project = 'msst-accelerate', config = { 'config': config, 'args': args, 'device_ids': device_ids, 'batch_size': batch_size })
     else:
         wandb.init(mode = 'disabled')

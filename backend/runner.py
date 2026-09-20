@@ -14,12 +14,20 @@ module-level registry until the job finishes — no QThread object exists to
 leak, destroy, or corrupt.
 """
 import os
+import signal
 import subprocess
 import sys
 import threading
 import time
 
 from PySide6.QtCore import QObject, Signal
+
+# After stdout EOF (or the pipe being closed by stop()), wait this long
+# for the parent PID to actually exit. A CUDA process can sit in the GPU
+# driver past TerminateProcess; the UI must still recover.
+_WAIT_AFTER_STDOUT_S = 8.0
+# POSIX: SIGTERM grace before SIGKILL / killpg escalation.
+_POSIX_TERM_GRACE_S = 3.0
 
 
 # Module-level registry: a running worker is referenced here so the Python
@@ -56,6 +64,8 @@ class ProcessRunner(QObject):
         self._extra_env = dict(env) if env else {}
         self._process: subprocess.Popen | None = None
         self._thread: threading.Thread | None = None
+        self._stop_lock = threading.Lock()
+        self._stopping = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -71,9 +81,40 @@ class ProcessRunner(QObject):
         self._thread.start()
 
     def stop(self):
-        """Ask the running process to terminate gracefully."""
-        if self._process and self._process.poll() is None:
-            self._process.terminate()
+        """Kill the child process tree without blocking the GUI thread.
+
+        A single terminate() of the parent is not enough: DataLoader workers,
+        DDP/Accelerate ranks, and wandb helpers inherit the stdout pipe, so
+        the reader in run() never sees EOF and finished never fires. Tree-kill
+        plus closing stdout unblocks that. The kill itself runs on a daemon
+        thread so a stuck TerminateProcess cannot freeze Qt.
+        """
+        threading.Thread(
+            target=self._stop_sync, daemon=True, name="process-stop",
+        ).start()
+
+    def _stop_sync(self):
+        with self._stop_lock:
+            if self._stopping:
+                return
+            self._stopping = True
+        # start() is async: Popen may not exist yet if the user hit Stop
+        # immediately. Wait briefly rather than no-op'ing.
+        deadline = time.time() + 2.0
+        while self._process is None and time.time() < deadline:
+            time.sleep(0.05)
+        proc = self._process
+        if proc is None:
+            return
+        # Parent may already be dead with descendants still holding the
+        # stdout pipe — still tree-kill (no-op if the PID is gone) and
+        # close the reader so run() cannot block on EOF forever.
+        _kill_process_tree(proc)
+        try:
+            if proc.stdout is not None:
+                proc.stdout.close()
+        except Exception:
+            pass
 
     def isRunning(self):
         """True while the worker thread is still streaming the process."""
@@ -108,8 +149,7 @@ class ProcessRunner(QObject):
             # file writes (train_log.txt) utf-8, matching the GUI's own.
             env['PYTHONUTF8'] = '1'
             env.update(self._extra_env)
-            self._process = subprocess.Popen(
-                self._cmd,
+            popen_kw = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -118,8 +158,14 @@ class ProcessRunner(QObject):
                 bufsize=1,
                 env=env,
                 cwd=self._cwd,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
+            if sys.platform == "win32":
+                popen_kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+            else:
+                # New session so stop() can killpg the whole tree
+                # (DataLoader workers, DDP ranks).
+                popen_kw["start_new_session"] = True
+            self._process = subprocess.Popen(self._cmd, **popen_kw)
 
             # tqdm updates use '\r' (in-place redraw) not '\n', so a plain
             # line-by-line reader would only see progress after a real '\n'
@@ -127,37 +173,108 @@ class ProcessRunner(QObject):
             buf = ""
             last_tqdm_emit = 0.0
             last_tqdm_pct = None
-            for chunk in self._process.stdout:
-                buf += chunk.replace("\r", "\n")
-                while "\n" in buf:
-                    line, buf = buf.split("\n", 1)
-                    line = line.strip()
-                    if not line:
-                        continue
-                    pct = _parse_tqdm_percent(line)
-                    if pct is not None:
-                        now = time.time()
-                        # Throttle redundant intermediate tqdm updates within 100ms unless
-                        # percentage changes or reaches 0% / 100% boundary
-                        if (pct != last_tqdm_pct or pct in (0, 100)
-                                or (now - last_tqdm_emit) >= 0.1):
-                            last_tqdm_emit = now
-                            last_tqdm_pct = pct
+            stdout = self._process.stdout
+            try:
+                for chunk in stdout or ():
+                    buf += chunk.replace("\r", "\n")
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        pct = _parse_tqdm_percent(line)
+                        if pct is not None:
+                            now = time.time()
+                            # Throttle redundant intermediate tqdm updates within 100ms unless
+                            # percentage changes or reaches 0% / 100% boundary
+                            if (pct != last_tqdm_pct or pct in (0, 100)
+                                    or (now - last_tqdm_emit) >= 0.1):
+                                last_tqdm_emit = now
+                                last_tqdm_pct = pct
+                                self.log_line.emit(line)
+                                self.progress.emit(pct)
+                        else:
                             self.log_line.emit(line)
-                            self.progress.emit(pct)
-                    else:
-                        self.log_line.emit(line)
-            if buf.strip():
-                self.log_line.emit(buf.strip())
+                if buf.strip():
+                    self.log_line.emit(buf.strip())
+            except (ValueError, OSError):
+                # stop() closed the pipe to unblock this loop.
+                if buf.strip():
+                    try:
+                        self.log_line.emit(buf.strip())
+                    except Exception:
+                        pass
 
-            self._process.wait()
-            self.finished.emit(_coerce_exit_code(self._process.returncode))
+            code = _wait_exit(self._process)
+            if code is None:
+                self.log_line.emit(
+                    "[WARN] Process did not exit; it may still be wedged "
+                    "(GPU driver)."
+                )
+            self.finished.emit(_coerce_exit_code(code))
         except Exception as exc:
             self.log_line.emit(f"[ERROR] {exc}")
             self.finished.emit(_coerce_exit_code(None))
         finally:
             with _ACTIVE_LOCK:
                 _ACTIVE_RUNNERS.discard(self)
+
+
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    """Kill *proc* and every descendant. Parent-only terminate() leaves
+    DataLoader / DDP / Accelerate children holding the stdout pipe."""
+    pid = proc.pid
+    if not pid:
+        return
+    if sys.platform == "win32":
+        try:
+            from backend.win_startup import hidden_run
+            hidden_run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                timeout=15,
+            )
+        except Exception:
+            pass
+        try:
+            if proc.poll() is None:
+                proc.kill()
+        except Exception:
+            pass
+        return
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    deadline = time.time() + _POSIX_TERM_GRACE_S
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return
+        time.sleep(0.05)
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def _wait_exit(proc: subprocess.Popen | None):
+    """Wait for the parent PID after stdout has gone quiet. Timed so a
+    GPU-wedged process cannot pin the runner (and the GUI) forever."""
+    if proc is None:
+        return None
+    try:
+        return proc.wait(timeout=_WAIT_AFTER_STDOUT_S)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+            return proc.wait(timeout=2)
+        except Exception:
+            return proc.returncode
 
 
 # ------------------------------------------------------------------

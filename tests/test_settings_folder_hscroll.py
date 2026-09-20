@@ -192,11 +192,33 @@ def main():
             if w.objectName() == "mgrTypeTag" and w.isVisible()]
     check("type badge visible after expand", len(tags) >= 1)
     if tags:
+        tag = tags[0]
         check("type badge stays inside the viewport horizontally",
-              _in_viewport_x(tags[0], scroll))
+              _in_viewport_x(tag, scroll))
+        card = tag.parentWidget()
+        names = [w for w in card.findChildren(sp.QLabel)
+                 if w.objectName() == "mgrModelName"]
+        check("model name present on the same card", len(names) >= 1)
+        if names:
+            name_bottom = names[0].mapTo(card, QPoint(0, names[0].height())).y()
+            tag_top = tag.mapTo(card, QPoint(0, 0)).y()
+            check("type badge sits below the model name",
+                  tag_top >= name_bottom - 2)
 
     metrics = [m for m in mgr.findChildren(_MetricColumns) if m.has_content()]
     check("l1-freq metric columns rendered", len(metrics) >= 1)
+    rules = [w for w in mgr.findChildren(sp.QFrame)
+             if w.objectName() == "mgrMetricRule" and w.isVisible()]
+    check("metric divider visible after expand", len(rules) >= 1)
+    if rules and metrics:
+        rule = rules[0]
+        metric = metrics[0]
+        parent = rule.parentWidget()
+        if parent is metric.parentWidget():
+            rule_bottom = rule.mapTo(parent, QPoint(0, rule.height())).y()
+            metric_top = metric.mapTo(parent, QPoint(0, 0)).y()
+            check("metric divider sits above metric values",
+                  metric_top >= rule_bottom - 2)
     six = next((m for m in metrics if len(m._labels) == 6), None)
     two_mgr = next((m for m in metrics if len(m._labels) == 2), None)
     check("6-stem drum metrics present", six is not None)

@@ -116,8 +116,9 @@ def main():
           dot_right <= wcard.width() - 1)
     need = wit._lbl.fontMetrics().horizontalAdvance(wit._display)
     if wit._lbl.width() < need - 2:
+        painted = wit._lbl.painted_text()
         check("long label elides when space is tight",
-              wit._lbl.text() != wit._display and wit._lbl.text().endswith("…"))
+              painted != wit._display and painted.endswith("…"))
     else:
         check("long label fits the full-width 340px row", True)
     check("full name still searchable via _display",

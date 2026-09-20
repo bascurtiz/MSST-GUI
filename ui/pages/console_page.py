@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, QObject, QTimer, Property, QUrl, QPropertyAnimati
 from PySide6.QtGui import QTextCursor, QPainter, QPen, QColor, QPainterPath, QDesktopServices, QFont, QPixmap, QCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from ui.theme import theme_manager, FONT_FAMILY, FONT_STACK
-from ui.widgets.common import PageHeader, add_button_hover, MODEL_TYPE_COLORS, dark_menu_qss
+from ui.widgets.common import PageHeader, add_button_hover, MODEL_TYPE_COLORS, dark_menu_qss, accent_outline_btn_ss
 from ui.widgets.smooth_bar import SmoothBar as _SmoothBar
 from backend.paths import REPO_ROOT
 from mutagen import File as _MutagenFile
@@ -4097,17 +4097,7 @@ class ConsolePage(QWidget):
         """Copy Log: accented at rest (accent border + accent text, the log's
         primary action); hover fills with the accent (bright text) like the
         old solid rest state."""
-        t = theme_manager.theme
-        return (
-            f"QPushButton{{background:{t.surface};color:{theme_manager.accent};"
-            f"border:1px solid {theme_manager.accent};border-radius:4px;"
-            "font-family:'Montserrat',sans-serif;font-weight:600;"
-            "font-size:9px;}"
-            f"QPushButton:hover{{background:{theme_manager.accent};"
-            f"color:{theme_manager._accent_text};border:1px solid {theme_manager.accent};}}"
-            f"QPushButton:pressed{{background:{theme_manager._accent_hover};"
-            f"color:{theme_manager._accent_text};border:1px solid {theme_manager.accent};}}"
-        )
+        return accent_outline_btn_ss()
 
     def _clear(self):
         self._output_list.clear()
