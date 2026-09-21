@@ -5,7 +5,7 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QGuiApplication, QPixmap, QColor, QPainter
 from PySide6.QtWidgets import QApplication
 
@@ -139,6 +139,25 @@ def main():
         grip_cursor(Qt.RightEdge | Qt.TopEdge) == Qt.SizeBDiagCursor,
         "top-right grip is back-diagonal",
     )
+
+    from ui.pages.settings_page import _RadioCheck, _GitHubIconButton
+    from ui.theme import theme_manager
+    from PySide6.QtWidgets import QLabel
+    theme_manager.init_app(app)
+
+    radio = _RadioCheck("MODEL MANAGER", checked=True)
+    check(radio._circle.size() == QSize(16, 16),
+          f"mode radio stays 16px logical, got {radio._circle.size()}")
+    check(not isinstance(radio._circle, QLabel),
+          "mode radio is painted, not a clipped QLabel pixmap")
+
+    gh = _GitHubIconButton("https://example.com", "GitHub")
+    check(gh.size() == QSize(30, 30), f"GitHub button stays 30px, got {gh.size()}")
+    check(gh._ICON_PX == 14, f"GitHub mark is 14px logical, got {gh._ICON_PX}")
+    gh_pix = gh._mark_pixmap(QColor(0, 0, 0))
+    check(gh_pix.devicePixelRatio() == 1.0,
+          f"GitHub mark pixmap is not DPR-tagged, got {gh_pix.devicePixelRatio()}")
+    check(gh_pix.width() == 64, f"GitHub mark source is 64px, got {gh_pix.width()}")
 
     if FAILURES:
         print(f"{len(FAILURES)}/{CHECKS} checks FAILED:")

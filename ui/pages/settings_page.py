@@ -15,10 +15,9 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QMessageBox,
     QDialog, QStackedWidget,
 )
-from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint, QEvent, QRectF, QUrl, QSize
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint, QPointF, QEvent, QRectF, QUrl, QSize
 from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath, QDesktopServices, QPixmap
 from ui.theme import theme_manager, UIConstants
-from ui.dpi import current_dpr, make_pixmap
 from backend import update_checker as uc
 from ui.widgets.common import (
     PageHeader, outline_button_ss, solid_button_ss, ChevronCombo,
@@ -185,6 +184,45 @@ from backend.paths import APP_DIR as _DATA_ROOT  # writable root for downloads
 
 
 
+class _RadioDot(QWidget):
+    """16px radio mark painted in logical pixels so 125% DPR does not clip."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(16, 16)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.checked = False
+        self.hovered = False
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        cx, cy = 8.0, 8.0
+        if self.checked:
+            ba = 210 if self.hovered else 170
+            ac = QColor(theme_manager.accent)
+            ac.setAlpha(ba)
+            p.setPen(QPen(ac, 1.5))
+            ac2 = QColor(theme_manager.accent)
+            ac2.setAlpha(10)
+            p.setBrush(ac2)
+            p.drawEllipse(QPointF(cx, cy), 7.0, 7.0)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(theme_manager.accent))
+            p.drawEllipse(QPointF(cx, cy), 4.0, 4.0)
+        else:
+            ba = 70 if self.hovered else 50
+            tc = QColor(theme_manager.theme.text)
+            tc.setAlpha(ba)
+            p.setPen(QPen(tc, 1.5))
+            fa = 14 if self.hovered else 8
+            tc2 = QColor(theme_manager.theme.text)
+            tc2.setAlpha(fa)
+            p.setBrush(tc2)
+            p.drawEllipse(QPointF(cx, cy), 7.0, 7.0)
+        p.end()
+
+
 class _RadioCheck(QFrame):
     clicked = Signal(str)
 
@@ -198,8 +236,8 @@ class _RadioCheck(QFrame):
         hl.setContentsMargins(0, 0, 0, 0)
         hl.setSpacing(10)
 
-        self._circle = QLabel()
-        self._circle.setFixedSize(16, 16)
+        self._circle = _RadioDot()
+        self._circle.checked = checked
         hl.addWidget(self._circle)
 
         lbl = QLabel(text)
@@ -213,41 +251,9 @@ class _RadioCheck(QFrame):
         self._render()
 
     def _render(self):
-        from PySide6.QtGui import QPainter, QColor, QPen
-        from PySide6.QtCore import QPointF
-        dpr = current_dpr(self)
-        pm = make_pixmap(16, 16, dpr)
-        pm.fill(Qt.transparent)
-        p = QPainter(pm)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.scale(dpr, dpr)
-        cx, cy = 8.0, 8.0
-
-        if self._checked:
-            ba = 210 if self._hovered else 170
-            ac = QColor(theme_manager.accent)
-            ac.setAlpha(ba)
-            p.setPen(QPen(ac, 1.5))
-            ac2 = QColor(theme_manager.accent)
-            ac2.setAlpha(10)
-            p.setBrush(ac2)
-            p.drawEllipse(QPointF(cx, cy), 7.0, 7.0)
-            p.setPen(Qt.NoPen)
-            p.setBrush(QColor(theme_manager.accent))
-            p.drawEllipse(QPointF(cx, cy), 4.0, 4.0)
-        else:
-            ba = 70 if self._hovered else 50
-            tc = QColor(theme_manager.theme.text)
-            tc.setAlpha(ba)
-            p.setPen(QPen(tc, 1.5))
-            fa = 14 if self._hovered else 8
-            tc2 = QColor(theme_manager.theme.text)
-            tc2.setAlpha(fa)
-            p.setBrush(tc2)
-            p.drawEllipse(QPointF(cx, cy), 7.0, 7.0)
-
-        p.end()
-        self._circle.setPixmap(pm)
+        self._circle.checked = self._checked
+        self._circle.hovered = self._hovered
+        self._circle.update()
 
     def is_checked(self):
         return self._checked
@@ -1991,7 +1997,10 @@ class _GitHubIconButton(QPushButton):
         "2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 "
         "2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
     )
-    _pix_cache = {}  # (color, size) -> QPixmap
+    # Octocat fills its 16×16 viewBox; keep it smaller than the 16px sync
+    # glyph so 125% doesn't make it dominate the 30px chrome.
+    _ICON_PX = 14
+    _pix_cache = {}
 
     def __init__(self, url, tooltip, parent=None):
         super().__init__(parent)
@@ -2011,8 +2020,10 @@ class _GitHubIconButton(QPushButton):
             + add_button_hover()
             + f"QPushButton:disabled{{color:{t.disabled_text};}}")
 
-    def _mark_pixmap(self, color, dpr):
-        key = (color.red(), color.green(), color.blue(), round(float(dpr), 2))
+    def _mark_pixmap(self, color):
+        # Same path as ScoresRefreshButton: oversample, no DPR tag, then
+        # draw into a logical rect so PassThrough 125% cannot double-scale.
+        key = (color.red(), color.green(), color.blue())
         pix = _GitHubIconButton._pix_cache.get(key)
         if pix is None:
             svg = (
@@ -2022,14 +2033,15 @@ class _GitHubIconButton(QPushButton):
             )
             from PySide6.QtSvg import QSvgRenderer
             from PySide6.QtCore import QByteArray
+            from PySide6.QtGui import QImage
             r = QSvgRenderer(QByteArray(svg.encode()))
-            pix = make_pixmap(15, 15, dpr)
-            pix.fill(Qt.transparent)
-            painter = QPainter(pix)
+            img = QImage(64, 64, QImage.Format.Format_ARGB32)
+            img.fill(Qt.transparent)
+            painter = QPainter(img)
             painter.setRenderHint(QPainter.Antialiasing)
-            painter.scale(dpr, dpr)
-            r.render(painter, QRectF(0, 0, 15, 15))
+            r.render(painter)
             painter.end()
+            pix = QPixmap.fromImage(img)
             _GitHubIconButton._pix_cache[key] = pix
         return pix
 
@@ -2049,13 +2061,12 @@ class _GitHubIconButton(QPushButton):
         t = theme_manager.theme
         color = (_css_color(t.text) if self._hovered
                  else _css_color(t.text_dim))
-        pix = self._mark_pixmap(color, current_dpr(self))
+        icon = self._ICON_PX
+        x = (self.width() - icon) // 2
+        y = (self.height() - icon) // 2
         p.setRenderHint(QPainter.SmoothPixmapTransform)
-        mark = 15
-        x = (self.width() - mark) // 2
-        y = (self.height() - mark) // 2
         p.setOpacity(color.alphaF())
-        p.drawPixmap(x, y, pix)
+        p.drawPixmap(x, y, icon, icon, self._mark_pixmap(color))
         p.end()
 
 
