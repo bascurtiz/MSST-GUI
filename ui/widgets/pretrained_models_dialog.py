@@ -28,6 +28,7 @@ from ui.theme import theme_manager
 from ui.widgets.common import (
     _type_badge_ss, _type_title, MODEL_TYPE_COLORS, _optional_scroll_ss,
     ScoresRefreshButton, help_close_button,
+    _HELP_PAD_L, _HELP_PAD_Y, _HELP_SEC_PAD_Y,
 )
 from ui.pages.inference_page import _LinkBadge, _MetricColumns
 from backend import pretrained_catalog as catalog
@@ -836,7 +837,7 @@ class PretrainedModelsDialog(QDialog):
         self.setStyleSheet("QDialog{background:" + t.bg + ";}")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(28, 26, 28, 26)
+        root.setContentsMargins(_HELP_PAD_L, _HELP_PAD_Y, _HELP_PAD_L, _HELP_PAD_Y)
         root.setSpacing(0)
 
         # Title row
@@ -909,7 +910,7 @@ class PretrainedModelsDialog(QDialog):
         self._content = QWidget()
         self._content.setStyleSheet("background:transparent;")
         self._list_layout = QVBoxLayout(self._content)
-        self._list_layout.setContentsMargins(0, 6, 10, 10)
+        self._list_layout.setContentsMargins(0, _HELP_SEC_PAD_Y, 10, _HELP_SEC_PAD_Y)
         self._list_layout.setSpacing(12)
         # The trailing stretch is (re)added by _populate.
         self._scroll.setWidget(self._content)

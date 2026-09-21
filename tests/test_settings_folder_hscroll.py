@@ -217,8 +217,22 @@ def main():
         if parent is metric.parentWidget():
             rule_bottom = rule.mapTo(parent, QPoint(0, rule.height())).y()
             metric_top = metric.mapTo(parent, QPoint(0, 0)).y()
+            gap_below = metric_top - rule_bottom
             check("metric divider sits above metric values",
                   metric_top >= rule_bottom - 2)
+            check(
+                f"metric rule has {sp._CARD_RULE_GAP}px below (got {gap_below})",
+                abs(gap_below - sp._CARD_RULE_GAP) <= 2,
+            )
+            card = parent.parentWidget()
+            clo = card.layout() if card is not None else None
+            top_pad = parent.layout().contentsMargins().top()
+            clo_gap = clo.spacing() if clo is not None else 0
+            gap_above = top_pad + clo_gap
+            check(
+                f"metric rule has {sp._CARD_RULE_GAP}px above (got {gap_above})",
+                gap_above == sp._CARD_RULE_GAP,
+            )
     six = next((m for m in metrics if len(m._labels) == 6), None)
     two_mgr = next((m for m in metrics if len(m._labels) == 2), None)
     check("6-stem drum metrics present", six is not None)

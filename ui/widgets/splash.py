@@ -18,7 +18,7 @@ import ctypes
 from ctypes import wintypes
 
 from PySide6.QtCore import (
-    Qt, QPropertyAnimation, QEasingCurve, QRectF,
+    Qt, QPropertyAnimation, QEasingCurve, QRectF, QEvent,
 )
 from PySide6.QtGui import QPixmap, QPainter, QColor, QPen
 from PySide6.QtWidgets import (
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.theme import theme_manager
+from ui.dpi import current_dpr, scale_pixmap
 
 # Hide extra native windows that belong to this process while the splash is
 # the only UI that should be on screen. System helper classes stay put.
@@ -134,13 +135,8 @@ class SplashPanel(QWidget):
         self._logo = QLabel()
         self._logo.setAlignment(Qt.AlignCenter)
         self._logo.setStyleSheet("background:transparent;border:none;")
-        logo_path = os.path.join(base_dir, "resources", "mvsep-logo.png")
-        if os.path.isfile(logo_path):
-            pm = QPixmap(logo_path)
-            if not pm.isNull():
-                # 1044x305 source -> display width, kept crisp.
-                self._logo.setPixmap(pm.scaledToWidth(
-                    260, Qt.SmoothTransformation))
+        self._logo_path = os.path.join(base_dir, "resources", "mvsep-logo.png")
+        self._apply_logo()
         root.addWidget(self._logo)
         root.addSpacing(18)
 
@@ -199,6 +195,23 @@ class SplashPanel(QWidget):
         self._fade.finished.connect(self._on_fade_done)
 
         self._center_on_screen()
+
+    def _apply_logo(self):
+        path = getattr(self, "_logo_path", "")
+        if not path or not os.path.isfile(path):
+            return
+        pm = QPixmap(path)
+        if pm.isNull():
+            return
+        # 1044x305 source -> display width, kept crisp at the current DPR.
+        self._logo.setPixmap(scale_pixmap(
+            pm, logical_width=260, dpr=current_dpr(self)))
+
+    def changeEvent(self, event):
+        dpr_change = getattr(QEvent.Type, "DevicePixelRatioChange", None)
+        if dpr_change is not None and event.type() == dpr_change:
+            self._apply_logo()
+        super().changeEvent(event)
 
     def _native_hwnd(self):
         try:

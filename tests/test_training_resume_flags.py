@@ -19,7 +19,7 @@ from PySide6.QtGui import QFontMetrics  # noqa: E402
 from PySide6.QtWidgets import QApplication, QFrame, QLabel  # noqa: E402
 
 from ui.pages.training_page import TrainingPage, _RunOptionsDialog  # noqa: E402
-from ui.widgets.common import _HELP_SCROLL_LANE  # noqa: E402
+from ui.widgets.common import _HELP_PAD_L, _HELP_PAD_Y, _HELP_SCROLL_LANE  # noqa: E402
 
 FAILURES = []
 CHECKS = 0
@@ -84,6 +84,14 @@ def main():
                   if f.objectName() == "helpOptional"]
     check(len(req_frames) == 2, "GPUS and WORKERS / SEED are required panes")
     check(len(opt_frames) == 1, "training flags stay in OPTIONAL")
+
+    m = dlg.layout().contentsMargins()
+    check(
+        (m.left(), m.right(), m.top(), m.bottom())
+        == (_HELP_PAD_L, _HELP_PAD_L, _HELP_PAD_Y, _HELP_PAD_Y),
+        f"gpus/workers/seed outer margin "
+        f"{(m.left(), m.right(), m.top(), m.bottom())}",
+    )
 
     dlg.show()
     app.processEvents()

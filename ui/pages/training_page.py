@@ -48,11 +48,13 @@ from backend.train_cmd import (
 )
 from ui.strings import T_EXPORT_WEIGHTS, T_TRAIN_SETUP, T_OPEN_WANDB, HELP_OPTIONAL_CAPTION
 from ui.theme import theme_manager, UIConstants
+from ui.dpi import current_dpr
 from ui.widgets.common import (
     PageHeader, PageHelpDialog, solid_button_ss, outline_button_ss,
     accent_outline_btn_ss, EllipsisButton, GlyphButton, css_color,
     _outline_icon_color, _solid_icon_color, _stop_icon_color, run_blurred_dialog,
     OptionalFold, _page_edge_scroll_ss, _help_section, _HELP_COL_GUTTER,
+    _HELP_PAD_L, _HELP_PAD_R, _HELP_PAD_Y, _HELP_SEC_PAD_X, _HELP_SEC_PAD_Y,
     CHIP_GLYPH, BOLT_GLYPH,
 )
 from ui.pages.inference_page import (
@@ -454,18 +456,22 @@ class _ButtonIcon(QWidget):
         src = self._wandb_pixmap()
         if src.isNull():
             return False
-        scaled = src.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        tinted = QPixmap(self.size())
+        dpr = current_dpr(self)
+        pw = max(1, int(round(self.width() * dpr)))
+        ph = max(1, int(round(self.height() * dpr)))
+        scaled = src.scaled(pw, ph, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        tinted = QPixmap(pw, ph)
         tinted.fill(Qt.transparent)
         qp = QPainter(tinted)
         qp.setRenderHint(QPainter.SmoothPixmapTransform)
         qp.drawPixmap(
-            (self.width() - scaled.width()) // 2,
-            (self.height() - scaled.height()) // 2,
+            (pw - scaled.width()) // 2,
+            (ph - scaled.height()) // 2,
             scaled)
         qp.setCompositionMode(QPainter.CompositionMode_SourceIn)
         qp.fillRect(tinted.rect(), self._color)
         qp.end()
+        tinted.setDevicePixelRatio(dpr)
         p.drawPixmap(0, 0, tinted)
         return True
 
@@ -1177,7 +1183,8 @@ def _option_row(check, title, desc="", *, help_style=False):
     w = QWidget()
     w.setStyleSheet("background:transparent;")
     hl = QHBoxLayout(w)
-    hl.setContentsMargins(0, 4, 0, 4)
+    vpad = 6 if help_style else 4
+    hl.setContentsMargins(0, vpad, 0, vpad)
     hl.setSpacing(12)
     hl.addWidget(check, 0, Qt.AlignTop if desc else Qt.AlignVCenter)
     col = QVBoxLayout()
@@ -1302,12 +1309,14 @@ class _MultiSelectDialog(PageHelpDialog):
             ],
             "required_caption": cap,
             "primary_text": "APPLY",
+            "pad_left": _HELP_PAD_L,
+            "pad_right": _HELP_PAD_R if losses else _HELP_PAD_L,
+            "pad_top": _HELP_PAD_Y,
+            "pad_bottom": _HELP_PAD_Y,
             "min_width": (
-                740 if metrics else (940 if losses else (720 if columns == 2 else 680))),
-            "max_width": 780 if metrics else (980 if losses else 0),
+                780 if metrics else (980 if losses else (720 if columns == 2 else 680))),
+            "max_width": 820 if metrics else (1020 if losses else 0),
         }
-        if losses:
-            data["hide_scrollbar"] = True
         if toggle is not None:
             data["optional"] = [toggle[0]]
             data["optional_below"] = True
@@ -1316,7 +1325,7 @@ class _MultiSelectDialog(PageHelpDialog):
         inner = getattr(self, "_inner", None)
         lay = inner.layout() if inner is not None else None
         if lay is not None:
-            lay.addSpacing(28)
+            lay.addSpacing(_HELP_PAD_Y)
             self._refit()
 
     def _copy(self, muted=False):
@@ -1331,7 +1340,8 @@ class _MultiSelectDialog(PageHelpDialog):
         w = QWidget()
         w.setStyleSheet("background:transparent;")
         vl = QVBoxLayout(w)
-        vl.setContentsMargins(0, top, 0, 0)
+        vl.setContentsMargins(
+            _HELP_SEC_PAD_X, top, _HELP_SEC_PAD_X, _HELP_SEC_PAD_Y)
         vl.setSpacing(12)
         return w, vl
 
@@ -1382,7 +1392,7 @@ class _MultiSelectDialog(PageHelpDialog):
                 buckets = [options[i:i + n] for i in range(0, len(options), n)]
             pair = QHBoxLayout()
             pair.setContentsMargins(0, 0, 0, 0)
-            pair.setSpacing(16)
+            pair.setSpacing(24)
             pair.setAlignment(Qt.AlignLeft | Qt.AlignTop)
             for bucket in buckets:
                 col = QWidget()
@@ -1409,7 +1419,7 @@ class _MultiSelectDialog(PageHelpDialog):
         row = QWidget()
         row.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(row)
-        hl.setContentsMargins(0, 2, 0, 2)
+        hl.setContentsMargins(0, 6, 0, 6)
         hl.setSpacing(12)
         self._toggle_sw = _MiniSwitch(bool(checked))
         hl.addWidget(self._toggle_sw, 0, Qt.AlignVCenter)
@@ -1458,7 +1468,7 @@ class _RunOptionsDialog(PageHelpDialog):
         left.setStyleSheet("background:transparent;")
         lv = QVBoxLayout(left)
         lv.setContentsMargins(0, 0, 0, 0)
-        lv.setSpacing(16)
+        lv.setSpacing(24)
         lv.setAlignment(Qt.AlignTop)
         lv.addWidget(gpus)
         lv.addWidget(workers)
@@ -1486,8 +1496,11 @@ class _RunOptionsDialog(PageHelpDialog):
             "max_width": 1160,
             "expand_height": True,
             "hide_scrollbar": True,
-            "pad_bottom": 20,
-            "content_bottom_gap": 32,
+            "pad_left": _HELP_PAD_L,
+            "pad_right": _HELP_PAD_L,
+            "pad_top": _HELP_PAD_Y,
+            "pad_bottom": _HELP_PAD_Y,
+            "content_bottom_gap": _HELP_PAD_Y,
             "primary_text": "APPLY",
         }, parent, left=left, right=optional)
         self._refit()
@@ -1537,7 +1550,9 @@ class _RunOptionsDialog(PageHelpDialog):
         w = QWidget()
         w.setStyleSheet("background:transparent;")
         vl = QVBoxLayout(w)
-        vl.setContentsMargins(0, top, 0, 0)
+        x = _HELP_SEC_PAD_X if top else 0
+        yb = _HELP_SEC_PAD_Y if top else 0
+        vl.setContentsMargins(x, top, x, yb)
         vl.setSpacing(10)
         return w, vl
 

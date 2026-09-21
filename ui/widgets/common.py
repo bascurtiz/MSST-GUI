@@ -917,7 +917,7 @@ def _help_step_row(n, text, required):
     row = QWidget()
     row.setStyleSheet("background:transparent;")
     hl = QHBoxLayout(row)
-    hl.setContentsMargins(0, 4, 0, 4)
+    hl.setContentsMargins(0, 6, 0, 6)
     hl.setSpacing(12)
     hl.addWidget(_help_num_badge(n, accent=False), 0, Qt.AlignTop)
     body = QLabel(text)
@@ -945,9 +945,9 @@ class _HelpSection(QFrame):
             f"QFrame#{self.objectName()}{{background:transparent;border:none;}}"
         )
         vl = QVBoxLayout(self)
-        vl.setContentsMargins(0, 0, 0, 0)
+        vl.setContentsMargins(
+            _HELP_SEC_PAD_X, _HELP_SEC_PAD_Y, _HELP_SEC_PAD_X, _HELP_SEC_PAD_Y)
         vl.setSpacing(14)
-        vl.addSpacing(8)
 
         hr = QHBoxLayout()
         hr.setSpacing(8)
@@ -992,6 +992,22 @@ def _help_section(kind, items, caption, index=1, extra=None, title=None):
 # Match inference/training CONFIGURATION row height so Optional cards are
 # never squeezed below the Model Library architecture cards (42px).
 _OPTIONAL_ROW_H = 42
+
+# Help sheet chrome — a bit of air around the copy (was 20/14/20).
+_HELP_PAD_L = 32
+_HELP_PAD_R = 28
+_HELP_PAD_Y = 32
+_HELP_SEC_PAD_X = 8
+_HELP_SEC_PAD_Y = 8
+# Badge (24) + row gap (12) + dialog L/R + per-column inset.
+_HELP_STEP_CHROME = (
+    _HELP_PAD_L + _HELP_PAD_R + 24 + 12 + 2 * _HELP_SEC_PAD_X
+)
+_HELP_COL_GUTTER = 32
+_HELP_MIN_W = 440
+_HELP_MAX_W = 960
+# Matches QScrollBar:vertical{width:16px} in _optional_scroll_ss.
+_HELP_SCROLL_LANE = 16
 
 
 def _optional_scroll_ss(gutter=True):
@@ -1256,17 +1272,8 @@ class OptionalFold(QWidget):
             self._scroll.setStyleSheet(_optional_scroll_ss(gutter=True))
 
 
-# Side pads 20+14, square chip 24, gap 12, plus the 32px column gutter
-# when REQUIRED and OPTIONAL sit side by side.
-_HELP_STEP_CHROME = 20 + 14 + 24 + 12
-_HELP_COL_GUTTER = 32
-_HELP_MIN_W = 440
-_HELP_MAX_W = 960
-_HELP_PAD_L = 20
-_HELP_PAD_R = 14
-_HELP_PAD_Y = 20
-# Matches QScrollBar:vertical{width:16px} in _optional_scroll_ss.
-_HELP_SCROLL_LANE = 16
+# Dialog L/R pads + per-column inset + square chip + row gap, plus the
+# 32px column gutter when REQUIRED and OPTIONAL sit side by side.
 
 
 def _help_line_px(text, font):
@@ -1320,12 +1327,14 @@ def _help_preferred_width(data, parent=None):
     else:
         content = max(req_w, opt_w) + _HELP_STEP_CHROME
         min_w = _HELP_MIN_W
-    content = max(content, intro_w + _HELP_PAD_L + _HELP_PAD_R)
+    pad_l = int(data.get("pad_left") or _HELP_PAD_L)
+    pad_r = int(data.get("pad_right") or _HELP_PAD_R)
+    content = max(content, intro_w + pad_l + pad_r)
     title_font = QFont(FONT_FAMILY_DEFAULT, UIConstants.SEC_TITLE_FONT_SIZE)
     title_font.setBold(True)
     title = (data.get("heading") or f"HELP  ·  {data.get('title', '')}").strip()
     extra = 80 if data.get("primary_text") else 24
-    title_w = _HELP_PAD_L + QFontMetrics(title_font).horizontalAdvance(title) + 8 + extra + _HELP_PAD_R
+    title_w = pad_l + QFontMetrics(title_font).horizontalAdvance(title) + 8 + extra + pad_r
     extra_min = int(data.get("min_width") or 0)
     min_w = max(min_w, extra_min)
     w = max(content, title_w, min_w)
@@ -1368,8 +1377,10 @@ class PageHelpDialog(QDialog):
         )
         pad_top = int(data.get("pad_top") or _HELP_PAD_Y)
         pad_bottom = int(data.get("pad_bottom") or pad_top)
+        pad_left = int(data.get("pad_left") or _HELP_PAD_L)
+        pad_right = int(data.get("pad_right") or _HELP_PAD_R)
         root = QVBoxLayout(self)
-        root.setContentsMargins(_HELP_PAD_L, pad_top, _HELP_PAD_R, pad_bottom)
+        root.setContentsMargins(pad_left, pad_top, pad_right, pad_bottom)
         root.setSpacing(0)
 
         hdr = QHBoxLayout()
@@ -1395,7 +1406,7 @@ class PageHelpDialog(QDialog):
         hdr.addWidget(help_close_button(
             self.reject if primary_text else self.accept))
         root.addLayout(hdr)
-        root.addSpacing(16)
+        root.addSpacing(24)
 
         sc = QScrollArea()
         sc.setWidgetResizable(False)
@@ -1513,7 +1524,9 @@ class PageHelpDialog(QDialog):
         sc = sc if sc is not None else self._sc
         inner = inner if inner is not None else self._inner
         width = _help_preferred_width(data, self.parentWidget())
-        avail = max(200, width - _HELP_PAD_L - _HELP_PAD_R)
+        pad_left = int(data.get("pad_left") or _HELP_PAD_L)
+        pad_right = int(data.get("pad_right") or _HELP_PAD_R)
+        avail = max(200, width - pad_left - pad_right)
 
         def size_inner(inner_w):
             inner.setMinimumSize(0, 0)
@@ -1537,7 +1550,7 @@ class PageHelpDialog(QDialog):
         pad_top = int(data.get("pad_top") or _HELP_PAD_Y)
         pad_bottom = int(data.get("pad_bottom") or pad_top)
         bottom_gap = int(data.get("content_bottom_gap") or 0)
-        chrome = pad_top + pad_bottom + header_h + 16 + bottom_gap
+        chrome = pad_top + pad_bottom + header_h + 24 + bottom_gap
 
         max_h = 820
         scr = self.screen()

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint, QEvent, QRectF, QUrl, QSize
 from PySide6.QtGui import QPainter, QColor, QPen, QPainterPath, QDesktopServices, QPixmap
 from ui.theme import theme_manager, UIConstants
+from ui.dpi import current_dpr, make_pixmap
 from backend import update_checker as uc
 from ui.widgets.common import (
     PageHeader, outline_button_ss, solid_button_ss, ChevronCombo,
@@ -129,6 +130,11 @@ def _relative_time(iso_str: str) -> str:
     return f"Updated {int(secs // 2592000)} mo ago"
 
 
+# Air above and below the 1px rule on REGISTERED MODELS cards (and the
+# Model Manager metric rule, which must match).
+_CARD_RULE_GAP = 14
+
+
 ARCH_TYPES = [
     "Apollo Architecture", "Bandit Architecture", "BS Roformer Architecture",
     "BSMamba2 Architecture", "Conformer Architecture", "Demucs Architecture",
@@ -207,12 +213,14 @@ class _RadioCheck(QFrame):
         self._render()
 
     def _render(self):
-        from PySide6.QtGui import QPixmap, QPainter, QColor, QPen
+        from PySide6.QtGui import QPainter, QColor, QPen
         from PySide6.QtCore import QPointF
-        pm = QPixmap(16, 16)
+        dpr = current_dpr(self)
+        pm = make_pixmap(16, 16, dpr)
         pm.fill(Qt.transparent)
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing)
+        p.scale(dpr, dpr)
         cx, cy = 8.0, 8.0
 
         if self._checked:
@@ -537,13 +545,13 @@ class _ModelCard(QFrame):
         top.addWidget(rm)
 
         root.addLayout(top)
-        root.addSpacing(14)
+        root.addSpacing(_CARD_RULE_GAP)
 
         sep = QFrame()
         sep.setFixedHeight(1)
         sep.setStyleSheet(f"background:{theme_manager.theme.border_visible};border:none;")
         root.addWidget(sep)
-        root.addSpacing(14)
+        root.addSpacing(_CARD_RULE_GAP)
 
         meta = QHBoxLayout()
         meta.setContentsMargins(0, 0, 0, 0)
@@ -1916,13 +1924,26 @@ class _FolderManagerWidget(QWidget):
             clo.addLayout(main_row)
             if updated_row.count():
                 if no_validation or metric_text:
+                    # clo spacing already sits between main_row and this
+                    # foot; pad the rest so the rule gets the same 14px
+                    # above/below as REGISTERED MODELS.
+                    foot = QWidget()
+                    foot.setStyleSheet("background:transparent;border:none;")
+                    fv = QVBoxLayout(foot)
+                    fv.setContentsMargins(
+                        0, max(0, _CARD_RULE_GAP - clo.spacing()), 0, 0)
+                    fv.setSpacing(0)
                     rule = QFrame()
                     rule.setObjectName("mgrMetricRule")
                     rule.setFixedHeight(1)
                     rule.setStyleSheet(
-                        f"background:{theme_manager.theme.border};border:none;")
-                    clo.addWidget(rule)
-                clo.addLayout(updated_row)
+                        f"background:{theme_manager.theme.border_visible};border:none;")
+                    fv.addWidget(rule)
+                    fv.addSpacing(_CARD_RULE_GAP)
+                    fv.addLayout(updated_row)
+                    clo.addWidget(foot)
+                else:
+                    clo.addLayout(updated_row)
 
             col.addWidget(card)
 
@@ -1990,8 +2011,8 @@ class _GitHubIconButton(QPushButton):
             + add_button_hover()
             + f"QPushButton:disabled{{color:{t.disabled_text};}}")
 
-    def _mark_pixmap(self, color):
-        key = (color.red(), color.green(), color.blue())
+    def _mark_pixmap(self, color, dpr):
+        key = (color.red(), color.green(), color.blue(), round(float(dpr), 2))
         pix = _GitHubIconButton._pix_cache.get(key)
         if pix is None:
             svg = (
@@ -2002,11 +2023,12 @@ class _GitHubIconButton(QPushButton):
             from PySide6.QtSvg import QSvgRenderer
             from PySide6.QtCore import QByteArray
             r = QSvgRenderer(QByteArray(svg.encode()))
-            pix = QPixmap(64, 64)
+            pix = make_pixmap(15, 15, dpr)
             pix.fill(Qt.transparent)
             painter = QPainter(pix)
             painter.setRenderHint(QPainter.Antialiasing)
-            r.render(painter)
+            painter.scale(dpr, dpr)
+            r.render(painter, QRectF(0, 0, 15, 15))
             painter.end()
             _GitHubIconButton._pix_cache[key] = pix
         return pix
@@ -2027,13 +2049,13 @@ class _GitHubIconButton(QPushButton):
         t = theme_manager.theme
         color = (_css_color(t.text) if self._hovered
                  else _css_color(t.text_dim))
-        pix = self._mark_pixmap(color)
+        pix = self._mark_pixmap(color, current_dpr(self))
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         mark = 15
         x = (self.width() - mark) // 2
         y = (self.height() - mark) // 2
         p.setOpacity(color.alphaF())
-        p.drawPixmap(x, y, mark, mark, pix)
+        p.drawPixmap(x, y, pix)
         p.end()
 
 

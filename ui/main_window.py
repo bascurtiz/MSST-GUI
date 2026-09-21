@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QLabel, QFrame, QSizePolicy, QStackedWidget, QGraphicsBlurEffect,
 )
-from PySide6.QtCore import Qt, QSize, QTimer, Signal, QVariantAnimation, QRectF, QPoint, QPointF, QEasingCurve, QCoreApplication, QEvent
+from PySide6.QtCore import Qt, QSize, QTimer, Signal, QVariantAnimation, QRect, QRectF, QPoint, QPointF, QEasingCurve, QCoreApplication, QEvent
 from PySide6.QtGui import QColor, QPalette, QPainter, QBrush, QFont, QFontMetrics, QPen, QLinearGradient, QRadialGradient, QPixmap, QPainterPath
 
 import backend.settings as settings_store
@@ -30,6 +30,10 @@ from ui.widgets.iterative_warning_dialog import IterativeWarningDialog
 from ui.widgets.model_installer_dialog import _ModelInstallerDialog
 from backend.model_installer import check_models, REQUIRED_MODELS, ModelInstaller
 from ui.theme import theme_manager
+from ui.dpi import (
+    current_dpr, default_window_size, scale_pixmap,
+    RESIZE_BORDER, GRIP_EDGES, grip_rects, grip_cursor,
+)
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _LOGO_PATH = os.path.join(_BASE_DIR, "resources", "mvsep-logo.png")
@@ -376,6 +380,8 @@ class _WindowButtons(QFrame):
             if hasattr(w, '_set_dwm_corners'):
                 w._set_dwm_corners(False)
         self._max_btn.update()
+        if hasattr(w, '_layout_resize_grips'):
+            w._layout_resize_grips()
 
 
 class _ThemeToggle(QFrame):
@@ -656,6 +662,81 @@ class _HeaderBar(QFrame):
             self._dragging = False
         super().mouseReleaseEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            child = self.childAt(event.pos())
+            if child is None or isinstance(child, QLabel):
+                btn = getattr(self.window(), '_window_buttons', None)
+                if btn is not None:
+                    btn._toggle_maximize()
+                    return
+        super().mouseDoubleClickEvent(event)
+
+
+class _EdgeGrip(QWidget):
+    """Invisible 6px strip that starts a resize — no WS_THICKFRAME.
+
+    Prefer QWindow.startSystemResize (native rubber-band). If the platform
+    refuses that, fall back to mouse-tracked geometry so we never have to
+    add a Win32 thick frame (that was the ugly inactive border).
+    """
+
+    def __init__(self, edges, parent=None):
+        super().__init__(parent)
+        self._edges = edges
+        self._manual = False
+        self._origin = None
+        self._geo = None
+        self.setCursor(grip_cursor(edges))
+        self.setStyleSheet("background:transparent;border:none;")
+        self.setFocusPolicy(Qt.NoFocus)
+
+    def mousePressEvent(self, event):
+        if event.button() != Qt.LeftButton:
+            return
+        win = self.window()
+        if win is None or getattr(win, "_is_maximized", lambda: False)():
+            return
+        handle = win.windowHandle()
+        if handle is not None and handle.startSystemResize(self._edges):
+            return
+        self._manual = True
+        self._origin = event.globalPosition().toPoint()
+        self._geo = QRect(win.geometry())
+        self.grabMouse()
+
+    def mouseMoveEvent(self, event):
+        if not self._manual or self._geo is None:
+            return
+        win = self.window()
+        if win is None:
+            return
+        dx = event.globalPosition().toPoint().x() - self._origin.x()
+        dy = event.globalPosition().toPoint().y() - self._origin.y()
+        x, y, w, h = self._geo.x(), self._geo.y(), self._geo.width(), self._geo.height()
+        min_w, min_h = win.minimumWidth(), win.minimumHeight()
+        edges = self._edges
+        if edges & Qt.LeftEdge:
+            nw = max(min_w, w - dx)
+            x = x + (w - nw)
+            w = nw
+        if edges & Qt.RightEdge:
+            w = max(min_w, w + dx)
+        if edges & Qt.TopEdge:
+            nh = max(min_h, h - dy)
+            y = y + (h - nh)
+            h = nh
+        if edges & Qt.BottomEdge:
+            h = max(min_h, h + dy)
+        win.setGeometry(x, y, w, h)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._manual:
+            self._manual = False
+            self._origin = None
+            self._geo = None
+            self.releaseMouse()
+
 
 class MainWindow(QMainWindow):
     # Nav tab / page-stack indexes (the two always line up).
@@ -728,8 +809,7 @@ class MainWindow(QMainWindow):
         self._report_progress("Finalising interface...", 86)
         theme_manager.theme_changed.connect(self._on_theme_changed)
         theme_manager.theme_about_to_change.connect(self._on_theme_about_to_change)
-        if self._NATIVE_RESIZE:
-            self._enable_native_resize()
+        self._install_resize_grips()
         # Update check for exe builds, ~2.5s after launch (silent if current).
         from ui.widgets.update_dialog import run_startup_check
         QTimer.singleShot(2500, lambda: run_startup_check(self))
@@ -1055,6 +1135,8 @@ class MainWindow(QMainWindow):
             self._switch_queued = False
             # The mode changed again while rebuilding; apply the latest one.
             QTimer.singleShot(0, self._begin_theme_rebuild)
+        else:
+            self._layout_resize_grips()
 
     def _rebuild_pages(self):
         self._begin_theme_rebuild()
@@ -1231,9 +1313,15 @@ class MainWindow(QMainWindow):
     def _update_brand(self):
         pm = QPixmap(_LOGO_PATH)
         if not pm.isNull():
-            pm = pm.scaledToHeight(32, Qt.SmoothTransformation)
+            pm = scale_pixmap(pm, logical_height=32, dpr=current_dpr(self))
             self._brand_label.setPixmap(pm)
         self._brand_label.setAlignment(Qt.AlignVCenter)
+
+    def changeEvent(self, event):
+        dpr_change = getattr(QEvent.Type, "DevicePixelRatioChange", None)
+        if dpr_change is not None and event.type() == dpr_change:
+            self._update_brand()
+        super().changeEvent(event)
 
     def _set_dwm_corners(self, round_corners=True):
         try:
@@ -1248,51 +1336,29 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    # —— Native edge resize ——————————————————————————————————————————————
-    # The window is frameless, so Windows shows no resize borders. Two pieces
-    # make resizing work: the native window style gains WS_THICKFRAME so the
-    # OS is willing to run its sizing loop, and WM_NCCALCSIZE claims the whole
-    # window as client area so that frame stays invisible. WM_NCHITTEST then
-    # returns the standard HT* codes at the edges, which gives native resize
-    # behaviour (correct cursors, smooth dragging) without touching any of
-    # the custom chrome.
-    _HT = {  # (left, top, right, bottom) combos → hit codes
-        (True, True, False, False): 13,    # HTTOPLEFT
-        (False, True, True, False): 14,    # HTTOPRIGHT
-        (True, False, False, True): 16,    # HTBOTTOMLEFT
-        (False, False, True, True): 17,    # HTBOTTOMRIGHT
-        (True, False, False, False): 10,   # HTLEFT
-        (False, False, True, False): 11,   # HTRIGHT
-        (False, True, False, False): 12,   # HTTOP
-        (False, False, False, True): 15,   # HTBOTTOM
-    }
-    _RESIZE_BORDER = 6
-    # Resizing is disabled: with WS_THICKFRAME present, Windows still paints
-    # its legacy inactive frame around the frameless window on some systems
-    # (the "ugly border"). Fixed size + min/max/close only. Flip to True to
-    # re-enable native edge resizing (requires the thick-frame styles below).
-    _NATIVE_RESIZE = False
+    # Frameless resize without WS_THICKFRAME — that style is what painted the
+    # legacy "ugly border" around the custom chrome. Invisible 6px grips call
+    # QWindow.startSystemResize (Win32 SC_SIZE fallback) instead.
+    def _install_resize_grips(self):
+        self._resize_grips = []
+        host = self._central
+        for edges in GRIP_EDGES:
+            grip = _EdgeGrip(edges, host)
+            grip.show()
+            self._resize_grips.append(grip)
+        self._layout_resize_grips()
 
-    def _enable_native_resize(self):
-        if os.name != "nt" or not self._NATIVE_RESIZE:
+    def _layout_resize_grips(self):
+        grips = getattr(self, "_resize_grips", None)
+        if not grips:
             return
-        try:
-            hwnd = wintypes.HWND(int(self.winId()))
-            user32 = ctypes.windll.user32
-            get_style = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
-            set_style = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
-            GWL_STYLE = -16
-            WS_THICKFRAME = 0x00040000   # allows the OS sizing loop
-            WS_MAXIMIZEBOX = 0x00010000  # allows aero-snap sizing states
-            style = get_style(hwnd, GWL_STYLE)
-            set_style(hwnd, GWL_STYLE, style | WS_THICKFRAME | WS_MAXIMIZEBOX)
-            SWP_NOSIZE, SWP_NOMOVE = 0x0001, 0x0002
-            SWP_NOZORDER, SWP_FRAMECHANGED = 0x0004, 0x0020
-            user32.SetWindowPos(
-                hwnd, None, 0, 0, 0, 0,
-                SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
-        except Exception:
-            pass
+        hidden = self._is_maximized()
+        host = self._central
+        rects = grip_rects(host.width(), host.height(), RESIZE_BORDER)
+        for grip, (x, y, w, h) in zip(grips, rects):
+            grip.setGeometry(x, y, max(1, w), max(1, h))
+            grip.setVisible(not hidden)
+            grip.raise_()
 
     def _is_maximized(self):
         btn = getattr(self, "_window_buttons", None)
@@ -1311,30 +1377,12 @@ class MainWindow(QMainWindow):
                     msg.wParam, -1)
                 return True, result
             if msg.message == 0x0083 and msg.wParam:  # WM_NCCALCSIZE
-                return True, 0  # the added thick frame occupies no space
-            if (msg.message == 0x0084 and self._NATIVE_RESIZE and
-                    self.isVisible() and
-                    not self._is_maximized()):  # WM_NCHITTEST
-                # lParam packs the screen cursor position as two shorts.
-                x = ctypes.c_short(msg.lParam & 0xFFFF).value
-                y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
-                rect = wintypes.RECT()
-                if ctypes.windll.user32.GetWindowRect(
-                        wintypes.HWND(int(self.winId())),
-                        ctypes.byref(rect)):
-                    border = int(self._RESIZE_BORDER * self.devicePixelRatioF())
-                    on_l = (x - rect.left) < border
-                    on_r = (rect.right - x) <= border
-                    on_t = (y - rect.top) < border
-                    on_b = (rect.bottom - y) <= border
-                    hit = self._HT.get((on_l, on_t, on_r, on_b), 0)
-                    if hit:
-                        return True, hit
+                return True, 0
         return super().nativeEvent(eventType, message)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_F11:
-            btn = getattr(self, '_window_buttons', None)
+            btn = getattr(self, "_window_buttons", None)
             if btn:
                 btn._toggle_maximize()
         super().keyPressEvent(event)
@@ -1342,6 +1390,7 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event):
         if self._switch_overlay is not None and self._switch_overlay.isVisible():
             self._switch_overlay.setGeometry(self.rect())
+        self._layout_resize_grips()
         super().resizeEvent(event)
 
     def _center_on_screen(self):
@@ -1350,18 +1399,11 @@ class MainWindow(QMainWindow):
         if screen is None:
             return
         geo = screen.availableGeometry()
-        self.resize(min(1280, geo.width()), min(800, geo.height()))
+        w, h = default_window_size(geo.width(), geo.height())
+        self.resize(w, h)
         r = self.frameGeometry()
         self.move(geo.center().x() - r.width() // 2,
                   geo.center().y() - r.height() // 2)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_F11:
-            if self.isMaximized():
-                self.showNormal()
-            else:
-                self.showMaximized()
-        super().keyPressEvent(event)
 
     def _switch(self, idx):
         self._stack.setCurrentIndex(idx)

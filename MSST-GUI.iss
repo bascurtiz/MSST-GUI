@@ -4,7 +4,7 @@
 
 #define AppName "MSST GUI"
 #define AppExe "MSST-GUI.exe"
-#define AppVersion "2.0.1"
+#define AppVersion "2.0.2"
 #define AppMutex "MSST-GUI-Mutex"
 
 [Setup]

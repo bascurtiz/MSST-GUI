@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import ui.pages.model_manager_dialog as mmd  # noqa: E402
 import ui.widgets.pretrained_models_dialog as pmd  # noqa: E402
+from ui.widgets.common import _HELP_PAD_L, _HELP_PAD_Y  # noqa: E402
 from backend.model_manager import ModelInfo  # noqa: E402
 from backend.pretrained_catalog import PretrainedModel  # noqa: E402
 
@@ -173,6 +174,18 @@ def main():
     check(ok, "pretrained install worker must finish")
     check(("ok", True) in inst_events, "pretrained install reports success")
     check(inst not in pmd._ACTIVE_WORKERS, "install worker leaves registry")
+
+    dlg_pt = pmd.PretrainedModelsDialog()
+    m = dlg_pt.layout().contentsMargins()
+    check(
+        (m.left(), m.right(), m.top(), m.bottom())
+        == (_HELP_PAD_L, _HELP_PAD_L, _HELP_PAD_Y, _HELP_PAD_Y),
+        f"pretrained sheet outer margin "
+        f"{(m.left(), m.right(), m.top(), m.bottom())}",
+    )
+    pump_until(lambda: dlg_pt._fetch_thread is None)
+    drain()
+    dlg_pt.close()
 
     # ── Full dialog flow (the exact crash path) ───────────────────────────
     dlg = mmd.ModelInstallDialog(_model_info())

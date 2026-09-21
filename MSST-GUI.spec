@@ -92,6 +92,8 @@ exe = EXE(
     upx=False,
     console=False,
     icon=os.path.join(ROOT, "resources", "app_icon.ico"),
+    # Per-Monitor V2 so Windows does not bitmap-scale the windowed exe at 125%.
+    manifest=os.path.join(ROOT, "resources", "msst-gui.manifest"),
 )
 coll = COLLECT(
     exe,

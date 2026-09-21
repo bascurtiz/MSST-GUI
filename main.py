@@ -317,6 +317,7 @@ from PySide6.QtGui import QIcon
 import backend.settings as settings_store
 import backend.runtime_setup  # noqa: F401  (sets PYTHONNOUSERSITE early when frozen)
 from backend.win_startup import install_show_hook, uninstall_show_hook
+from ui.dpi import enable_hidpi
 from ui.main_window import MainWindow
 from ui.theme import theme_manager, apply_palette
 from ui.widgets.splash import SplashPanel, set_stray_sweep, hide_startup_strays
@@ -404,11 +405,10 @@ def main():
     except Exception:
         pass
 
+    # Per-Monitor V2 + PassThrough *before* any HWND: 125% stays 1.25 and
+    # Windows never bitmap-stretches the frozen exe (UVR5's DPI-unaware path).
+    enable_hidpi()
     install_show_hook()
-
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
     app = QApplication(sys.argv)
     global _STARTUP_WINDOW_FILTER
     _STARTUP_WINDOW_FILTER = _SuppressUntitledWindows(app)

@@ -12,6 +12,7 @@ from ui.strings import PAGE_HELP, HELP_REQUIRED_CAPTION, HELP_OPTIONAL_CAPTION
 from ui.theme import theme_manager
 from ui.widgets.common import (
     HelpButton, PageHeader, PageHelpDialog, OptionalFold, _HELP_SCROLL_LANE,
+    _HELP_PAD_L, _HELP_PAD_R, _HELP_PAD_Y, _HELP_SEC_PAD_X, _HELP_SEC_PAD_Y,
 )
 import ui.widgets.common as common
 
@@ -75,6 +76,26 @@ def main():
         "required and optional sections are distinct frames",
         dlg.findChild(QFrame, "helpRequired") is not None
         and dlg.findChild(QFrame, "helpOptional") is not None,
+    )
+    m = dlg.layout().contentsMargins()
+    check(
+        "help sheet has extra outer margin",
+        m.left() == _HELP_PAD_L and m.right() == _HELP_PAD_R
+        and m.top() == _HELP_PAD_Y and m.bottom() == _HELP_PAD_Y,
+    )
+    req = dlg.findChild(QFrame, "helpRequired")
+    sm = req.layout().contentsMargins()
+    check(
+        "REQUIRED section has inner inset",
+        sm.left() == _HELP_SEC_PAD_X and sm.right() == _HELP_SEC_PAD_X
+        and sm.top() == _HELP_SEC_PAD_Y and sm.bottom() == _HELP_SEC_PAD_Y,
+    )
+    opt = dlg.findChild(QFrame, "helpOptional")
+    om = opt.layout().contentsMargins()
+    check(
+        "OPTIONAL section has the same inner inset",
+        om.left() == sm.left() and om.right() == sm.right()
+        and om.top() == sm.top() and om.bottom() == sm.bottom(),
     )
 
     three = PageHelpDialog({
