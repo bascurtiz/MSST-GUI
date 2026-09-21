@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
 from ui.strings import PAGE_HELP, HELP_REQUIRED_CAPTION, HELP_OPTIONAL_CAPTION
@@ -13,6 +14,7 @@ from ui.theme import theme_manager
 from ui.widgets.common import (
     HelpButton, PageHeader, PageHelpDialog, OptionalFold, _HELP_SCROLL_LANE,
     _HELP_PAD_L, _HELP_PAD_R, _HELP_PAD_Y, _HELP_SEC_PAD_X, _HELP_SEC_PAD_Y,
+    css_color,
 )
 import ui.widgets.common as common
 
@@ -195,6 +197,23 @@ def main():
         "console does not use the start-action required caption",
         HELP_REQUIRED_CAPTION not in clabels,
     )
+
+    GUIDE_URL = "https://msst-guide.pages.dev/"
+    train_intro = PAGE_HELP["training"]["intro"]
+    check("training intro keeps the guide URL as plain text", GUIDE_URL in train_intro)
+    train = PageHelpDialog(PAGE_HELP["training"])
+    check("training intro is rich text", train._intro.textFormat() == Qt.RichText)
+    check("training intro opens the guide in a browser", train._intro.openExternalLinks())
+    check(
+        "training intro wraps the guide URL",
+        f'href="{GUIDE_URL}"' in train._intro.text(),
+    )
+    check(
+        "training intro uses accent for links",
+        train._intro.palette().color(QPalette.ColorRole.Link).name().lower()
+        == css_color(theme_manager.accent).name().lower(),
+    )
+    train.close()
 
     train_opt = PAGE_HELP["training"]["optional"][0]
     train_lines = train_opt.split("\n")

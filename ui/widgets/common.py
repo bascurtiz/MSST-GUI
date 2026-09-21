@@ -1,6 +1,7 @@
 """ui/widgets/common.py — kept minimal for new dark-theme design."""
+import html
 import math
-import os, time
+import os, re, time
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
     QFileDialog, QSizePolicy, QLabel, QFrame, QTextEdit, QComboBox,
@@ -9,7 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QRectF, QPointF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import (
     QTextCursor, QPainter, QPen, QColor, QFont, QFontMetrics, QImage, QPixmap,
-    QPainterPath,
+    QPainterPath, QPalette,
 )
 from ui.theme import theme_manager, FONT_FAMILY as FONT_FAMILY_DEFAULT, UIConstants
 from ui.strings import (
@@ -1356,6 +1357,25 @@ def _help_preferred_width(data, parent=None):
     return int(min(w, max_w))
 
 
+_HELP_URL_RE = re.compile(r"https?://[^\s<>]+")
+
+
+def _help_intro_html(text):
+    """Escape Help intro copy and wrap http(s) URLs in accent links."""
+    escaped = html.escape(text or "")
+    accent = theme_manager.accent
+
+    def _link(m):
+        url = m.group(0).rstrip(".,);")
+        trail = m.group(0)[len(url):]
+        return (
+            f'<a href="{url}" style="color:{accent};text-decoration:none;">'
+            f"{url}</a>{trail}"
+        )
+
+    return _HELP_URL_RE.sub(_link, escaped).replace("\n", "<br>")
+
+
 class PageHelpDialog(QDialog):
     """Frameless Help sheet — How Ensemble Works layout: title + ×,
     REQUIRED and OPTIONAL side by side, no card chrome."""
@@ -1419,8 +1439,14 @@ class PageHelpDialog(QDialog):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
 
-        intro = QLabel(data.get("intro", ""))
+        intro = QLabel(_help_intro_html(data.get("intro", "")))
         intro.setWordWrap(True)
+        intro.setTextFormat(Qt.RichText)
+        intro.setOpenExternalLinks(True)
+        pal = intro.palette()
+        pal.setColor(QPalette.ColorRole.Link, css_color(theme_manager.accent))
+        pal.setColor(QPalette.ColorRole.LinkVisited, css_color(theme_manager.accent))
+        intro.setPalette(pal)
         intro.setStyleSheet(
             "font-family:'Montserrat';font-size:13px;"
             f"color:{t.text_sec};background:transparent;"
