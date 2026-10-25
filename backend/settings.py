@@ -48,8 +48,18 @@ def save_ckpt_settings(ckpt_name: str, settings: dict) -> None:
     data = load()
     if "ckpt_settings" not in data:
         data["ckpt_settings"] = {}
-    data["ckpt_settings"][ckpt_name] = settings
+    if settings:
+        data["ckpt_settings"][ckpt_name] = settings
+    elif ckpt_name in data["ckpt_settings"]:
+        del data["ckpt_settings"][ckpt_name]
     save(data)
+
+
+def delete_ckpt_settings(ckpt_name: str) -> None:
+    data = load()
+    if "ckpt_settings" in data and ckpt_name in data["ckpt_settings"]:
+        del data["ckpt_settings"][ckpt_name]
+        save(data)
 
 
 def load_iterative_settings() -> dict:

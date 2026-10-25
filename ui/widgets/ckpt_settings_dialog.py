@@ -170,9 +170,9 @@ class _SliderRow(QWidget):
     def set_value(self, val):
         val = max(self._min, min(self._max, val))
         if val != self._slider.value():
-            self._anim.setStartValue(self._slider.value())
-            self._anim.setEndValue(val)
-            self._anim.start()
+            self._anim.stop()
+            self._slider.setValue(val)
+            self._value_lbl.setText(str(val))
 
     def get_value(self):
         return self._slider.value()
@@ -258,6 +258,67 @@ class _ChunkSlider(QWidget):
         )
 
 
+def get_model_yaml_defaults(yaml_path: str, arch: str = "") -> dict:
+    """Extract true runtime defaults from yaml or architecture rules."""
+    defaults = {
+        "chunk_size": 132300,
+        "overlap": 2,
+        "batch_size": 1,
+    }
+    arch_str = str(arch or "").lower()
+    is_roformer = "roformer" in arch_str
+
+    if is_roformer:
+        defaults["chunk_size"] = 352800
+        defaults["batch_size"] = 4
+
+    if not yaml_path or not os.path.isfile(yaml_path):
+        return defaults
+
+    try:
+        import yaml
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+        if not isinstance(config, dict):
+            return defaults
+
+        inference = config.get("inference") or {}
+        audio = config.get("audio") or {}
+        model = config.get("model") or {}
+        training = config.get("training") or {}
+
+        model_type = str(training.get("model_type") or "").lower()
+        if "roformer" in model_type:
+            defaults["chunk_size"] = 352800
+            defaults["batch_size"] = 4
+
+        # Overlap: default is 2 across all of MSST
+        ol = inference.get("num_overlap")
+        if ol is not None:
+            defaults["overlap"] = int(ol)
+        else:
+            defaults["overlap"] = 2
+
+        # Batch size
+        bs = inference.get("batch_size")
+        if bs is not None:
+            defaults["batch_size"] = int(bs)
+
+        # Chunk size
+        cs = inference.get("chunk_size") or audio.get("chunk_size")
+        if cs is None:
+            dim_t = audio.get("dim_t")
+            hop = audio.get("hop_length") or model.get("stft_hop_length") or model.get("hop_length")
+            if dim_t is not None and hop is not None:
+                cs = (dim_t - 1) * hop
+        if cs is not None:
+            defaults["chunk_size"] = int(cs)
+    except Exception as e:
+        print("[ckpt_settings] Failed to read YAML defaults:", e)
+
+    return defaults
+
+
 class CkptSettingsDialog(QDialog):
     settings_saved = Signal(str, dict)
 
@@ -267,10 +328,11 @@ class CkptSettingsDialog(QDialog):
         self._yaml_path = yaml_path
         self._arch = arch
         self._existing = existing_settings or {}
+        self._model_defaults = get_model_yaml_defaults(self._yaml_path, self._arch)
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground, False)
-        self.setFixedSize(440, 340)
+        self.setFixedSize(450, 340)
         self.setModal(True)
 
         self._build_ui()
@@ -315,18 +377,18 @@ class CkptSettingsDialog(QDialog):
         sliders_layout.setContentsMargins(16, 14, 16, 14)
         sliders_layout.setSpacing(14)
 
-        # Chunk size slider — custom continuous value
-        chunk_default = self._existing.get("chunk_size", 44100)
+        # Chunk size slider — initialized with existing override or true model default
+        chunk_default = self._existing.get("chunk_size", self._model_defaults["chunk_size"])
         self._chunk_slider = _ChunkSlider(chunk_default)
         sliders_layout.addWidget(self._chunk_slider)
 
-        # Overlap slider
-        overlap_default = self._existing.get("overlap", 8)
+        # Overlap slider — initialized with existing override or true model default
+        overlap_default = self._existing.get("overlap", self._model_defaults["overlap"])
         self._overlap_slider = _SliderRow("Overlap", 1, 64, overlap_default)
         sliders_layout.addWidget(self._overlap_slider)
 
-        # Batch size slider
-        batch_default = self._existing.get("batch_size", 4)
+        # Batch size slider — initialized with existing override or true model default
+        batch_default = self._existing.get("batch_size", self._model_defaults["batch_size"])
         self._batch_slider = _SliderRow("Batch Size", 1, 16, batch_default)
         sliders_layout.addWidget(self._batch_slider)
 
@@ -339,7 +401,7 @@ class CkptSettingsDialog(QDialog):
 
         _err = QColor(theme_manager.theme.error)
         self._btn_cancel = QPushButton("Cancel")
-        self._btn_cancel.setFixedSize(120, 36)
+        self._btn_cancel.setFixedSize(90, 36)
         self._btn_cancel.setStyleSheet(
             "QPushButton{"
             "background:" + theme_manager.theme.surface + ";color:" + theme_manager.theme.text_muted + ";"
@@ -353,8 +415,21 @@ class CkptSettingsDialog(QDialog):
 
         btn_row.addStretch()
 
+        self._btn_reset = QPushButton("Reset to Defaults")
+        self._btn_reset.setFixedSize(140, 36)
+        self._btn_reset.setStyleSheet(
+            f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
+            f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:10px;}"
+            f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
+        )
+        self._btn_reset.setToolTip("Restore the model's native default chunk size, overlap, and batch size")
+        self._btn_reset.clicked.connect(self._reset_to_defaults)
+        btn_row.addWidget(self._btn_reset)
+
         self._btn_save = QPushButton("Save Settings")
-        self._btn_save.setFixedSize(140, 36)
+        self._btn_save.setFixedSize(130, 36)
         self._btn_save.setStyleSheet(
             "QPushButton{"
             "background:" + theme_manager.accent + ";color:" + theme_manager._accent_text + ";border:none;border-radius:4px;"
@@ -370,62 +445,37 @@ class CkptSettingsDialog(QDialog):
         root.addWidget(self._content, 1)
 
     def _load_existing(self):
-        values = {}
+        chunk_val = self._existing.get("chunk_size", self._model_defaults["chunk_size"])
+        overlap_val = self._existing.get("overlap", self._model_defaults["overlap"])
+        batch_val = self._existing.get("batch_size", self._model_defaults["batch_size"])
 
-        if self._yaml_path and os.path.isfile(self._yaml_path):
-            try:
-                import yaml
-                with open(self._yaml_path, "r", encoding="utf-8") as f:
-                    config = yaml.load(f, Loader=yaml.FullLoader)
+        self._chunk_slider.set_value(chunk_val)
+        self._overlap_slider.set_value(overlap_val)
+        self._batch_slider.set_value(batch_val)
 
-                inference = config.get("inference", {})
-                audio = config.get("audio", {})
-
-                cs = inference.get("chunk_size") or audio.get("chunk_size")
-                if cs is None:
-                    dim_t = audio.get("dim_t")
-                    hop = audio.get("hop_length")
-                    if dim_t is not None and hop is not None:
-                        cs = (dim_t - 1) * hop
-                if cs is not None:
-                    values["chunk_size"] = int(cs)
-
-                ol = inference.get("num_overlap")
-                if ol is not None:
-                    values["overlap"] = int(ol)
-
-                bs = inference.get("batch_size")
-                if bs is not None:
-                    values["batch_size"] = int(bs)
-            except Exception as e:
-                print("[ckpt_settings] Failed to read YAML:", e)
-
-        saved = self._existing
-        if saved.get("chunk_size") is not None:
-            values["chunk_size"] = saved["chunk_size"]
-        if saved.get("overlap") is not None:
-            values["overlap"] = saved["overlap"]
-        if saved.get("batch_size") is not None:
-            values["batch_size"] = saved["batch_size"]
-
-        print("[ckpt_settings] YAML path:", self._yaml_path)
-        print("[ckpt_settings] YAML exists:", os.path.isfile(self._yaml_path) if self._yaml_path else False)
-        print("[ckpt_settings] Extracted values:", values)
-
-        if "chunk_size" in values:
-            self._chunk_slider.set_value(values["chunk_size"])
-        if "overlap" in values:
-            self._overlap_slider.set_value(values["overlap"])
-        if "batch_size" in values:
-            self._batch_slider.set_value(values["batch_size"])
+    def _reset_to_defaults(self):
+        self._chunk_slider.set_value(self._model_defaults["chunk_size"])
+        self._overlap_slider.set_value(self._model_defaults["overlap"])
+        self._batch_slider.set_value(self._model_defaults["batch_size"])
 
     def _save(self):
-        settings = {
-            "chunk_size": self._chunk_slider.get_value(),
-            "overlap": self._overlap_slider.get_value(),
-            "batch_size": self._batch_slider.get_value(),
-        }
-        self.settings_saved.emit(self._ckpt_name, settings)
+        cur_cs = self._chunk_slider.get_value()
+        cur_ol = self._overlap_slider.get_value()
+        cur_bs = self._batch_slider.get_value()
+
+        # If current settings match the true model defaults, clear the override entry
+        # so the model executes with untouched original YAML directly.
+        if (cur_cs == self._model_defaults["chunk_size"]
+                and cur_ol == self._model_defaults["overlap"]
+                and cur_bs == self._model_defaults["batch_size"]):
+            self.settings_saved.emit(self._ckpt_name, {})
+        else:
+            settings = {
+                "chunk_size": cur_cs,
+                "overlap": cur_ol,
+                "batch_size": cur_bs,
+            }
+            self.settings_saved.emit(self._ckpt_name, settings)
         self.accept()
 
     def reapply_theme(self):
@@ -445,6 +495,13 @@ class CkptSettingsDialog(QDialog):
         self._chunk_slider.reapply_theme()
         self._overlap_slider.reapply_theme()
         self._batch_slider.reapply_theme()
+        self._btn_reset.setStyleSheet(
+            f"QPushButton{{background:{theme_manager.theme.surface};color:{theme_manager.theme.text_dim};"
+            f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
+            "font-family:'Montserrat',sans-serif;font-weight:600;"
+            "font-size:10px;}"
+            f"QPushButton:hover{{background:{theme_manager.theme.surface_alt};color:{theme_manager.theme.text};}}"
+        )
         self._btn_save.setStyleSheet(
             "QPushButton{"
             "background:" + theme_manager.accent + ";color:" + theme_manager._accent_text + ";border:none;border-radius:4px;"

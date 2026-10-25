@@ -5268,14 +5268,22 @@ class InferencePage(QWidget):
                     # SW yamls set audio.hop_length: 441 ("don't work —
                     # use in model"). Align chunks to the STFT hop the
                     # RoFormer actually uses (model.stft_hop_length, 512).
-                    hop = stft_hop_length_from_config(config)
-                    num_scales = config.get("model", {}).get("num_scales", 5)
-                    align = 2 ** num_scales
-                    T = raw_cs // hop + 1
-                    aligned_T = (T // align) * align
-                    if aligned_T < align:
-                        aligned_T = align
-                    config["inference"]["chunk_size"] = (aligned_T - 1) * hop
+                    is_roformer = (
+                        engine_type in ("bs_roformer", "mel_band_roformer")
+                        or "roformer" in str(arch).lower()
+                        or "roformer" in str(config.get("training", {}).get("model_type", "")).lower()
+                    )
+                    if is_roformer and "model" in config and isinstance(config["model"], dict) and "stft_hop_length" in config["model"]:
+                        hop = stft_hop_length_from_config(config)
+                        num_scales = config.get("model", {}).get("num_scales", 5)
+                        align = 2 ** num_scales
+                        T = raw_cs // hop + 1
+                        aligned_T = (T // align) * align
+                        if aligned_T < align:
+                            aligned_T = align
+                        config["inference"]["chunk_size"] = (aligned_T - 1) * hop
+                    else:
+                        config["inference"]["chunk_size"] = raw_cs
                 if "overlap" in ckpt_settings:
                     config["inference"]["num_overlap"] = ckpt_settings["overlap"]
                 if "batch_size" in ckpt_settings:
