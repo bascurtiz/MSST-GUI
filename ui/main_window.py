@@ -1445,8 +1445,13 @@ class MainWindow(QMainWindow):
             name = model.get('name', '')
             if any(m.get('name') == name for m in self.settings_page._registered):
                 continue
-            self.settings_page._registered.append(model)
-            self.settings_page._add_item_widget(model)
+            if "added_time" not in model:
+                model["added_time"] = time.time()
+            if "added" not in model:
+                from datetime import datetime as _dt
+                model["added"] = _dt.now().strftime("%b %d, %Y  %H:%M")
+            self.settings_page._registered.insert(0, model)
+            self.settings_page._add_item_widget(model, at_top=True)
             self.settings_page.model_registered.emit(model)
             self.settings_page.settings_changed.emit()
         self.ensemble_stack.setCurrentWidget(self.iterative_ensemble)

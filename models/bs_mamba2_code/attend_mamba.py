@@ -71,11 +71,16 @@ class Attend(nn.Module):
                 "A100 GPU detected, using flash attention if input tensor is on cuda"
             )
             self.cuda_config = FlashAttentionConfig(True, False, False)
-        else:
+        elif device_properties.major >= 6:
             print_once(
                 "Non-A100 GPU detected, using math or mem efficient attention if input tensor is on cuda"
             )
             self.cuda_config = FlashAttentionConfig(False, True, True)
+        else:
+            print_once(
+                "GPU Compute Capability < 6.0 (Maxwell/legacy), using math attention if input tensor is on cuda"
+            )
+            self.cuda_config = FlashAttentionConfig(False, True, False)
 
     def flash_attn(self, q, k, v):
         _, heads, q_len, _, k_len, is_cuda, device = (

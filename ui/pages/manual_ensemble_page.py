@@ -3,11 +3,12 @@ ui/pages/ensemble_page.py
 Ensemble page — combine results from multiple source separation models.
 """
 import os, sys
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QLineEdit, QFileDialog,
-    QScrollArea, QSizePolicy, QSlider, QMessageBox,
+    QScrollArea, QSizePolicy, QSlider, QMessageBox, QCheckBox,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent
@@ -190,6 +191,21 @@ def get_audio_metadata(path):
         return "Unknown format \u2022 Unknown \u2022 Unknown \u2022 00:00"
 
 
+def get_item_metadata(path):
+    if not path or not os.path.exists(path):
+        return ""
+    if os.path.isdir(path):
+        try:
+            count = len([
+                f for f in Path(path).rglob('*')
+                if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS
+            ])
+            return f"Folder \u2022 {count} stem file(s) found"
+        except Exception:
+            return "Folder"
+    return get_audio_metadata(path)
+
+
 def _is_audio(path):
     return os.path.splitext(path)[1].lower() in AUDIO_EXTENSIONS
 
@@ -265,8 +281,8 @@ class _DropZone(QFrame):
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
-            has_audio = any(_is_audio(u.toLocalFile()) for u in urls)
-            if has_audio:
+            has_valid = any(os.path.isdir(u.toLocalFile()) or _is_audio(u.toLocalFile()) for u in urls)
+            if has_valid:
                 event.acceptProposedAction()
                 self.setProperty("dragOver", True)
                 self.style().polish(self)
@@ -278,8 +294,8 @@ class _DropZone(QFrame):
     def dragMoveEvent(self, event):
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
-            has_audio = any(_is_audio(u.toLocalFile()) for u in urls)
-            if has_audio:
+            has_valid = any(os.path.isdir(u.toLocalFile()) or _is_audio(u.toLocalFile()) for u in urls)
+            if has_valid:
                 event.acceptProposedAction()
             else:
                 event.ignore()
@@ -297,15 +313,15 @@ class _DropZone(QFrame):
         paths = []
         for u in urls:
             p = u.toLocalFile()
-            if _is_audio(p) and os.path.isfile(p):
+            if os.path.isdir(p) or (_is_audio(p) and os.path.isfile(p)):
                 paths.append(p)
         if paths:
             self.files_dropped.emit(paths)
-            self._main_lbl.setText(f"{len(paths)} file(s) added")
+            self._main_lbl.setText(f"{len(paths)} item(s) added")
             QTimer.singleShot(2000, self._reset_text)
 
     def _reset_text(self):
-        self._main_lbl.setText("Drag & drop audio files here")
+        self._main_lbl.setText("Drag & drop audio files or folders here")
 
     def mousePressEvent(self, event):
         pass
@@ -326,7 +342,8 @@ class _EnsembleFileRow(QFrame):
         hl.setSpacing(0)
 
         t = theme_manager.theme
-        ic = QLabel("\u266A")
+        is_dir = os.path.isdir(path)
+        ic = QLabel("\U0001F4C1" if is_dir else "\u266A")
         ic.setStyleSheet("font-size:16px;color:" + t.purple + ";background:transparent;border:none;")
         ic.setFixedWidth(28)
         ic.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
@@ -343,7 +360,7 @@ class _EnsembleFileRow(QFrame):
         )
         info_vl.addWidget(self._name_lbl)
 
-        self._meta_lbl = QLabel(get_audio_metadata(path) if path else "")
+        self._meta_lbl = QLabel(get_item_metadata(path) if path else "")
         self._meta_lbl.setStyleSheet(
             f"font-family:'Montserrat';font-size:10px;color:{t.text_dim};"
             "background:transparent;"
@@ -941,6 +958,7 @@ class ManualEnsemblePage(QWidget):
         self.setObjectName("manualEnsemblePage")
         self._runner = None
         self._file_rows = []
+        self._mode = "files"
         self._build_ui()
         self.reapply_theme()
 
@@ -987,6 +1005,14 @@ class ManualEnsemblePage(QWidget):
 
         for w in self.findChildren(QComboBox):
             w.setStyleSheet(_combo_ss())
+
+        if hasattr(self, "_trim_chk"):
+            self._trim_chk.setStyleSheet(
+                f"QCheckBox{{background:transparent;spacing:6px;font-family:'Montserrat';font-size:10px;color:{t.text_dim};}}"
+                f"QCheckBox::indicator{{width:14px;height:14px;border-radius:3px;border:1px solid {t.border_dim};background:{t.surface};}}"
+                f"QCheckBox::indicator:hover{{border-color:{theme_manager.accent};}}"
+                f"QCheckBox::indicator:checked{{background:{theme_manager.accent};border-color:{theme_manager.accent};}}"
+            )
 
         for row in self._file_rows:
             row.apply_theme()
@@ -1062,13 +1088,51 @@ class ManualEnsemblePage(QWidget):
         cfg.setSpacing(6)
         cfg.setContentsMargins(0, 0, 0, 0)
 
+        # Mode Selection Row (Folder Mode vs File Mode)
+        mode_row = QFrame()
+        mode_row.setObjectName("cfgRow")
+        mode_row.setFixedHeight(ROW_H)
+        mode_row.setStyleSheet(_row_ss())
+        mr_hl = QHBoxLayout(mode_row)
+        mr_hl.setContentsMargins(14, 0, 14, 0)
+        mr_hl.setSpacing(0)
+
+        mr_ic = QLabel("\u29C9")
+        mr_ic.setStyleSheet(_icon_ss())
+        mr_ic.setFixedWidth(28)
+        mr_ic.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
+        mr_hl.addWidget(mr_ic)
+
+        mr_lb = QLabel("MODE")
+        mr_lb.setStyleSheet(_lbl_ss())
+        mr_lb.setFixedWidth(100)
+        mr_lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        mr_hl.addWidget(mr_lb)
+
+        sep_m = QFrame()
+        sep_m.setFixedWidth(1); sep_m.setFixedHeight(24)
+        sep_m.setStyleSheet(f"background:{t.border};border:none;")
+        mr_hl.addWidget(sep_m)
+        mr_hl.addSpacing(10)
+
+        self._mode_combo = _ComboBox()
+        self._mode_combo.addItem("File Mode (Single Track)", "Ensemble 2+ audio files into a single output file")
+        self._mode_combo.addItem("Folder Mode (Batch Folders)", "Ensemble matching stem files across 2+ folders")
+        self._mode_combo.setStyleSheet(_combo_ss())
+        self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        mr_hl.addWidget(self._mode_combo, 1)
+
+        self._mode_arrow = _ExpandArrow()
+        mr_hl.addWidget(self._mode_arrow)
+        self._mode_combo.popupOpened.connect(lambda: self._mode_arrow.set_down(True))
+        self._mode_combo.popupClosed.connect(lambda: self._mode_arrow.set_down(False))
+        cfg.addWidget(mode_row)
+
         type_row = QFrame()
         type_row.setObjectName("cfgRow")
         type_row.setFixedHeight(ROW_H)
         type_row.setStyleSheet(_row_ss())
         tr_hl = QHBoxLayout(type_row)
-        # right margin matches the OUTPUT row so the '>' chevron and the '...'
-        # dots stack centered below each other (like SETTINGS LOCAL FILES)
         tr_hl.setContentsMargins(14, 0, 14, 0)
         tr_hl.setSpacing(0)
 
@@ -1107,8 +1171,6 @@ class ManualEnsemblePage(QWidget):
         out_row.setFixedHeight(ROW_H)
         out_row.setStyleSheet(_row_ss())
         or_hl = QHBoxLayout(out_row)
-        # right margin matches the TYPE row so the '...' dots and the '>'
-        # chevron stack centered below each other (like SETTINGS LOCAL FILES)
         or_hl.setContentsMargins(14, 0, 14, 0)
         or_hl.setSpacing(0)
 
@@ -1118,11 +1180,11 @@ class ManualEnsemblePage(QWidget):
         or_ic.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
         or_hl.addWidget(or_ic)
 
-        or_lb = QLabel("OUTPUT")
-        or_lb.setStyleSheet(_lbl_ss())
-        or_lb.setFixedWidth(100)
-        or_lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        or_hl.addWidget(or_lb)
+        self._out_lb = QLabel("OUTPUT")
+        self._out_lb.setStyleSheet(_lbl_ss())
+        self._out_lb.setFixedWidth(100)
+        self._out_lb.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        or_hl.addWidget(self._out_lb)
 
         sep2 = QFrame()
         sep2.setFixedWidth(1); sep2.setFixedHeight(24)
@@ -1145,6 +1207,107 @@ class ManualEnsemblePage(QWidget):
         or_hl.addWidget(or_btn)
         cfg.addWidget(out_row)
 
+        # Options Row: Device, Format, N_FFT, Hop, Trim
+        opt_row = QFrame()
+        opt_row.setObjectName("cfgRow")
+        opt_row.setFixedHeight(ROW_H)
+        opt_row.setStyleSheet(_row_ss())
+        opt_hl = QHBoxLayout(opt_row)
+        opt_hl.setContentsMargins(14, 0, 14, 0)
+        opt_hl.setSpacing(0)
+
+        opt_ic = QLabel("\u2699")
+        opt_ic.setStyleSheet(_icon_ss())
+        opt_ic.setFixedWidth(28)
+        opt_ic.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
+        opt_hl.addWidget(opt_ic)
+
+        opt_lb = QLabel("OPTIONS")
+        opt_lb.setStyleSheet(_lbl_ss())
+        opt_lb.setFixedWidth(65)
+        opt_hl.addWidget(opt_lb)
+
+        sep_o1 = QFrame()
+        sep_o1.setFixedWidth(1); sep_o1.setFixedHeight(24)
+        sep_o1.setStyleSheet(f"background:{t.border};border:none;")
+        opt_hl.addWidget(sep_o1)
+        opt_hl.addSpacing(8)
+
+        dev_lbl = QLabel("DEVICE:")
+        dev_lbl.setStyleSheet("font-family:'Montserrat';font-size:8px;font-weight:700;color:" + t.text_dim + ";")
+        opt_hl.addWidget(dev_lbl)
+        opt_hl.addSpacing(4)
+        self._device_combo = _ComboBox()
+        self._device_combo.addItems(["Auto", "CUDA", "CPU"])
+        self._device_combo.setStyleSheet(_combo_ss())
+        opt_hl.addWidget(self._device_combo)
+
+        opt_hl.addSpacing(10)
+        sep_o2 = QFrame()
+        sep_o2.setFixedWidth(1); sep_o2.setFixedHeight(24)
+        sep_o2.setStyleSheet(f"background:{t.border};border:none;")
+        opt_hl.addWidget(sep_o2)
+        opt_hl.addSpacing(8)
+
+        nfft_lbl = QLabel("N_FFT:")
+        nfft_lbl.setStyleSheet("font-family:'Montserrat';font-size:8px;font-weight:700;color:" + t.text_dim + ";")
+        opt_hl.addWidget(nfft_lbl)
+        opt_hl.addSpacing(4)
+        self._n_fft_combo = _ComboBox()
+        self._n_fft_combo.addItems(["2048", "4096", "8192", "1024", "512", "256"])
+        self._n_fft_combo.setStyleSheet(_combo_ss())
+        opt_hl.addWidget(self._n_fft_combo)
+
+        opt_hl.addSpacing(10)
+        sep_o3 = QFrame()
+        sep_o3.setFixedWidth(1); sep_o3.setFixedHeight(24)
+        sep_o3.setStyleSheet(f"background:{t.border};border:none;")
+        opt_hl.addWidget(sep_o3)
+        opt_hl.addSpacing(8)
+
+        hop_lbl = QLabel("HOP:")
+        hop_lbl.setStyleSheet("font-family:'Montserrat';font-size:8px;font-weight:700;color:" + t.text_dim + ";")
+        opt_hl.addWidget(hop_lbl)
+        opt_hl.addSpacing(4)
+        self._hop_combo = _ComboBox()
+        self._hop_combo.addItems(["n_fft / 2", "n_fft / 4", "n_fft / 8"])
+        self._hop_combo.setStyleSheet(_combo_ss())
+        opt_hl.addWidget(self._hop_combo)
+
+        opt_hl.addSpacing(10)
+        sep_o4 = QFrame()
+        sep_o4.setFixedWidth(1); sep_o4.setFixedHeight(24)
+        sep_o4.setStyleSheet(f"background:{t.border};border:none;")
+        opt_hl.addWidget(sep_o4)
+        opt_hl.addSpacing(8)
+
+        fmt_lbl = QLabel("FORMAT:")
+        fmt_lbl.setStyleSheet("font-family:'Montserrat';font-size:8px;font-weight:700;color:" + t.text_dim + ";")
+        opt_hl.addWidget(fmt_lbl)
+        opt_hl.addSpacing(4)
+        self._format_combo = _ComboBox()
+        self._format_combo.addItems(["Auto", "FLAC 24-bit", "FLAC 16-bit", "WAV Float"])
+        self._format_combo.setStyleSheet(_combo_ss())
+        opt_hl.addWidget(self._format_combo)
+
+        opt_hl.addSpacing(10)
+        sep_o5 = QFrame()
+        sep_o5.setFixedWidth(1); sep_o5.setFixedHeight(24)
+        sep_o5.setStyleSheet(f"background:{t.border};border:none;")
+        opt_hl.addWidget(sep_o5)
+        opt_hl.addSpacing(8)
+
+        self._trim_chk = QCheckBox("Trim shortest")
+        self._trim_chk.setToolTip("Trim output to the shortest input file instead of zero-padding")
+        self._trim_chk.setStyleSheet(
+            f"QCheckBox{{background:transparent;spacing:4px;font-family:'Montserrat';font-size:9px;color:{t.text_dim};}}"
+            f"QCheckBox::indicator{{width:13px;height:13px;border-radius:3px;border:1px solid {t.border_dim};background:{t.surface};}}"
+            f"QCheckBox::indicator:hover{{border-color:{theme_manager.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{theme_manager.accent};border-color:{theme_manager.accent};}}"
+        )
+        opt_hl.addWidget(self._trim_chk)
+
+        cfg.addWidget(opt_row)
         wl.addLayout(cfg)
 
         files_outer = QWidget()
@@ -1155,12 +1318,13 @@ class ManualEnsemblePage(QWidget):
 
         hdr_row = QHBoxLayout()
         hdr_row.setSpacing(10)
-        hdr_row.addWidget(_sec_hdr("Input Files"))
-        sub2 = QLabel("Add at least 2 audio files to ensemble")
-        sub2.setStyleSheet(
+        self._sec_hdr_lbl = _sec_hdr("Input Files")
+        hdr_row.addWidget(self._sec_hdr_lbl)
+        self._sub2_lbl = QLabel("Add at least 2 audio files to ensemble")
+        self._sub2_lbl.setStyleSheet(
             f"font-size:9px;color:{t.text_label};"
             "background:transparent;font-family:'Montserrat';font-style:italic;")
-        hdr_row.addWidget(sub2)
+        hdr_row.addWidget(self._sub2_lbl)
         hdr_row.addStretch()
 
         self._btn_add = GlyphButton("Add File", "+", _addfile_icon_color,
@@ -1192,12 +1356,12 @@ class ManualEnsemblePage(QWidget):
         fh_ic.setFixedWidth(28)
         fh.addWidget(fh_ic)
 
-        fh_name = QLabel("FILE NAME")
-        fh_name.setStyleSheet(
+        self._fh_name = QLabel("FILE NAME")
+        self._fh_name.setStyleSheet(
             "font-family:'Montserrat',sans-serif;font-size:8px;font-weight:700;"
             f"color:{t.text_label};background:transparent;letter-spacing:1px;"
         )
-        fh.addWidget(fh_name, 1)
+        fh.addWidget(self._fh_name, 1)
 
         fh_sep = QFrame()
         fh_sep.setFixedWidth(1); fh_sep.setFixedHeight(16)
@@ -1381,36 +1545,92 @@ class ManualEnsemblePage(QWidget):
         except TypeError:
             pass
 
+    def _on_mode_changed(self, idx):
+        if idx == 1:
+            self._mode = "folders"
+            self._out_lb.setText("OUTPUT DIR")
+            self._output_edit.setPlaceholderText("Select output directory\u2026")
+            self._sec_hdr_lbl.setText("Input Folders")
+            self._sub2_lbl.setText("Add at least 2 folders containing matching stem files")
+            self._btn_add.set_label("Add Folder")
+            self._fh_name.setText("FOLDER NAME")
+            self._drop_zone._main_lbl.setText("Drag & drop model output folders here")
+            self._drop_zone._sub_lbl.setText('or click "+ Add Folder" to browse')
+        else:
+            self._mode = "files"
+            self._out_lb.setText("OUTPUT")
+            self._output_edit.setPlaceholderText("Select output file\u2026")
+            self._sec_hdr_lbl.setText("Input Files")
+            self._sub2_lbl.setText("Add at least 2 audio files to ensemble")
+            self._btn_add.set_label("Add File")
+            self._fh_name.setText("FILE NAME")
+            self._drop_zone._main_lbl.setText("Drag & drop audio files here")
+            self._drop_zone._sub_lbl.setText('or click "+ Add File" to browse')
+
     def _open_output(self):
         output = self._output_edit.text().strip()
         if output:
-            path = os.path.dirname(os.path.abspath(output))
+            if os.path.isdir(output):
+                path = os.path.abspath(output)
+            else:
+                path = os.path.dirname(os.path.abspath(output))
         else:
             path = os.getcwd()
         if os.path.isdir(path):
             os.startfile(path)
 
     def _on_files_dropped(self, paths):
+        if not paths:
+            return
+        all_dirs = all(os.path.isdir(p) for p in paths)
+        all_files = all(os.path.isfile(p) for p in paths)
+        if all_dirs and self._mode != "folders":
+            self._mode_combo.setCurrentIndex(1)
+        elif all_files and self._mode != "files":
+            self._mode_combo.setCurrentIndex(0)
+
+        existing = {row.get_path() for row in self._file_rows}
         for p in paths:
-            row = _EnsembleFileRow(p)
-            row.removed.connect(lambda r=row: self._remove_file_row(r))
-            self._files_layout.insertWidget(self._files_layout.count() - 1, row)
-            self._file_rows.append(row)
+            if p not in existing:
+                row = _EnsembleFileRow(p)
+                row.removed.connect(lambda r=row: self._remove_file_row(r))
+                self._files_layout.insertWidget(self._files_layout.count() - 1, row)
+                self._file_rows.append(row)
+                existing.add(p)
 
     def _browse_output(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Select output file", "", "WAV files (*.wav);;All files (*.*)")
-        if path:
-            self._output_edit.setText(path)
+        current = self._output_edit.text().strip()
+        if self._mode == "folders":
+            path = QFileDialog.getExistingDirectory(
+                self, "Select output folder", current or "")
+            if path:
+                self._output_edit.setText(path)
+        else:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Select output file", current or "",
+                "FLAC files (*.flac);;WAV files (*.wav);;All files (*.*)")
+            if path:
+                self._output_edit.setText(path)
 
     def _add_file_row(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select audio file", "", AUDIO_FILTER)
-        if path:
-            row = _EnsembleFileRow(path)
-            row.removed.connect(lambda r=row: self._remove_file_row(r))
-            self._files_layout.insertWidget(self._files_layout.count() - 1, row)
-            self._file_rows.append(row)
+        existing = {row.get_path() for row in self._file_rows}
+        if self._mode == "folders":
+            path = QFileDialog.getExistingDirectory(self, "Select model output folder", "")
+            if path and path not in existing:
+                row = _EnsembleFileRow(path)
+                row.removed.connect(lambda r=row: self._remove_file_row(r))
+                self._files_layout.insertWidget(self._files_layout.count() - 1, row)
+                self._file_rows.append(row)
+        else:
+            paths, _ = QFileDialog.getOpenFileNames(
+                self, "Select audio files", "", AUDIO_FILTER)
+            for path in paths:
+                if path and path not in existing:
+                    row = _EnsembleFileRow(path)
+                    row.removed.connect(lambda r=row: self._remove_file_row(r))
+                    self._files_layout.insertWidget(self._files_layout.count() - 1, row)
+                    self._file_rows.append(row)
+                    existing.add(path)
 
     def _remove_file_row(self, row):
         if row in self._file_rows:
@@ -1418,22 +1638,27 @@ class ManualEnsemblePage(QWidget):
         row.deleteLater()
 
     def _validate(self):
+        item_lbl = "folder" if self._mode == "folders" else "file"
         if len(self._file_rows) < 2:
-            return "Please add at least 2 input files."
-        files = []
+            return f"Please add at least 2 input {item_lbl}s."
+        items = []
         weights = []
         for row in self._file_rows:
             p = row.get_path()
             if not p:
-                return "Please select all input files."
-            if not os.path.isfile(p):
-                return f"File not found: {os.path.basename(p)}"
-            files.append(p)
+                return f"Please select all input {item_lbl}s."
+            if self._mode == "folders":
+                if not os.path.isdir(p):
+                    return f"Folder not found: {os.path.basename(p)}"
+            else:
+                if not os.path.isfile(p):
+                    return f"File not found: {os.path.basename(p)}"
+            items.append(p)
             weights.append(str(row.get_weight()))
         output = self._output_edit.text().strip()
         if not output:
-            return "Please select an output file."
-        return None, files, weights, output
+            return f"Please select an output {'folder' if self._mode == 'folders' else 'file'}."
+        return None, items, weights, output
 
     def _run(self):
         from ui.widgets.runtime_dialog import ensure_runtime
@@ -1443,19 +1668,51 @@ class ManualEnsemblePage(QWidget):
         if isinstance(result, str):
             QMessageBox.warning(self, "Missing input", result)
             return
-        _, files, weights, output = result
+        _, items, weights, output = result
 
         ensemble_type = self._type_combo.currentText()
 
+        # Options
+        device_choice = self._device_combo.currentText().strip().lower()
+        n_fft_val = int(self._n_fft_combo.currentText().strip())
+        hop_choice = self._hop_combo.currentText().strip()
+        if "2" in hop_choice:
+            hop_val = n_fft_val // 2
+        elif "4" in hop_choice:
+            hop_val = n_fft_val // 4
+        elif "8" in hop_choice:
+            hop_val = n_fft_val // 8
+        else:
+            hop_val = n_fft_val // 2
+
+        fmt_choice = self._format_combo.currentText().strip()
+        fmt_map = {
+            "FLAC 24-bit": "FLAC_24",
+            "FLAC 16-bit": "FLAC_16",
+            "WAV Float": "WAV_FLOAT",
+        }
+        output_format = fmt_map.get(fmt_choice)
+
+        mode_flag = "--folders" if self._mode == "folders" else "--files"
+
         cmd = [
             get_python_exe(), os.path.join(REPO_ROOT, "ensemble.py"),
-            "--files",
-        ] + files + [
+            mode_flag,
+        ] + items + [
             "--weights",
         ] + weights + [
             "--type", ensemble_type,
             "--output", output,
+            "--device", device_choice,
+            "--n_fft", str(n_fft_val),
+            "--hop_length", str(hop_val),
         ]
+
+        if output_format:
+            cmd.extend(["--output_format", output_format])
+
+        if self._trim_chk.isChecked():
+            cmd.append("--trim_to_shortest")
 
         self._runner = ProcessRunner(cmd, cwd=REPO_ROOT)
         self._runner.log_line.connect(self.log_output.emit)

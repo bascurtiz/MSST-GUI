@@ -389,6 +389,14 @@ class IterativeEnsembleRunner(QObject):
 
         self._log("Running finisher pass...")
 
+        fmt_lower = (export_format or "wav").lower()
+        if "flac" in fmt_lower:
+            out_ext = ".flac"
+            flac_subtype = "PCM_16" if "16" in fmt_lower else "PCM_24"
+        else:
+            out_ext = ".wav"
+            flac_subtype = None
+
         if not mvsep_client:
             self._log("WARNING: MVSep client not available — skipping finisher, using last pass output")
             last_pass_dir = os.path.join(song_output, "pass_" + str(self._config.get("iterations", 4) - 1))
@@ -396,8 +404,13 @@ class IterativeEnsembleRunner(QObject):
             if os.path.isfile(candidate):
                 final_output = os.path.join(
                     output_dir,
-                    format_output_filename(original_input, "Iterative finisher"))
-                shutil.copy2(candidate, final_output)
+                    format_output_filename(original_input, "Iterative finisher", ext=out_ext))
+                if out_ext == ".flac":
+                    import soundfile as _sf
+                    _data, _sr = _sf.read(candidate)
+                    _sf.write(final_output, _data, _sr, subtype=flac_subtype)
+                else:
+                    shutil.copy2(candidate, final_output)
                 self._log("  Copied " + os.path.basename(candidate) + " -> " + os.path.basename(final_output))
             return
 
@@ -450,8 +463,13 @@ class IterativeEnsembleRunner(QObject):
 
             final_output = os.path.join(
                 output_dir,
-                format_output_filename(original_input, "Iterative " + variant))
-            shutil.copy2(final_source, final_output)
+                format_output_filename(original_input, "Iterative " + variant, ext=out_ext))
+            if out_ext == ".flac":
+                import soundfile as _sf
+                _data, _sr = _sf.read(final_source)
+                _sf.write(final_output, _data, _sr, subtype=flac_subtype)
+            else:
+                shutil.copy2(final_source, final_output)
             self._log("  Final output: " + os.path.basename(final_output))
 
     def _run_local_inference(self, input_audio, model, output_dir, overlap):

@@ -73,7 +73,7 @@ def run_folder(
     )
     mixture_paths = [p for p in mixture_paths if os.path.isfile(p)]
 
-    sample_rate: int = getattr(config.audio, "sample_rate", 44100)
+    sample_rate: int = getattr(config.audio, "sample_rate", 44100) if hasattr(config, "audio") and "audio" in config else 44100
 
     print(f"Total files found: {len(mixture_paths)}. Using sample rate: {sample_rate}")
 
@@ -95,9 +95,10 @@ def run_folder(
     # stems, e.g. vocals/drums/bass/other) has a REAL "other" stem which the
     # 2-stem datasets' other->instrum remap must not swallow (mvsep's 4-stem
     # convention names it "_other", MUSDB18-style).
+    _config_instruments = list(getattr(config.training, "instruments", []) or []) if hasattr(config, "training") and "training" in config else []
     _stem_suffix_map = qc_suffix_map_for_model(
         parse_stem_suffix_map(getattr(args, "stem_suffix_map", "")),
-        list(getattr(config.training, "instruments", []) or []),
+        _config_instruments,
     )
 
     for path in mixture_paths:
@@ -177,7 +178,7 @@ def run_folder(
             downmixed = True
 
         # Normalize input audio if enabled
-        if "normalize" in config.inference:
+        if hasattr(config, "inference") and "inference" in config and "normalize" in config.inference:
             if config.inference["normalize"] is True:
                 mix, norm_params = normalize_audio(mix)
 
@@ -222,7 +223,7 @@ def run_folder(
         # minus one target is not any single trained stem, so keep upstream's
         # generic "instrumental" label. (Shared helper: utils/stem_planning.py)
         if args.extract_instrumental:
-            all_instruments = list(getattr(config.training, 'instruments', []) or [])
+            all_instruments = list(getattr(config.training, 'instruments', []) or []) if hasattr(config, "training") and "training" in config else []
             complement_name = complement_stem_name(
                 all_instruments, instruments,
                 emitted_stems=list(waveforms_orig),
@@ -241,7 +242,7 @@ def run_folder(
             combo = qc_hh_cymbals_waveform(
                 waveforms_orig,
                 _stem_suffix_map,
-                list(getattr(config.training, "instruments", []) or []),
+                list(getattr(config.training, "instruments", []) or []) if hasattr(config, "training") and "training" in config else [],
             )
             if combo is not None:
                 extra_qc_stems["hh-cymbals"] = combo
@@ -263,7 +264,7 @@ def run_folder(
                 estimates = waveforms_orig[instr]
 
             # Denormalize output audio if normalization was applied
-            if "normalize" in config.inference:
+            if hasattr(config, "inference") and "inference" in config and "normalize" in config.inference:
                 if config.inference["normalize"] is True:
                     estimates = denormalize_audio(estimates, norm_params)
 
@@ -371,14 +372,32 @@ def proc_folder(dict_args):
         device = "cpu"
     elif torch.cuda.is_available():
         print('CUDA is available, use --force_cpu to disable it.')
-        device = f'cuda:{args.device_ids[0]}' if isinstance(args.device_ids, list) else f'cuda:{args.device_ids}'
+        device_id = args.device_ids[0] if isinstance(args.device_ids, list) else args.device_ids
+        device = f'cuda:{device_id}'
+        try:
+            dev_idx = int(device_id) if str(device_id).isdigit() else 0
+            major, minor = torch.cuda.get_device_capability(dev_idx)
+            cuda_ver = torch.version.cuda or ""
+            if major < 6:
+                # Disable cuDNN benchmark on legacy cards — algorithm probing can fault
+                torch.backends.cudnn.benchmark = False
+                if cuda_ver.startswith("12."):
+                    print(
+                        f"WARNING: NVIDIA GPU with Compute Capability {major}.{minor} (Maxwell/legacy) "
+                        f"detected running PyTorch with CUDA {cuda_ver}. CUDA 12 builds may cause GPU driver "
+                        f"instability on Maxwell hardware. If crashes occur, reinstall the runtime with "
+                        f"CUDA 11.8 from Settings -> GPU Runtime Setup, or run with --force_cpu."
+                    )
+        except Exception:
+            pass
     elif torch.backends.mps.is_available():
         device = "mps"
 
     print("Using device: ", device)
 
     model_load_start_time = time.time()
-    torch.backends.cudnn.benchmark = True
+    if device.startswith("cuda") and not (locals().get("major", 10) < 6):
+        torch.backends.cudnn.benchmark = True
 
     if args.model_type == 'mdxnet':
         # MDX-Net zoo models ship as ONNX checkpoints with a kuielab-layout
@@ -414,7 +433,7 @@ def proc_folder(dict_args):
                       "inference engine. Pick another model or update the app.")
                 sys.exit(1)
             raise
-    if 'model_type' in config.training and args.model_type != 'mdxnet':
+    if hasattr(config, "training") and "training" in config and 'model_type' in config.training and args.model_type != 'mdxnet':
         args.model_type = config.training.model_type
     # MDX-Net checkpoints are ONNX, so torch.load/load_start_checkpoint don't
     # apply — the ONNX session is built inside MDXNetModel from the checkpoint.
@@ -437,7 +456,8 @@ def proc_folder(dict_args):
             # copied the weights into the model's own parameters.
             del checkpoint
 
-    print("Instruments: {}".format(config.training.instruments))
+    instruments_desc = getattr(config.training, 'instruments', None) if hasattr(config, "training") and "training" in config else None
+    print("Instruments: {}".format(instruments_desc))
 
     # in case multiple CUDA GPUs are used and --device_ids arg is passed
     if (isinstance(args.device_ids, list) and len(args.device_ids) > 1

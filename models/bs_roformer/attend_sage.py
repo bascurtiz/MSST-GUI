@@ -116,7 +116,14 @@ class Attend(nn.Module):
             try:
                 # print("Attempting PyTorch SDPA") # Optional: for debugging
                 # Let PyTorch choose the best backend (Flash V2, Mem Efficient, Math)
-                with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_math=True, enable_mem_efficient=True):
+                enable_mem = True
+                try:
+                    if getattr(q, 'is_cuda', False) and torch.cuda.is_available():
+                        if torch.cuda.get_device_capability(q.device)[0] < 6:
+                            enable_mem = False
+                except Exception:
+                    pass
+                with torch.backends.cuda.sdp_kernel(enable_flash=enable_mem, enable_math=True, enable_mem_efficient=enable_mem):
                     out = F.scaled_dot_product_attention(
                         q, k, v,
                         attn_mask=None, # Assuming no explicit mask needed here

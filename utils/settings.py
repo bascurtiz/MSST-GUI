@@ -315,6 +315,56 @@ def load_config(model_type: str, config_path: str) -> Union[ConfigDict, OmegaCon
             config = OmegaConf.load(config_path)
         else:
             config = ConfigDict(yaml.load(text, Loader=yaml.FullLoader))
+
+        if isinstance(config, ConfigDict):
+            # Normalize config with safe defaults for missing sections (e.g. Look2Hear / Apollo configs)
+            if 'training' not in config:
+                target_inst = 'restored' if model_type == 'apollo' else 'target'
+                insts = ['restored', 'addition'] if model_type == 'apollo' else [target_inst]
+                config['training'] = ConfigDict({
+                    'model_type': model_type or 'apollo',
+                    'instruments': insts,
+                    'target_instrument': target_inst,
+                })
+            else:
+                if 'model_type' not in config.training and model_type:
+                    config.training['model_type'] = model_type
+                if 'instruments' not in config.training:
+                    target_inst = getattr(config.training, 'target_instrument', None) or ('restored' if model_type == 'apollo' else 'target')
+                    config.training['instruments'] = ['restored', 'addition'] if model_type == 'apollo' else [target_inst]
+
+            if 'audio' not in config:
+                sr = 44100
+                if 'model' in config and hasattr(config.model, 'get'):
+                    sr = config.model.get('sr', 44100)
+                elif 'datas' in config and hasattr(config.datas, 'get'):
+                    sr = config.datas.get('sr', 44100)
+                config['audio'] = ConfigDict({
+                    'chunk_size': 132300,
+                    'num_channels': 2,
+                    'sample_rate': sr,
+                    'min_mean_abs': 0.0,
+                })
+            else:
+                if 'chunk_size' not in config.audio:
+                    config.audio['chunk_size'] = 132300
+                if 'sample_rate' not in config.audio:
+                    config.audio['sample_rate'] = 44100
+                if 'num_channels' not in config.audio:
+                    config.audio['num_channels'] = 2
+
+            if 'inference' not in config:
+                config['inference'] = ConfigDict({
+                    'batch_size': 1,
+                    'num_overlap': 2,
+                    'normalize': False,
+                })
+            else:
+                if 'batch_size' not in config.inference:
+                    config.inference['batch_size'] = 1
+                if 'num_overlap' not in config.inference:
+                    config.inference['num_overlap'] = 2
+
         return config
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
@@ -993,7 +1043,7 @@ def get_model_from_config(model_type: str, config_path: str,
     """
 
     config = load_config(model_type, config_path)
-    if 'model_type' in config.training:
+    if 'training' in config and 'model_type' in config.training:
         model_type = config.training.model_type
     # Bandit v1 and v2 are indistinguishable by the "Bandit Architecture"
     # label the GUI / ensemble runners pass down (both map to 'bandit'), but
@@ -1005,7 +1055,8 @@ def get_model_from_config(model_type: str, config_path: str,
         model_type = 'bandit_v2'
         # Record the refined type so callers that re-read config.training
         # (e.g. inference.py's args.model_type propagation) stay consistent.
-        config.training.model_type = model_type
+        if 'training' in config:
+            config.training.model_type = model_type
     # Same collapse problem for SCNet: the "SCNet Architecture" label maps
     # every variant (scnet, scnet_masked, scnet_tran) back to 'scnet', but
     # tran configs nest extra hyper-parameters under `tran_*` keys that the
@@ -1015,7 +1066,8 @@ def get_model_from_config(model_type: str, config_path: str,
     if (model_type == 'scnet' and hasattr(config, 'model')
             and any(str(k).startswith('tran_') for k in dict(config.model))):
         model_type = 'scnet_tran'
-        config.training.model_type = model_type
+        if 'training' in config:
+            config.training.model_type = model_type
     # Original jarredou SW (cos_emb_time) is not the architecture ZFTurbo
     # or MVSEP run. If SW-Fixed sits next to it, load that as stock
     # BSRoformer and record the redirected path so inference.py loads
@@ -1029,7 +1081,7 @@ def get_model_from_config(model_type: str, config_path: str,
                     and os.path.normcase(os.path.abspath(new_yaml))
                     != os.path.normcase(os.path.abspath(config_path))):
                 config = load_config(model_type, new_yaml)
-                if 'model_type' in config.training:
+                if 'training' in config and 'model_type' in config.training:
                     model_type = config.training.model_type
             try:
                 config.redirected_checkpoint = new_ckpt
@@ -1114,8 +1166,24 @@ def get_model_from_config(model_type: str, config_path: str,
         from models.scnet.scnet_tran import SCNet_Tran
         model = SCNet_Tran(**_fit_model_kwargs(SCNet_Tran, dict(config.model)))
     elif model_type == 'apollo':
-        from models.look2hear.models import BaseModel
-        model = BaseModel.apollo(**config.model)
+        from models.look2hear.models import get as get_look2hear_model
+        Apollo = get_look2hear_model('Apollo')
+        apollo_kwargs = {k: v for k, v in dict(config.model).items() if not str(k).startswith('_')}
+        if checkpoint_path and os.path.isfile(checkpoint_path):
+            try:
+                ckpt = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+                sd = ckpt.get('state_dict', ckpt.get('state', ckpt))
+                if isinstance(sd, dict):
+                    for k, v in sd.items():
+                        if k.endswith('BN.0.1.weight') and hasattr(v, 'shape') and len(v.shape) > 0:
+                            ckpt_dim = v.shape[0]
+                            if apollo_kwargs.get('feature_dim') != ckpt_dim:
+                                print(f"[Apollo] Sniffed feature_dim={ckpt_dim} from checkpoint (config had {apollo_kwargs.get('feature_dim')})")
+                                apollo_kwargs['feature_dim'] = ckpt_dim
+                            break
+            except Exception:
+                pass
+        model = Apollo(**_fit_model_kwargs(Apollo, apollo_kwargs))
     elif model_type == 'experimental_mdx23c_stht':
         from models.mdx23c_tfc_tdf_v3_with_STHT import TFC_TDF_net
         model = TFC_TDF_net(config)

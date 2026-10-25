@@ -15,7 +15,7 @@ import threading
 from PySide6.QtCore import Qt, QObject, QTimer, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QPlainTextEdit,
-    QProgressBar,
+    QProgressBar, QComboBox,
 )
 
 from backend import runtime_setup
@@ -46,10 +46,11 @@ class _SetupThread(QObject):
     progress = Signal(float)
     finished_ok = Signal(bool, str)
 
-    def __init__(self, parent=None, top_up=False):
+    def __init__(self, parent=None, top_up=False, forced_line=None):
         super().__init__()
         self._cancelled = False
         self._top_up = top_up
+        self._forced_line = forced_line
         self._running = False
         self._thread: threading.Thread | None = None
 
@@ -95,7 +96,8 @@ class _SetupThread(QObject):
 
         try:
             ok, msg = runtime_setup.install_runtime(
-                log, progress, cancelled, top_up=self._top_up)
+                log, progress, cancelled, top_up=self._top_up,
+                forced_line=self._forced_line)
         except Exception as e:  # noqa: BLE001 — surface anything to the user
             ok, msg = False, str(e)
         self.finished_ok.emit(ok, msg)
@@ -104,13 +106,14 @@ class _SetupThread(QObject):
 class RuntimeSetupDialog(QDialog):
     """Modal first-run installer for the GPU runtime."""
 
-    def __init__(self, parent=None, top_up=False):
+    def __init__(self, parent=None, top_up=False, forced_line=None):
         super().__init__(parent)
         self.setWindowTitle("Runtime Update" if top_up else "GPU Runtime Setup")
         self.setModal(True)
         self.setMinimumWidth(560)
         self._thread = None
         self._top_up = top_up
+        self._forced_line = forced_line
         self._result = (False, "")
 
         t = theme_manager.theme
@@ -122,6 +125,10 @@ class RuntimeSetupDialog(QDialog):
             f"QProgressBar{{background:{t.surface_alt};border:1px solid {t.border};"
             f"border-radius:3px;}}"
             f"QProgressBar::chunk{{background:{theme_manager.accent};border-radius:3px;}}"
+            f"QComboBox{{background:{t.surface};color:{t.text};border:1px solid {t.border};"
+            f"border-radius:4px;padding:5px 8px;font-family:'Montserrat',sans-serif;font-size:11px;}}"
+            f"QComboBox QAbstractItemView{{background:{t.surface};color:{t.text};"
+            f"selection-background-color:{theme_manager.accent};border:1px solid {t.border};}}"
         )
 
         root = QVBoxLayout(self)
@@ -144,27 +151,46 @@ class RuntimeSetupDialog(QDialog):
             root.addWidget(info)
         else:
             gpus = runtime_setup.detect_gpus()
-            line = runtime_setup.pick_torch_line([c for _, c in gpus])
-            line_txt = {
-                "cu128": "CUDA 12.8 build — supports RTX 50-series and newer",
-                "cu121": "CUDA 12.1 build — supports GTX 10-series through RTX 40-series",
-                "cpu": "CPU build — no NVIDIA GPU detected",
-            }[line]
-            gpu_txt = ", ".join(n for n, _ in gpus) or "no NVIDIA GPU detected"
+            caps = [c for _, c in gpus]
+            auto_line = runtime_setup.pick_torch_line(caps)
+            active_line = forced_line or auto_line
 
-            title = QLabel("First-time setup — GPU runtime")
+            gpu_txt = ", ".join(f"{n} (CC {c:.1f})" for n, c in gpus) or "no NVIDIA GPU detected"
+
+            title = QLabel("GPU Runtime Setup")
             title.setStyleSheet(
                 f"font-family:'Montserrat',sans-serif;font-size:14px;font-weight:bold;")
             root.addWidget(title)
 
             info = QLabel(
-                f"Detected GPU: <b style='color:{theme_manager.accent};'>{gpu_txt}</b><br>"
-                f"PyTorch to install: <b>{line_txt}</b><br><br>"
-                f"Installation will take ~5 minutes, depending on your hardware and "
-                f"internet connection (2.5-3 GB).")
+                f"Detected GPU: <b style='color:{theme_manager.accent};'>{gpu_txt}</b><br><br>"
+                f"Select the PyTorch / CUDA build to install:")
             info.setWordWrap(True)
             info.setTextFormat(Qt.RichText)
             root.addWidget(info)
+
+            self._line_combo = QComboBox()
+            lines_meta = [
+                ("cu121", "CUDA 12.1 — Pascal to Ada (GTX 10-series through RTX 40-series)"),
+                ("cu118", "CUDA 11.8 — Legacy GPUs (Maxwell / GTX 900 series, CC 5.x)"),
+                ("cu128", "CUDA 12.8 — Blackwell (RTX 50-series and newer)"),
+                ("cpu", "CPU Only — Universal compatibility (no GPU required)"),
+            ]
+            for key, desc in lines_meta:
+                tag = " (Recommended)" if key == auto_line else ""
+                self._line_combo.addItem(f"{desc}{tag}", key)
+
+            for i in range(self._line_combo.count()):
+                if self._line_combo.itemData(i) == active_line:
+                    self._line_combo.setCurrentIndex(i)
+                    break
+            root.addWidget(self._line_combo)
+
+            download_info = QLabel(
+                "Installation takes ~3–5 minutes depending on connection speed (2.5–3 GB download).")
+            download_info.setStyleSheet(f"color:{theme_manager.theme.text_muted};font-size:11px;")
+            download_info.setWordWrap(True)
+            root.addWidget(download_info)
 
         self._bar = QProgressBar()
         self._bar.setRange(0, 100)
@@ -230,8 +256,11 @@ class RuntimeSetupDialog(QDialog):
 
     def _start_install(self):
         self._install_btn.setEnabled(False)
+        line = self._line_combo.itemData(self._line_combo.currentIndex()) if hasattr(self, "_line_combo") else self._forced_line
+        if hasattr(self, "_line_combo"):
+            self._line_combo.setEnabled(False)
         self._append_log("— preparing runtime —")
-        self._thread = _SetupThread(self)
+        self._thread = _SetupThread(self, top_up=self._top_up, forced_line=line)
         self._thread.log_line.connect(self._append_log)
         self._thread.progress.connect(self.set_progress)
         self._thread.finished_ok.connect(self._on_finished)
@@ -245,6 +274,8 @@ class RuntimeSetupDialog(QDialog):
 
     def _on_finished(self, ok, msg):
         self._bar.setValue(100 if ok else self._bar.value())
+        if hasattr(self, "_line_combo") and not ok:
+            self._line_combo.setEnabled(True)
         if ok:
             self._append_log(
                 f'<span style="color:{theme_manager.theme.success};'

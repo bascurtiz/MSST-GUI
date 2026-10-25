@@ -18,7 +18,9 @@ from ui.widgets.smooth_bar import SmoothBar as _SmoothBar
 from backend.paths import REPO_ROOT
 from mutagen import File as _MutagenFile
 
-_CHIME_PATH = os.path.join(REPO_ROOT, "resources", "chime.mp3")
+_CHIME_WAV_PATH = os.path.join(REPO_ROOT, "resources", "chime.wav")
+_CHIME_MP3_PATH = os.path.join(REPO_ROOT, "resources", "chime.mp3")
+_CHIME_PATH = _CHIME_WAV_PATH if os.path.isfile(_CHIME_WAV_PATH) else _CHIME_MP3_PATH
 
 
 # ── helpers ──────────────────────────────────────────────────────
@@ -2995,7 +2997,10 @@ class ConsolePage(QWidget):
             self._overall_timer.stop()
             self._refresh_overall_progress(finished=True)
             if was_active:
-                self._play_chime()
+                cards = self._job_cards()
+                has_failed = any(getattr(c, "_failed", False) for c in cards)
+                if not has_failed:
+                    self._play_chime()
 
     def _job_cards(self):
         """Cards that belong to the current (or most recent) inference job."""
@@ -3081,16 +3086,41 @@ class ConsolePage(QWidget):
             bar.set_state(pct, elapsed, eta)
 
     def _play_chime(self):
-        """Play resources/chime.mp3 once the whole job has finished."""
-        if not os.path.isfile(_CHIME_PATH):
+        """Play completion chime when a job finishes successfully."""
+        import sys
+        # On Windows, winsound uses the native OS audio subsystem directly:
+        # 0 external dependencies, 0 console/terminal noise, and no FFmpeg/MFT probe.
+        if sys.platform == "win32" and os.path.isfile(_CHIME_WAV_PATH):
+            try:
+                import winsound
+                winsound.PlaySound(_CHIME_WAV_PATH, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                return
+            except Exception:
+                pass
+
+        # Fallback 1: QSoundEffect (lightweight low-latency audio effect without video encoder scan)
+        if os.path.isfile(_CHIME_WAV_PATH):
+            try:
+                from PySide6.QtMultimedia import QSoundEffect
+                if getattr(self, "_chime_effect", None) is None:
+                    self._chime_effect = QSoundEffect(self)
+                    self._chime_effect.setSource(QUrl.fromLocalFile(_CHIME_WAV_PATH))
+                self._chime_effect.play()
+                return
+            except Exception:
+                pass
+
+        # Fallback 2: QMediaPlayer
+        sound_path = _CHIME_WAV_PATH if os.path.isfile(_CHIME_WAV_PATH) else _CHIME_MP3_PATH
+        if not os.path.isfile(sound_path):
             return
         try:
             if self._chime_player is None:
-                self._chime_out = QAudioOutput()
-                self._chime_player = QMediaPlayer()
+                self._chime_out = QAudioOutput(self)
+                self._chime_player = QMediaPlayer(self)
                 self._chime_player.setAudioOutput(self._chime_out)
             self._chime_player.stop()
-            self._chime_player.setSource(QUrl.fromLocalFile(_CHIME_PATH))
+            self._chime_player.setSource(QUrl.fromLocalFile(sound_path))
             self._chime_player.play()
         except Exception:
             pass

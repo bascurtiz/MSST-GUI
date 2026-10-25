@@ -4,14 +4,16 @@ backend/runtime_setup.py
 First-run GPU runtime provisioning for the frozen app.
 
 One PyTorch build cannot cover every GPU: the CUDA 12.1 wheel line supports
-compute capability 5.0–9.0 (GTX 10-series through RTX 40-series) but has no
-kernels for Blackwell, while the CUDA 12.8 line (torch ≥ 2.7) supports
-Blackwell (RTX 50-series) but dropped pre-Volta cards. The bundled runtime
-therefore installs the correct line per detected GPU on first use:
+compute capability 6.0–9.0 (GTX 10-series through RTX 40-series) but has no
+kernels for Blackwell and is unstable on Maxwell cards; the CUDA 11.8 line
+supports legacy Maxwell GPUs (GTX 900 series, CC 5.0–5.2); while the CUDA 12.8
+line (torch ≥ 2.7) supports Blackwell (RTX 50-series) but dropped pre-Volta cards.
+The bundled runtime therefore installs the correct line per detected GPU on first use:
 
     any compute capability ≥ 10.0  → CUDA 12.8 wheels (torch ≥ 2.7)
-    else NVIDIA (5.0 – 9.0)        → CUDA 12.1 wheels (torch 2.4.1)
-    no NVIDIA GPU                  → CPU wheels from PyPI
+    Maxwell GPUs (5.0 ≤ CC < 6.0)  → CUDA 11.8 wheels (torch 2.4.1)
+    Pascal–Hopper (6.0 ≤ CC < 10)  → CUDA 12.1 wheels (torch 2.4.1)
+    Kepler or no NVIDIA GPU        → CPU wheels from PyPI
 """
 import hashlib
 import os
@@ -39,6 +41,7 @@ _TORCH_CUDA_INDEX = "https://download.pytorch.org/whl/{line}"
 _TORCH_SPECS = {
     "cu128": ["torch>=2.7.0,<3", "torchvision", "torchaudio"],
     "cu121": ["torch==2.4.1", "torchvision==0.19.1", "torchaudio==2.4.1"],
+    "cu118": ["torch==2.4.1", "torchvision==0.19.1", "torchaudio==2.4.1"],
     "cpu": ["torch", "torchvision", "torchaudio"],
 }
 
@@ -76,11 +79,17 @@ def detect_gpus():
 
 
 def pick_torch_line(caps):
-    """'cu128' | 'cu121' | 'cpu' for the detected compute capabilities."""
+    """'cu128' | 'cu121' | 'cu118' | 'cpu' for the detected compute capabilities."""
     if not caps:
         return "cpu"
     if any(c >= 10.0 for c in caps):
         return "cu128"
+    if any(c < 5.0 for c in caps):
+        # Kepler (CC 3.x) and older architectures have no PyTorch 2.x CUDA support
+        return "cpu"
+    if any(c < 6.0 for c in caps):
+        # Maxwell (CC 5.0/5.2, e.g. GTX 900 series): CUDA 11.8 retains native sm_50/sm_52 support
+        return "cu118"
     return "cu121"
 
 
@@ -367,12 +376,15 @@ def _ensure_onnx_gpu(py, log_cb, cancel_check):
                "MDX-Net models stay on CPU.")
         return
     ok = False
+    cuda_ver = probe[1] or ""
     # onnxruntime-gpu 1.27+ is built against CUDA 13 and needs a system CUDA
     # 13 toolkit (its provider links cublas64_13.dll, which the CUDA 12.8
     # torch wheel does not bundle — the provider DLL fails to initialise and
     # ORT silently falls back to CPU). Pin the CUDA 12.8 builds (1.21-1.26)
     # so the provider resolves cudart/cublas/cuDNN from torch's bundled libs.
-    if _run_pip_retries(py, ["install", "onnxruntime-gpu>=1.21,<1.27"],
+    # For CUDA 11.8 builds, use onnxruntime-gpu 1.16-1.17.
+    spec = "onnxruntime-gpu>=1.16.0,<1.18.0" if cuda_ver.startswith("11.") else "onnxruntime-gpu>=1.21,<1.27"
+    if _run_pip_retries(py, ["install", spec],
                         log_cb, cancel_check) == 0:
         p = _probe_onnx(py)
         ok = bool(p and p[0] and p[1])
@@ -488,7 +500,7 @@ def _run_pip_retries(py, args, log_cb, cancel_check, line_cb=None):
 
 
 def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
-                    top_up=False):
+                    top_up=False, forced_line=None):
     """Install the GPU-appropriate PyTorch build + libraries into the
     bundled runtime. Blocking; run it on a worker thread.
 
@@ -524,13 +536,16 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
 
     gpus = detect_gpus()
     caps = [c for _, c in gpus]
-    line = pick_torch_line(caps)
+    line = forced_line or pick_torch_line(caps)
 
     gpu_txt = ", ".join(f"{n} (CC {c:.1f})" for n, c in gpus) or "no NVIDIA GPU detected"
     log_cb(f"Detected: {gpu_txt}")
-    summary = {"cpu": "CPU-only PyTorch",
-               "cu121": "PyTorch (CUDA 12.1) — supports GTX 10-series through RTX 40-series",
-               "cu128": "PyTorch (CUDA 12.8) — supports RTX 50-series and newer"}[line]
+    summary = {
+        "cpu": "CPU-only PyTorch",
+        "cu118": "PyTorch (CUDA 11.8) — legacy GPU support (Maxwell / GTX 900 series, CC 5.x)",
+        "cu121": "PyTorch (CUDA 12.1) — supports GTX 10-series through RTX 40-series",
+        "cu128": "PyTorch (CUDA 12.8) — supports RTX 50-series and newer",
+    }[line]
     log_cb(f"Selected build: {summary}")
     log_cb("Installing PyTorch…")
 
@@ -557,12 +572,21 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
     # 1. PyTorch + torchaudio from the matching wheel index
     torch_args = _TORCH_SPECS[line]
     torch_line_cb = _phase_counter(0.05, 0.45, cap=14)
+    # Check if currently installed torch has a different build; if so, pass --force-reinstall
+    probe_existing = _probe_torch(py)
+    install_flags = ["install", "--upgrade"]
+    if probe_existing:
+        _, cur_build, _ = probe_existing
+        target_cuda = line.replace("cu", "") if line.startswith("cu") else None
+        if (line == "cpu" and cur_build is not None) or (line != "cpu" and cur_build != target_cuda):
+            install_flags.append("--force-reinstall")
+
     if line == "cpu":
-        rc = _run_pip_retries(py, ["install", "--upgrade"] + torch_args,
+        rc = _run_pip_retries(py, install_flags + torch_args,
                               log_cb, cancel_check, line_cb=torch_line_cb)
     else:
         index = _TORCH_CUDA_INDEX.format(line=line)
-        rc = _run_pip_retries(py, ["install", "--upgrade"] + torch_args +
+        rc = _run_pip_retries(py, install_flags + torch_args +
                               ["--index-url", index],
                               log_cb, cancel_check, line_cb=torch_line_cb)
     if rc != 0:
@@ -622,10 +646,11 @@ def install_runtime(log_cb=print, progress_cb=None, cancel_check=None,
             note = (" A CPU-only PyTorch ended up installed — inference will "
                     "run on CPU. Re-run GPU setup from Settings.")
         elif not probe[2]:
-            note = (" CUDA could not be initialized — the NVIDIA driver is "
-                    "likely too old for this PyTorch build (>= 531.14 needed "
-                    "for CUDA 12.1). Update the driver; inference uses CPU "
-                    "meanwhile.")
+            min_drv = "520.61" if line == "cu118" else "531.14"
+            note = (f" CUDA could not be initialized — the NVIDIA driver is "
+                    f"likely too old for this PyTorch build (>={min_drv} needed "
+                    f"for {line.upper()}). Update the driver; inference uses CPU "
+                    f"meanwhile.")
         if note:
             log_cb(f"WARNING:{note}")
     if progress_cb:
@@ -637,10 +662,23 @@ def runtime_status_text():
     """Short human-readable status for the Settings page."""
     if runtime_ready():
         ver = runtime_python_version() or "?"
+        py = get_runtime_python()
+        probe = _probe_torch(py)
+        torch_info = ""
+        if probe:
+            t_ver, c_build, c_ok = probe
+            if c_build:
+                status = "active" if c_ok else "driver mismatch"
+                torch_info = f" · Torch {t_ver} (CUDA {c_build}, {status})"
+            else:
+                torch_info = f" · Torch {t_ver} (CPU)"
         gpus = detect_gpus()
-        gpu_txt = gpus[0][0] if gpus else "GPU"
+        gpu_txt = ", ".join(f"{n} (CC {c:.1f})" for n, c in gpus) if gpus else "No NVIDIA GPU"
         extra = " · library update pending" if not runtime_requirements_current() else ""
-        return f"Ready — Python {ver} · {gpu_txt}{extra}"
+        return f"Ready — Python {ver}{torch_info} · {gpu_txt}{extra}"
+    if os.path.isfile(get_runtime_python()):
+        return "Runtime present but PyTorch is not installed yet."
+    return "Not installed — required to run separation jobs."
     if os.path.isfile(get_runtime_python()):
         return "Runtime present but PyTorch is not installed yet."
     return "Not installed — required to run separation jobs."

@@ -7,6 +7,7 @@ Supports local files and HuggingFace URL downloads.
 import os
 import shutil
 import threading
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from PySide6.QtWidgets import (
@@ -30,7 +31,7 @@ from ui.widgets.common import (
 from ui.widgets.smooth_bar import SmoothBar
 
 from backend.downloader import HuggingFaceDownloader
-from backend.yaml_analyzer import classify_model_type
+from backend.yaml_analyzer import classify_model_type, classify_model_arch, classify_yaml_config
 from backend.model_manager import (
     fetch_model_index, fetch_repo_meta, fetch_tree_info, fetch_folder_tree,
     is_installed, ModelInfo, MODEL_TYPE_TO_ARCH,
@@ -166,17 +167,23 @@ MODEL_TYPES = [
 ]
 
 ARCH_TO_MODEL_FOLDER = {
+    "Apollo Architecture": "models/apollo",
+    "Bandit Architecture": "models/bandit",
+    "BS Roformer Architecture": "models/bs_roformer",
+    "BSMamba2 Architecture": "models/bs_mamba2",
+    "Conformer Architecture": "models/conformer",
+    "Demucs Architecture": "models/demucs",
+    "DTTNet Architecture": "models/dttnet",
     "MDX Architecture": "models/mdx",  # legacy label from before the MDX split
     "MDX23c Architecture": "models/mdx",
     "MDX-Net Architecture": "models/mdxnet",
-    "VR Architecture": "models/vr",
-    "Demucs Architecture": "models/demucs",
-    "BS Roformer Architecture": "models/bs_roformer",
-    "Melband Roformer Architecture": "models/melband_roformer",
     "Medley Vox Architecture": "models/medley_vox",
+    "Melband Roformer Architecture": "models/melband_roformer",
     "SCNet Architecture": "models/scnet",
-    "Apollo Architecture": "models/apollo",
-    "Bandit Architecture": "models/bandit",
+    "Swin Upernet Architecture": "models/swin_upernet",
+    "TorchSeg Architecture": "models/torchseg",
+    "VitLarge23 Architecture": "models/segm_models",
+    "VR Architecture": "models/vr",
 }
 
 from backend.paths import APP_DIR as _DATA_ROOT  # writable root for downloads
@@ -2070,6 +2077,29 @@ class _GitHubIconButton(QPushButton):
         p.end()
 
 
+def _model_sort_key(model, fallback_idx=0):
+    """Sort key for registered models: highest (newest) timestamp first."""
+    if isinstance(model, dict):
+        if "added_time" in model:
+            try:
+                return float(model["added_time"])
+            except (ValueError, TypeError):
+                pass
+        if "added" in model and isinstance(model["added"], str):
+            for fmt in ("%b %d, %Y  %H:%M", "%b %d, %Y %H:%M"):
+                try:
+                    return datetime.strptime(model["added"].strip(), fmt).timestamp()
+                except Exception:
+                    pass
+        ckpt = model.get("ckpt", "")
+        if ckpt and os.path.isfile(ckpt):
+            try:
+                return max(os.path.getmtime(ckpt), os.path.getctime(ckpt))
+            except OSError:
+                pass
+    return float(fallback_idx)
+
+
 class SettingsPage(QWidget):
     model_registered = Signal(dict)
     model_removed = Signal(str)
@@ -2129,6 +2159,20 @@ class SettingsPage(QWidget):
             "Open the GitHub repository")
         self._gh_btn.clicked.connect(self._open_github_repo)
         uw.addWidget(self._gh_btn)
+        self._runtime_btn = QPushButton("GPU Runtime Setup")
+        self._runtime_btn.setCursor(Qt.PointingHandCursor)
+        self._runtime_btn.setFixedHeight(30)
+        self._runtime_btn.setStyleSheet(
+            f"QPushButton{{background:{theme_manager.theme.surface};"
+            f"color:{theme_manager.theme.text_dim};"
+            f"border:1px solid {theme_manager.theme.border_dim};border-radius:4px;"
+            "font-family:'Montserrat',sans-serif;font-weight:600;font-size:9px;"
+            "padding:0 14px;}"
+            + add_button_hover()
+            + f"QPushButton:disabled{{color:{theme_manager.theme.disabled_text};}}")
+        self._runtime_btn.setToolTip("Configure or reinstall PyTorch / CUDA runtime (CUDA 12.1, 11.8 legacy, 12.8, or CPU)")
+        self._runtime_btn.clicked.connect(self._open_runtime_setup)
+        uw.addWidget(self._runtime_btn)
         uw.addWidget(self._update_btn)
         uw.addWidget(self._update_status)
 
@@ -2281,7 +2325,7 @@ class SettingsPage(QWidget):
 
         self._ckpt = _InputField("Checkpoint", "Select checkpoint file (.ckpt)", browse=True)
         self._ckpt.btn.clicked.connect(lambda: self._browse(
-            self._ckpt, "Checkpoint (*.ckpt *.bin *.th *.chpt);;All (*.*)"
+            self._ckpt, "Checkpoint (*.ckpt *.bin *.th *.chpt *.onnx);;All (*.*)"
         ))
         self._grp_ckpt = _field_group(self._ckpt_label, self._ckpt)
 
@@ -2314,6 +2358,16 @@ class SettingsPage(QWidget):
 
         self._yaml_url = _InputField("Config File", "Paste HuggingFace config URL (.yaml .json)...")
         self._grp_yaml_url = _field_group(self._yaml_url_label, self._yaml_url)
+
+        self._ckpt.edit.textChanged.connect(self._on_local_ckpt_text_changed)
+        self._yaml.edit.textChanged.connect(self._on_local_yaml_text_changed)
+        self._ckpt_url.edit.textChanged.connect(self._on_url_ckpt_text_changed)
+        self._yaml_url.edit.textChanged.connect(self._on_url_yaml_text_changed)
+
+        self._url_detect_timer = QTimer(self)
+        self._url_detect_timer.setSingleShot(True)
+        self._url_detect_timer.setInterval(300)
+        self._url_detect_timer.timeout.connect(self._fetch_and_detect_yaml_url)
 
         self._slot_ckpt = _mode_slot(self._grp_ckpt, self._grp_ckpt_url, 65)
         self._slot_yaml = _mode_slot(self._grp_yaml, self._grp_yaml_url, 65)
@@ -2531,6 +2585,12 @@ class SettingsPage(QWidget):
         btn = self._gh_btn
         QDesktopServices.openUrl(_QUrl(btn._url))
 
+    def _open_runtime_setup(self):
+        from ui.widgets.runtime_dialog import RuntimeSetupDialog
+        from ui.widgets.common import run_blurred_dialog
+        dlg = RuntimeSetupDialog(self)
+        run_blurred_dialog(dlg)
+
     def _check_updates(self):
         from ui.widgets.update_dialog import check_now
         self._update_btn.setEnabled(False)
@@ -2684,10 +2744,20 @@ class SettingsPage(QWidget):
             known[m.get("name")] = k
         self._registered.clear()
         data = settings_store.load()
-        for m in data.get("registered_models", []):
+        raw_models = data.get("registered_models", [])
+        sorted_models = sorted(
+            enumerate(raw_models),
+            key=lambda x: _model_sort_key(x[1], x[0]),
+            reverse=True
+        )
+        for orig_idx, m in sorted_models:
             if "backend_module" not in m:
                 m["backend_module"] = ""
                 m["custom_backend_enabled"] = False
+            if "added_time" not in m:
+                m["added_time"] = _model_sort_key(m, orig_idx)
+            if "added" not in m:
+                m["added"] = datetime.fromtimestamp(m["added_time"]).strftime("%b %d, %Y  %H:%M")
             self._registered.append(m)
             self._add_item_widget(m)
             if known.get(m.get("name")) != m:
@@ -2706,7 +2776,14 @@ class SettingsPage(QWidget):
         if path:
             row.set_value(path)
             if row == self._yaml:
-                self._auto_detect_type(path)
+                self._auto_detect_from_yaml(path)
+                if not self._ckpt.value():
+                    self._auto_find_matching_ckpt(path)
+            elif row == self._ckpt:
+                if not self._yaml.value():
+                    self._auto_find_matching_yaml(path)
+                else:
+                    self._auto_detect_from_yaml(self._yaml.value())
 
     def _ensure_custom_init(self, dir_path):
         init_file = os.path.join(dir_path, "__init__.py")
@@ -2717,18 +2794,201 @@ class SettingsPage(QWidget):
             except OSError:
                 pass
 
-    def _auto_detect_type(self, yaml_path):
-        if not yaml_path or not os.path.isfile(yaml_path):
+    def _auto_detect_from_yaml(self, yaml_path, content=None):
+        if not content and (not yaml_path or not os.path.isfile(yaml_path)):
             return
-        if yaml_path.lower().endswith('.json'):
-            model_type = "dual target (instrumental & vocals)"
-            idx = self._type_combo.findText(model_type)
+        fn = os.path.basename(yaml_path) if yaml_path else ""
+        res = classify_yaml_config(content or yaml_path, filename=fn)
+        detected_arch = res.get("arch")
+        if detected_arch and detected_arch in ARCH_TYPES:
+            idx = self._arch_combo.findText(detected_arch)
+            if idx >= 0:
+                self._arch_combo.setCurrentIndex(idx)
+        detected_type = res.get("type")
+        if detected_type and detected_type in MODEL_TYPES:
+            idx = self._type_combo.findText(detected_type)
             if idx >= 0:
                 self._type_combo.setCurrentIndex(idx)
+
+    def _auto_detect_type(self, yaml_path):
+        self._auto_detect_from_yaml(yaml_path)
+
+    def _auto_find_matching_ckpt(self, yaml_path):
+        if self._ckpt.value():
             return
-        detected = classify_model_type(yaml_path)
-        if detected and detected in MODEL_TYPES:
-            idx = self._type_combo.findText(detected)
+        if not yaml_path or not os.path.isfile(yaml_path):
+            return
+        directory = os.path.dirname(os.path.abspath(yaml_path))
+        yaml_stem = os.path.splitext(os.path.basename(yaml_path))[0]
+        core_name = yaml_stem
+        if core_name.lower().startswith("config_"):
+            core_name = core_name[7:]
+        elif core_name.lower().endswith("_config"):
+            core_name = core_name[:-7]
+
+        ckpt_exts = (".ckpt", ".bin", ".th", ".chpt", ".onnx")
+        try:
+            files = os.listdir(directory)
+        except OSError:
+            return
+
+        ckpts = [f for f in files if os.path.splitext(f)[1].lower() in ckpt_exts]
+        if not ckpts:
+            return
+
+        for c in ckpts:
+            c_stem = os.path.splitext(c)[0]
+            if c_stem.lower() in (yaml_stem.lower(), core_name.lower()):
+                self._ckpt.set_value(os.path.normpath(os.path.join(directory, c)))
+                return
+
+        for c in ckpts:
+            c_stem = os.path.splitext(c)[0].lower()
+            if core_name.lower() in c_stem or c_stem in core_name.lower():
+                self._ckpt.set_value(os.path.normpath(os.path.join(directory, c)))
+                return
+
+        if len(ckpts) == 1:
+            self._ckpt.set_value(os.path.normpath(os.path.join(directory, ckpts[0])))
+
+    def _auto_find_matching_yaml(self, ckpt_path):
+        if not ckpt_path or not os.path.isfile(ckpt_path):
+            return
+        directory = os.path.dirname(os.path.abspath(ckpt_path))
+        ckpt_stem = os.path.splitext(os.path.basename(ckpt_path))[0]
+        yaml_exts = (".yaml", ".yml", ".json")
+
+        matched_yaml = None
+        try:
+            files = os.listdir(directory)
+            yamls = [f for f in files if os.path.splitext(f)[1].lower() in yaml_exts]
+            candidates = [
+                f"{ckpt_stem}.yaml", f"{ckpt_stem}.yml", f"{ckpt_stem}.json",
+                f"config_{ckpt_stem}.yaml", f"config_{ckpt_stem}.yml", f"config_{ckpt_stem}.json",
+                f"{ckpt_stem}_config.yaml", f"{ckpt_stem}_config.yml", f"{ckpt_stem}_config.json",
+                "config.yaml", "config.json", "config.yml"
+            ]
+            for cand in candidates:
+                for y in yamls:
+                    if y.lower() == cand.lower():
+                        matched_yaml = os.path.normpath(os.path.join(directory, y))
+                        break
+                if matched_yaml:
+                    break
+
+            if not matched_yaml and len(yamls) == 1:
+                matched_yaml = os.path.normpath(os.path.join(directory, yamls[0]))
+        except OSError:
+            pass
+
+        if not matched_yaml:
+            configs_dir = os.path.abspath(os.path.join(_DATA_ROOT, "configs"))
+            if os.path.isdir(configs_dir):
+                for cand in (f"{ckpt_stem}_config.yaml", f"config_{ckpt_stem}.yaml", f"{ckpt_stem}.yaml"):
+                    p = os.path.join(configs_dir, cand)
+                    if os.path.isfile(p):
+                        matched_yaml = os.path.normpath(p)
+                        break
+
+        if matched_yaml and not self._yaml.value():
+            self._yaml.set_value(matched_yaml)
+            self._auto_detect_from_yaml(matched_yaml)
+        elif self._yaml.value():
+            self._auto_detect_from_yaml(self._yaml.value())
+        else:
+            fn = os.path.basename(ckpt_path)
+            res = classify_yaml_config(None, filename=fn)
+            if res.get("arch") and res["arch"] in ARCH_TYPES:
+                idx = self._arch_combo.findText(res["arch"])
+                if idx >= 0:
+                    self._arch_combo.setCurrentIndex(idx)
+            if res.get("type") and res["type"] in MODEL_TYPES:
+                idx = self._type_combo.findText(res["type"])
+                if idx >= 0:
+                    self._type_combo.setCurrentIndex(idx)
+
+    def _on_local_ckpt_text_changed(self, text):
+        path = text.strip()
+        if os.path.isfile(path) and not self._yaml.value():
+            self._auto_find_matching_yaml(path)
+
+    def _on_local_yaml_text_changed(self, text):
+        path = text.strip()
+        if os.path.isfile(path):
+            self._auto_detect_from_yaml(path)
+            if not self._ckpt.value():
+                self._auto_find_matching_ckpt(path)
+
+    def _on_url_ckpt_text_changed(self, text):
+        url = text.strip()
+        if not url:
+            return
+        if not self._yaml_url.value().strip():
+            fn = HuggingFaceDownloader.extract_filename(url)
+            res = classify_yaml_config(None, filename=fn or url)
+            if res.get("arch") and res["arch"] in ARCH_TYPES:
+                idx = self._arch_combo.findText(res["arch"])
+                if idx >= 0:
+                    self._arch_combo.setCurrentIndex(idx)
+            if res.get("type") and res["type"] in MODEL_TYPES:
+                idx = self._type_combo.findText(res["type"])
+                if idx >= 0:
+                    self._type_combo.setCurrentIndex(idx)
+
+    def _on_url_yaml_text_changed(self, text):
+        url = text.strip()
+        if not url:
+            return
+        fn = HuggingFaceDownloader.extract_filename(url)
+        res = classify_yaml_config(None, filename=fn or url)
+        if res.get("arch") and res["arch"] in ARCH_TYPES:
+            idx = self._arch_combo.findText(res["arch"])
+            if idx >= 0:
+                self._arch_combo.setCurrentIndex(idx)
+        if res.get("type") and res["type"] in MODEL_TYPES:
+            idx = self._type_combo.findText(res["type"])
+            if idx >= 0:
+                self._type_combo.setCurrentIndex(idx)
+
+        if HuggingFaceDownloader.is_downloadable_url(url):
+            self._url_detect_timer.start()
+
+    def _fetch_and_detect_yaml_url(self):
+        url = self._yaml_url.value().strip()
+        if not url or not HuggingFaceDownloader.is_downloadable_url(url):
+            return
+
+        def _fetch_thread():
+            import urllib.request
+            try:
+                direct_url = HuggingFaceDownloader.to_direct_download_url(url)
+                req = urllib.request.Request(
+                    direct_url,
+                    headers={"User-Agent": "Mozilla/5.0 MSST-GUI"}
+                )
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    raw = resp.read(256 * 1024)
+                    text = raw.decode("utf-8", errors="replace")
+                QTimer.singleShot(0, lambda: self._apply_url_yaml_content(url, text))
+            except Exception:
+                pass
+
+        import threading
+        threading.Thread(target=_fetch_thread, daemon=True).start()
+
+    def _apply_url_yaml_content(self, url, text):
+        if self._yaml_url.value().strip() != url:
+            return
+        fn = HuggingFaceDownloader.extract_filename(url)
+        res = classify_yaml_config(text, filename=fn or url)
+        detected_arch = res.get("arch")
+        if detected_arch and detected_arch in ARCH_TYPES:
+            idx = self._arch_combo.findText(detected_arch)
+            if idx >= 0:
+                self._arch_combo.setCurrentIndex(idx)
+        detected_type = res.get("type")
+        if detected_type and detected_type in MODEL_TYPES:
+            idx = self._type_combo.findText(detected_type)
             if idx >= 0:
                 self._type_combo.setCurrentIndex(idx)
 
@@ -2750,7 +3010,6 @@ class SettingsPage(QWidget):
     def _register(self):
         ckpt_src = self._ckpt.value()
         yaml_src = self._yaml.value()
-        arch = self._arch_combo.currentText()
         if not ckpt_src:
             QMessageBox.warning(self, "Missing", "Please select a checkpoint file.")
             return
@@ -2770,6 +3029,18 @@ class SettingsPage(QWidget):
         if yaml_name.lower() == "config.yaml" or yaml_name.lower() == "config.json":
             base = os.path.splitext(ckpt_name)[0]
             yaml_name = base + (ext if ext else ".yaml")
+
+        res_pre = classify_yaml_config(yaml_src, filename=yaml_name)
+        if res_pre.get("arch") and res_pre["arch"] in ARCH_TYPES:
+            idx = self._arch_combo.findText(res_pre["arch"])
+            if idx >= 0:
+                self._arch_combo.setCurrentIndex(idx)
+        if res_pre.get("type") and res_pre["type"] in MODEL_TYPES:
+            idx = self._type_combo.findText(res_pre["type"])
+            if idx >= 0:
+                self._type_combo.setCurrentIndex(idx)
+
+        arch = self._arch_combo.currentText()
 
         backend_script_path = self._backend_script.value().strip()
         custom_backend = bool(backend_script_path) and os.path.isfile(backend_script_path)
@@ -2803,24 +3074,24 @@ class SettingsPage(QWidget):
             self._copy_file(backend_script_path, ckpt_dest_dir, "bs_roformer.py")
             self._ensure_custom_init(ckpt_dest_dir)
 
-        if yaml_name.lower().endswith('.json'):
-            model_type = "dual target (instrumental & vocals)"
+        res_post = classify_yaml_config(yaml_dest, filename=yaml_name)
+        if res_post.get("arch") and res_post["arch"] in ARCH_TYPES:
+            arch = res_post["arch"]
+            idx = self._arch_combo.findText(arch)
+            if idx >= 0:
+                self._arch_combo.setCurrentIndex(idx)
+        if res_post.get("type") and res_post["type"] in MODEL_TYPES:
+            model_type = res_post["type"]
             idx = self._type_combo.findText(model_type)
             if idx >= 0:
                 self._type_combo.setCurrentIndex(idx)
         else:
-            detected = classify_model_type(yaml_dest)
-            if detected and detected in MODEL_TYPES:
-                idx = self._type_combo.findText(detected)
-                if idx >= 0:
-                    self._type_combo.setCurrentIndex(idx)
-        model_type = self._type_combo.currentText()
+            model_type = self._type_combo.currentText()
         self._finalize_registration(ckpt_name, yaml_name, ckpt_dest, yaml_dest, arch, model_type, backend_module)
 
     def _start_download(self):
         ckpt_url = self._ckpt_url.value()
         yaml_url = self._yaml_url.value()
-        arch = self._arch_combo.currentText()
 
         if not ckpt_url:
             QMessageBox.warning(self, "Missing", "Please enter a checkpoint URL.")
@@ -2848,6 +3119,19 @@ class SettingsPage(QWidget):
         if yaml_name.lower() == "config.yaml" or yaml_name.lower() == "config.json":
             base = os.path.splitext(ckpt_name)[0]
             yaml_name = base + ext if ext else ".yaml"
+
+        res_pre = classify_yaml_config(None, filename=yaml_name or yaml_url)
+        if res_pre.get("arch") and res_pre["arch"] in ARCH_TYPES:
+            arch = res_pre["arch"]
+            idx = self._arch_combo.findText(arch)
+            if idx >= 0:
+                self._arch_combo.setCurrentIndex(idx)
+        else:
+            arch = self._arch_combo.currentText()
+        if res_pre.get("type") and res_pre["type"] in MODEL_TYPES:
+            idx = self._type_combo.findText(res_pre["type"])
+            if idx >= 0:
+                self._type_combo.setCurrentIndex(idx)
 
         backend_url_value = self._backend_url.value().strip()
         custom_backend = bool(backend_url_value)
@@ -2919,13 +3203,37 @@ class SettingsPage(QWidget):
             ext = os.path.splitext(yaml_name)[1].lower() or ".yaml"
             base = os.path.splitext(ckpt_name)[0]
             yaml_name = base + ext
-        arch = self._arch_combo.currentText()
-        detected = classify_model_type(yaml_dest)
-        if detected and detected in MODEL_TYPES:
-            idx = self._type_combo.findText(detected)
+
+        res = classify_yaml_config(yaml_dest, filename=yaml_name)
+        detected_arch = res.get("arch")
+        if detected_arch and detected_arch in ARCH_TYPES:
+            arch = detected_arch
+            idx = self._arch_combo.findText(arch)
+            if idx >= 0:
+                self._arch_combo.setCurrentIndex(idx)
+            # Rehome ckpt if arch folder differs from initial guess
+            expected_folder = ARCH_TO_MODEL_FOLDER.get(arch, "models")
+            expected_dir = os.path.abspath(os.path.join(_DATA_ROOT, expected_folder))
+            expected_ckpt = os.path.join(expected_dir, ckpt_name)
+            if os.path.abspath(ckpt_dest) != os.path.abspath(expected_ckpt):
+                try:
+                    os.makedirs(expected_dir, exist_ok=True)
+                    shutil.move(ckpt_dest, expected_ckpt)
+                    ckpt_dest = expected_ckpt
+                except Exception:
+                    pass
+        else:
+            arch = self._arch_combo.currentText()
+
+        detected_type = res.get("type")
+        if detected_type and detected_type in MODEL_TYPES:
+            model_type = detected_type
+            idx = self._type_combo.findText(model_type)
             if idx >= 0:
                 self._type_combo.setCurrentIndex(idx)
-        model_type = self._type_combo.currentText()
+        else:
+            model_type = self._type_combo.currentText()
+
         backend_module = getattr(self, '_pending_backend_module', '')
         if backend_module:
             self._ensure_custom_init(
@@ -2966,12 +3274,16 @@ class SettingsPage(QWidget):
         # fall back to the arch→type map.
         from backend.msst_catalog import guess_registry_engine_type
         engine_model_type = guess_registry_engine_type(yaml_dest, ckpt_name)
+        now_ts = time.time()
+        now_str = datetime.now().strftime("%b %d, %Y  %H:%M")
         model = {
             "name": name, "ckpt": ckpt_dest, "yaml": yaml_dest,
             "arch": arch, "type": model_type,
             "model_type": engine_model_type,
             "backend_module": backend_module,
             "custom_backend_enabled": bool(backend_module),
+            "added": now_str,
+            "added_time": now_ts,
         }
 
         if any(m["name"] == name for m in self._registered):
@@ -2979,23 +3291,27 @@ class SettingsPage(QWidget):
                                     f"{name} is already registered.")
             return
 
-        self._registered.append(model)
-        self._add_item_widget(model)
+        self._registered.insert(0, model)
+        self._add_item_widget(model, at_top=True)
         self.model_registered.emit(model)
         self.settings_changed.emit()
 
-    def _add_item_widget(self, model):
+    def _add_item_widget(self, model, at_top=False):
         item = _ModelCard(
             model["name"], model["arch"],
             model.get("type", "unknown"),
             model["ckpt"], model["yaml"],
+            added=model.get("added"),
             backend_module=model.get("backend_module", ""),
             custom_backend_enabled=model.get("custom_backend_enabled", False),
             parent=self._list_layout.parentWidget(),
         )
         item.remove_requested.connect(self._remove_model)
         item.type_changed.connect(self._on_type_changed)
-        self._list_layout.insertWidget(self._list_layout.count() - 1, item)
+        if at_top:
+            self._list_layout.insertWidget(0, item)
+        else:
+            self._list_layout.insertWidget(self._list_layout.count() - 1, item)
         # No activate()/updateGeometry() here: insertWidget already marks the
         # layout dirty and Qt reflows it once on the next event-loop pass.
         # Forcing activation per card re-lays-out the whole (growing) list
@@ -3088,10 +3404,19 @@ class SettingsPage(QWidget):
         return self._registered
 
     def load_settings(self, models: list):
-        for m in models:
+        sorted_models = sorted(
+            enumerate(models),
+            key=lambda x: _model_sort_key(x[1], x[0]),
+            reverse=True
+        )
+        for orig_idx, m in sorted_models:
             if "backend_module" not in m:
                 m["backend_module"] = ""
                 m["custom_backend_enabled"] = False
+            if "added_time" not in m:
+                m["added_time"] = _model_sort_key(m, orig_idx)
+            if "added" not in m:
+                m["added"] = datetime.fromtimestamp(m["added_time"]).strftime("%b %d, %Y  %H:%M")
             if not any(r["name"] == m["name"] for r in self._registered):
                 self._registered.append(m)
                 self._add_item_widget(m)

@@ -94,18 +94,20 @@ class AutoEnsembleRunner(QObject):
     error = Signal(str)
     model_skipped = Signal(str, str)
 
-    def __init__(self, models, input_path, target_output, ensemble_type, output_dir, parent=None):
+    def __init__(self, models, input_path, target_output, ensemble_type, output_dir, output_format="WAV", parent=None):
         super().__init__()
         self._models = models
         self._input_path = input_path
         self._target_output = target_output
         self._ensemble_type = ensemble_type
         self._output_dir = output_dir
+        self._output_format = output_format or "WAV"
         self._temp_dir = None
         self._cancelled = False
         self._model_outputs = []
         self._skipped_models = []
         self._current_file = None
+        self._current_track_idx = 0
         self._running = False
         self._thread: threading.Thread | None = None
 
@@ -206,6 +208,7 @@ class AutoEnsembleRunner(QObject):
                 self.finished.emit(False, "Cancelled", "")
                 return
 
+            self._current_track_idx = idx
             self._current_file = file_path
             self._model_outputs = []
             self._skipped_models = []
@@ -378,7 +381,8 @@ class AutoEnsembleRunner(QObject):
         return False, f"Model targets '{target_instrument}', not '{self._target_output}'"
 
     def _run_single_inference(self, model):
-        model_output = os.path.join(self._temp_dir, model.get("name", "model"))
+        track_dir = os.path.join(self._temp_dir, f"track_{getattr(self, '_current_track_idx', 0)}")
+        model_output = os.path.join(track_dir, model.get("name", "model"))
         os.makedirs(model_output, exist_ok=True)
 
         ckpt_path = model.get("ckpt", "")
@@ -392,7 +396,7 @@ class AutoEnsembleRunner(QObject):
             self.log_line.emit(f"ERROR: YAML file not found: {yaml_path}")
             return None
 
-        input_dir = os.path.join(self._temp_dir, f"input_{model.get('name', 'model')}")
+        input_dir = os.path.join(track_dir, f"input_{model.get('name', 'model')}")
         os.makedirs(input_dir, exist_ok=True)
 
         input_filename = os.path.basename(self._current_file)
@@ -599,9 +603,20 @@ class AutoEnsembleRunner(QObject):
             self.error.emit(f"Not enough stem files for ensemble. Found {len(stem_files)}, need at least 2.")
             return
 
+        fmt_str = (getattr(self, "_output_format", "WAV") or "WAV").upper()
+        if "FLAC" in fmt_str:
+            out_ext = ".flac"
+            ens_fmt = "FLAC_24"
+        elif "MP3" in fmt_str:
+            out_ext = ".mp3"
+            ens_fmt = "WAV_FLOAT"
+        else:
+            out_ext = ".wav"
+            ens_fmt = "WAV_FLOAT"
+
         ensemble_output = os.path.join(
             self._output_dir,
-            format_output_filename(self._current_file, self._target_output))
+            format_output_filename(self._current_file, self._target_output, ext=out_ext))
 
         type_map = {
             "Average": "avg_wave",
@@ -616,6 +631,7 @@ class AutoEnsembleRunner(QObject):
             "--files", *stem_files,
             "--type", ensemble_algo,
             "--output", ensemble_output,
+            "--output_format", ens_fmt,
         ]
 
         self.log_line.emit(f"Running ensemble ({ensemble_algo}) on {len(stem_files)} files...")
@@ -632,7 +648,8 @@ class AutoEnsembleRunner(QObject):
             self.ensemble_progress.emit(100)
             self.log_line.emit(f"Ensemble output saved to: {ensemble_output}")
         else:
-            self.error.emit("Ensemble processing failed.")
+            self.log_line.emit(f"ERROR: Ensemble processing failed for {os.path.basename(self._current_file)}")
+            raise RuntimeError(f"Ensemble processing failed for {os.path.basename(self._current_file)}")
 
     def _save_metadata(self):
         metadata_path = os.path.join(self._output_dir, "ensemble_info.json")

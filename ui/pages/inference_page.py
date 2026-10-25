@@ -44,6 +44,7 @@ from backend.mvsep_scores import (
     sdr_line,
 )
 from backend.gpu_utils import list_gpus, device_ids_from_selection
+from backend import runtime_setup
 from backend import settings as settings_store
 from backend import msst_catalog as model_catalog
 from backend.msst_catalog import (
@@ -3871,8 +3872,14 @@ class InferencePage(QWidget):
                     "Use CPU only as a fallback.")
         self._device_combo = self._dev_row.combo
         if self._device_combo.count() > 1:
-            # Default to the first GPU when one is available (index 0 is CPU).
-            self._device_combo.setCurrentIndex(1)
+            # Default to the first GPU when one is available (index 0 is CPU),
+            # unless all detected GPUs are ancient Kepler/pre-Maxwell (CC < 5.0) which PyTorch cannot run.
+            gpus = runtime_setup.detect_gpus()
+            caps = [c for _, c in gpus]
+            if caps and all(c < 5.0 for c in caps):
+                self._device_combo.setCurrentIndex(0)
+            else:
+                self._device_combo.setCurrentIndex(1)
         cfg.addWidget(self._dev_row)
 
         self._optional = OptionalFold()
@@ -5675,9 +5682,6 @@ class InferencePage(QWidget):
             self.btn_stop.setEnabled(False)
         if code == 0:
             self._report_written_files()
-        if not batch:
-            self.process_running.emit(False)
-        if code == 0:
             self.log_output.emit("Completed: processing")
         else:
             # A native child crash (e.g. exit code 0xC0000005) is readable
@@ -5686,6 +5690,8 @@ class InferencePage(QWidget):
             self.log_output.emit(
                 f"ERROR: processing failed (exit code {code_str})")
             print(f"[RUN FAILED] exit code {code_str}", flush=True)
+        if not batch:
+            self.process_running.emit(False)
         if self._tmp_input and os.path.isdir(self._tmp_input):
             import shutil
             try: shutil.rmtree(self._tmp_input)

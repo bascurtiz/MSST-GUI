@@ -9,6 +9,8 @@ import os
 import json
 import shutil
 import requests
+import time
+from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 from backend.paths import REPO_ROOT, APP_DIR
@@ -351,6 +353,8 @@ def install_model(
     # Register in settings
     data = settings_store.load()
     models = data.setdefault("registered_models", [])
+    now_ts = time.time()
+    now_str = datetime.now().strftime("%b %d, %Y  %H:%M")
     entry = {
         "name": ckpt_name,
         "ckpt": os.path.normpath(ckpt_dest),
@@ -364,8 +368,10 @@ def install_model(
         "type": info.stem_type,
         "backend_module": backend_module,
         "custom_backend_enabled": custom_backend,
+        "added": now_str,
+        "added_time": now_ts,
     }
-    models.append(entry)
+    models.insert(0, entry)
     settings_store.save(data)
 
     if status_callback:

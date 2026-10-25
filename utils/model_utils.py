@@ -189,12 +189,14 @@ def demix(
         num_overlap = config.inference.num_overlap
         step = chunk_size // num_overlap
     else:
-        if 'chunk_size' in config.inference:
+        if hasattr(config, 'inference') and 'inference' in config and 'chunk_size' in config.inference:
             chunk_size = config.inference.chunk_size
-        else:
+        elif hasattr(config, 'audio') and 'audio' in config and 'chunk_size' in config.audio:
             chunk_size = config.audio.chunk_size
+        else:
+            chunk_size = 132300
         num_instruments = len(prefer_target_instrument(config))
-        num_overlap = config.inference.num_overlap
+        num_overlap = config.inference.num_overlap if (hasattr(config, 'inference') and 'inference' in config and 'num_overlap' in config.inference) else 2
 
         fade_size = chunk_size // 10
         step = chunk_size // num_overlap
@@ -205,7 +207,7 @@ def demix(
         if length_init > 2 * border and border > 0:
             mix = nn.functional.pad(mix, (border, border), mode="reflect")
 
-    batch_size = config.inference.batch_size
+    batch_size = config.inference.batch_size if (hasattr(config, 'inference') and 'inference' in config and 'batch_size' in config.inference) else 1
 
     use_amp = effective_use_amp(config)
 
@@ -244,6 +246,8 @@ def demix(
                 if len(batch_data) >= batch_size or i >= mix.shape[1]:
                     arr = torch.stack(batch_data, dim=0)
                     x = model(arr)
+                    if x.ndim == 3:
+                        x = x.unsqueeze(1)
 
                     if mode == "generic":
                         window = windowing_array.clone() # using clone() fixes the clicks at chunk edges when using batch_size=1
@@ -342,18 +346,32 @@ def assert_cuda_available(feature: str, remedy: str) -> None:
 def effective_use_amp(config: ConfigDict) -> bool:
     """Whether mixed precision should be active for a run.
 
-    AMP (torch.cuda.amp autocast / GradScaler) needs CUDA; on a CPU-only
-    runtime it is turned off with a notice instead of failing deep inside
-    autocast or the gradient scaler.
+    AMP (torch.cuda.amp autocast / GradScaler) needs CUDA and hardware FP16
+    support (compute capability >= 6.0). On CPU or legacy GPUs (Maxwell CC < 6.0),
+    AMP is disabled with a notice because Maxwell lacks native FP16 execution units,
+    which causes driver timeouts (TDR) and kernel crashes.
     """
     use_amp = getattr(config.training, 'use_amp', True)
-    if use_amp and not torch.cuda.is_available():
+    if not use_amp:
+        return False
+    if not torch.cuda.is_available():
         should_print = not dist.is_initialized() or dist.get_rank() == 0
         if should_print:
             print("CUDA is not available - disabling mixed precision (AMP) "
                   "for this run; it will use full float32 precision.")
         return False
-    return use_amp
+    try:
+        cur_dev = torch.cuda.current_device()
+        major, minor = torch.cuda.get_device_capability(cur_dev)
+        if major < 6:
+            should_print = not dist.is_initialized() or dist.get_rank() == 0
+            if should_print:
+                print(f"GPU Compute Capability {major}.{minor} < 6.0 (Maxwell/legacy) lacks native FP16 support "
+                      "- disabling mixed precision (AMP) for safe float32 execution.")
+            return False
+    except Exception:
+        pass
+    return True
 
 
 def get_optimizer(config: ConfigDict, model: torch.nn.Module) -> torch.optim.Optimizer:
@@ -621,10 +639,12 @@ def prefer_target_instrument(config: ConfigDict) -> List[str]:
         List[str]
             A list of target instruments.
         """
-    if getattr(config.training, 'target_instrument', None):
-        return [config.training.target_instrument]
-    else:
-        return config.training.instruments
+    if hasattr(config, 'training') and 'training' in config:
+        if getattr(config.training, 'target_instrument', None):
+            return [config.training.target_instrument]
+        if getattr(config.training, 'instruments', None):
+            return list(config.training.instruments)
+    return ['restored'] if getattr(config, 'model_type', None) == 'apollo' else ['target']
 
 
 def load_not_compatible_weights(model: torch.nn.Module, old_model: dict, verbose: bool = False) -> None:
@@ -658,6 +678,12 @@ def load_not_compatible_weights(model: torch.nn.Module, old_model: dict, verbose
     if 'model_state_dict' in old_model:
         # Fix for full_check_point
         old_model = old_model['model_state_dict']
+
+    if isinstance(old_model, dict):
+        if any(k.startswith('audio_model.') for k in old_model):
+            old_model = {k[len('audio_model.'):]: v for k, v in old_model.items() if k.startswith('audio_model.')}
+        elif any(k.startswith('model.') for k in old_model):
+            old_model = {k[len('model.'):]: v for k, v in old_model.items() if k.startswith('model.')}
 
     for el in new_model:
         if el in old_model:
@@ -865,6 +891,12 @@ def load_start_checkpoint(args: argparse.Namespace,
             # Fix for apollo pretrained models
             if 'state_dict' in old_model:
                 old_model = old_model['state_dict']
+            if isinstance(old_model, dict):
+                if any(k.startswith('audio_model.') for k in old_model):
+                    old_model = {k[len('audio_model.'):]: v for k, v in old_model.items() if k.startswith('audio_model.')}
+                elif any(k.startswith('model.') for k in old_model):
+                    old_model = {k[len('model.'):]: v for k, v in old_model.items() if k.startswith('model.')}
+                old_model = {k: v for k, v in old_model.items() if k != '_metadata'}
         else:
             if 'state' in old_model:
                 # Fix for htdemucs weights loading

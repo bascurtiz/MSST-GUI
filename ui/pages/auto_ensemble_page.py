@@ -784,6 +784,7 @@ class AutoEnsemblePage(QWidget):
         self._stem_type = ""
         self._target_output = ""
         self._ensemble_type = "Average"
+        self._format = "WAV"
         self._input_audio = ""
         self._output_dir = ""
         self._runner = None
@@ -1122,6 +1123,7 @@ class AutoEnsemblePage(QWidget):
     def _on_quality(self, btn):
         for b in self._quality_btns:
             b.set_selected(b is btn)
+        self._format = btn.text()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1339,6 +1341,7 @@ class AutoEnsemblePage(QWidget):
         self._runner = AutoEnsembleRunner(
             selected, self._input_audio, self._target_output,
             self._ensemble_type, self._output_dir,
+            output_format=getattr(self, "_format", "WAV"),
         )
         self._runner.stage_changed.connect(self._on_stage_changed)
         self._runner.model_progress.connect(self._on_model_progress)

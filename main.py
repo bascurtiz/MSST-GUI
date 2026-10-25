@@ -409,6 +409,7 @@ def main():
     # Windows never bitmap-stretches the frozen exe (UVR5's DPI-unaware path).
     enable_hidpi()
     install_show_hook()
+    os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia*=false;qt.multimedia.ffmpeg*=false")
     app = QApplication(sys.argv)
     global _STARTUP_WINDOW_FILTER
     _STARTUP_WINDOW_FILTER = _SuppressUntitledWindows(app)
