@@ -95,3 +95,28 @@ def test_get_ckpt_settings_variations():
     finally:
         settings_store.save_ckpt_settings("mbr_karaoke_becruily.ckpt", {})
 
+
+def test_inference_page_global_overlap():
+    """Verify that InferencePage has global Overlap control in Optional fold and saves/loads it."""
+    from ui.pages.inference_page import InferencePage
+    app = QApplication.instance() or QApplication([])
+
+    page = InferencePage()
+    assert hasattr(page, "_overlap_combo")
+    items = [page._overlap_combo.itemText(i) for i in range(page._overlap_combo.count())]
+    assert items == ["Default", "1", "2", "3", "4"]
+
+    # Test save_settings includes overlap
+    page._overlap_combo.setCurrentText("1")
+    saved = page.save_settings()
+    assert saved.get("overlap") == "1"
+
+    # Test load_settings restores overlap
+    page.load_settings({"overlap": "2"})
+    assert page._overlap_combo.currentText() == "2"
+
+    page.load_settings({"overlap": "Default"})
+    assert page._overlap_combo.currentText() == "Default"
+    page.deleteLater()
+
+

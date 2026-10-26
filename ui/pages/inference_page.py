@@ -3895,12 +3895,21 @@ class InferencePage(QWidget):
         self._bigshifts_combo = self._bigshifts_row.combo
         opt.addWidget(_PairRow(self._tta_row, self._bigshifts_row))
 
+        self._overlap_row = _ComboRow(
+            None, "Overlap", ["Default", "1", "2", "3", "4"],
+            tooltip="Sliding-window overlap passes for chunk blending.\n"
+                    "• Default: use model YAML or per-checkpoint override\n"
+                    "• 1: single pass (fastest, ~2x faster, matches UVR5 speed)\n"
+                    "• 2: 50% overlap (recommended for high blending quality)\n"
+                    "• 3 / 4: higher overlap (ultra-clean, but multiplies runtime)")
+        self._overlap_combo = self._overlap_row.combo
+
         self._spectro_row = _ComboRow(
             None, "Spectro", ["Disabled", "5s", "10s", "30s"],
             tooltip="Save preview spectrograms of each stem (--draw_spectro).\n"
                     "Value is how many seconds of the track to plot.")
         self._spectro_combo = self._spectro_row.combo
-        opt.addWidget(self._spectro_row)
+        opt.addWidget(_PairRow(self._overlap_row, self._spectro_row))
 
         self._skip_row = _SwitchRow(
             "Skip errors", "Disabled", "Enabled",
@@ -4965,6 +4974,7 @@ class InferencePage(QWidget):
             "output_format": self._fmt_combo.currentText(),
             "tta":           self._tta_row.currentText(),
             "bigshifts":     self._bigshifts_combo.currentText(),
+            "overlap":       self._overlap_combo.currentText(),
             "spectrogram":   self._spectro_combo.currentText(),
             "skip_errors":   self._skip_row.currentText(),
             "lora_mode":     self._lora_mode_text(),
@@ -5016,6 +5026,25 @@ class InferencePage(QWidget):
         if not isinstance(bigshifts, str): bigshifts = "Disabled"
         idx = self._bigshifts_combo.findText(bigshifts)
         if idx >= 0: self._bigshifts_combo.setCurrentIndex(idx)
+        if "overlap" in d:
+            overlap = d.get("overlap", "Default")
+            if isinstance(overlap, int):
+                overlap = str(overlap)
+            if not isinstance(overlap, str):
+                overlap = "Default"
+            idx = self._overlap_combo.findText(overlap)
+            if idx >= 0:
+                self._overlap_combo.setCurrentIndex(idx)
+        else:
+            try:
+                gpus = runtime_setup.detect_gpus()
+                caps = [c for _, c in gpus]
+                if caps and all(c < 6.0 for c in caps):
+                    idx1 = self._overlap_combo.findText("1")
+                    if idx1 >= 0:
+                        self._overlap_combo.setCurrentIndex(idx1)
+            except Exception:
+                pass
         spectro = d.get("spectrogram", "Disabled")
         if not isinstance(spectro, str): spectro = "Disabled"
         idx = self._spectro_combo.findText(spectro)
@@ -5224,6 +5253,13 @@ class InferencePage(QWidget):
         except (TypeError, ValueError):
             bigshifts = 1
 
+        overlap_text = getattr(self, "_overlap_combo", None)
+        overlap_val = overlap_text.currentText() if overlap_text else "Default"
+        try:
+            forced_overlap = int(overlap_val) if overlap_val != "Default" else None
+        except (TypeError, ValueError):
+            forced_overlap = None
+
         # Apply per-ckpt settings and stem selection to YAML
         self._tmp_yaml = None
         ckpt_name = self._selected_model.get("name", "")
@@ -5255,7 +5291,7 @@ class InferencePage(QWidget):
                 and any(s != target_inst for s in sel_lower)):
             effective_save_rest = True
 
-        needs_mod = bool(ckpt_settings) or custom_selection or save_rest
+        needs_mod = bool(ckpt_settings) or (forced_overlap is not None) or custom_selection or save_rest
 
         if needs_mod and yaml_path and os.path.isfile(yaml_path):
             try:
@@ -5287,7 +5323,10 @@ class InferencePage(QWidget):
                     else:
                         config["inference"]["chunk_size"] = raw_cs
                     applied_parts.append(f"chunk_size={config['inference']['chunk_size']}")
-                if "overlap" in ckpt_settings:
+                if forced_overlap is not None:
+                    config["inference"]["num_overlap"] = forced_overlap
+                    applied_parts.append(f"overlap={forced_overlap} (global)")
+                elif "overlap" in ckpt_settings:
                     config["inference"]["num_overlap"] = ckpt_settings["overlap"]
                     applied_parts.append(f"overlap={ckpt_settings['overlap']}")
                 if "batch_size" in ckpt_settings:
