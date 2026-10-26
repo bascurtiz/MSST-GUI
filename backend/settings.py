@@ -44,6 +44,36 @@ def load_ckpt_settings() -> dict:
     return data.get("ckpt_settings", {})
 
 
+def get_ckpt_settings(name: str, ckpt_path: str = "") -> dict:
+    """Retrieve checkpoint settings by name, filename, or stem (case-insensitive)."""
+    data = load_ckpt_settings()
+    if not data:
+        return {}
+    candidates = []
+    if name:
+        candidates.append(name)
+        base = os.path.basename(name)
+        candidates.append(base)
+        stem = os.path.splitext(base)[0]
+        candidates.append(stem)
+        candidates.append(stem + ".ckpt")
+    if ckpt_path:
+        base = os.path.basename(ckpt_path)
+        candidates.append(base)
+        stem = os.path.splitext(base)[0]
+        candidates.append(stem)
+        candidates.append(stem + ".ckpt")
+
+    for c in candidates:
+        if c in data:
+            return data[c]
+    lower_map = {k.lower(): v for k, v in data.items()}
+    for c in candidates:
+        if c.lower() in lower_map:
+            return lower_map[c.lower()]
+    return {}
+
+
 def save_ckpt_settings(ckpt_name: str, settings: dict) -> None:
     data = load()
     if "ckpt_settings" not in data:

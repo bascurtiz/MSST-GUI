@@ -48,13 +48,19 @@ def test_torch_specs_has_cu118():
 
 
 def test_effective_use_amp_maxwell_safety():
-    """Verify that effective_use_amp disables AMP on CC < 6.0 (Maxwell)."""
+    """Verify that effective_use_amp enables AMP on CC >= 5.0 (Maxwell) and disables on Kepler (< 5.0)."""
     cfg = ConfigDict({"training": {"use_amp": True}})
 
     with patch("torch.cuda.is_available", return_value=True), \
          patch("torch.cuda.current_device", return_value=0), \
          patch("torch.cuda.get_device_capability", return_value=(5, 2)):
-        # On Maxwell (CC 5.2), AMP must be turned off for float32 safety
+        # On Maxwell (CC 5.2), AMP is enabled for 50% VRAM savings on 4GB GPUs
+        assert effective_use_amp(cfg) is True
+
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.current_device", return_value=0), \
+         patch("torch.cuda.get_device_capability", return_value=(3, 5)):
+        # On Kepler (CC 3.5), AMP must be turned off
         assert effective_use_amp(cfg) is False
 
     with patch("torch.cuda.is_available", return_value=True), \
@@ -65,7 +71,7 @@ def test_effective_use_amp_maxwell_safety():
 
 
 def test_attend_maxwell_safety():
-    """Verify that BS-Roformer Attend disables mem_efficient attention on CC < 6.0."""
+    """Verify that BS-Roformer Attend enables mem_efficient attention on non-Ampere GPUs."""
     from models.bs_roformer.attend import Attend
 
     mock_props = MagicMock()
@@ -78,8 +84,8 @@ def test_attend_maxwell_safety():
         assert attn.cuda_config is not None
         assert attn.cuda_config.enable_flash is False
         assert attn.cuda_config.enable_math is True
-        # Memory-efficient (Cutlass) must be False on Maxwell to prevent driver crash!
-        assert attn.cuda_config.enable_mem_efficient is False
+        # Memory-efficient attention must be True to prevent OOM
+        assert attn.cuda_config.enable_mem_efficient is True
 
 
 def test_runtime_dialog_combobox_options():
@@ -100,3 +106,42 @@ def test_runtime_dialog_combobox_options():
         # Because detect_gpus returned CC 5.2, the selected item should be cu118
         selected_line = dlg._line_combo.itemData(dlg._line_combo.currentIndex())
         assert selected_line == "cu118"
+
+
+def test_dim_t_chunk_size_and_low_vram_clamping():
+    """Verify inference dim_t resolution and low-VRAM safety clamping."""
+    from utils.model_utils import demix
+    import torch
+
+    # Model mock
+    model = MagicMock(spec=torch.nn.Module)
+    model.stereo = True
+    model.audio_channels = 2
+    # Returns (batch, instruments, channels, samples)
+    model.side_effect = lambda x: torch.zeros((x.shape[0], 2, 2, x.shape[-1]))
+
+    # Config with audio.chunk_size = 882000, inference.dim_t = 256, batch_size = 4
+    cfg = ConfigDict({
+        "audio": {"chunk_size": 882000, "hop_length": 441},
+        "model": {"stft_hop_length": 441, "num_scales": 5},
+        "training": {"instruments": ["vocals", "instrumental"], "use_amp": True},
+        "inference": {"dim_t": 256, "batch_size": 4, "num_overlap": 2}
+    })
+
+    # Short 1-second mix
+    mix = torch.zeros((2, 44100), dtype=torch.float32)
+
+    mock_props = MagicMock()
+    mock_props.name = "GeForce GTX 960"
+    mock_props.major = 5
+    mock_props.minor = 2
+    mock_props.total_memory = int(4.0 * (1024 ** 3))  # 4 GB VRAM
+
+    with patch("torch.cuda.is_available", return_value=True), \
+         patch("torch.cuda.current_device", return_value=0), \
+         patch("torch.cuda.get_device_capability", return_value=(5, 2)), \
+         patch("torch.cuda.get_device_properties", return_value=mock_props):
+        device = torch.device("cuda:0")
+        out = demix(cfg, model, mix, device, "bs_roformer")
+        assert "vocals" in out
+        assert "instrumental" in out

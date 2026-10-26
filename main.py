@@ -16,6 +16,10 @@ Debugging the frozen exe:
 import sys
 import os
 
+# Prevent CUDA memory fragmentation on memory-constrained GPUs (e.g. 4-6 GB)
+_alloc_conf = "max_split_size_mb:128" if sys.platform == "win32" else "expandable_segments:True"
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", _alloc_conf)
+
 if getattr(sys, "frozen", False):
     BASE = sys._MEIPASS
     sys.path.insert(0, BASE)

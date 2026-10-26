@@ -1197,7 +1197,7 @@ class MainWindow(QMainWindow):
 
     # —— Ckpt Settings Dialog ——————————————————————————————————————————
     def _show_ckpt_settings(self, name, ckpt, yaml_path, arch):
-        existing = settings_store.load_ckpt_settings().get(name, {})
+        existing = settings_store.get_ckpt_settings(name, ckpt)
         dialog = CkptSettingsDialog(name, yaml_path, arch, existing, self)
         dialog.settings_saved.connect(self._on_ckpt_settings_saved)
         self.show_blurred_dialog(dialog)

@@ -148,6 +148,8 @@ class ProcessRunner(QObject):
             # by the utf-8 decode below. UTF-8 mode also makes the child's
             # file writes (train_log.txt) utf-8, matching the GUI's own.
             env['PYTHONUTF8'] = '1'
+            _alloc_conf = "max_split_size_mb:128" if sys.platform == "win32" else "expandable_segments:True"
+            env.setdefault('PYTORCH_CUDA_ALLOC_CONF', _alloc_conf)
             env.update(self._extra_env)
             popen_kw = dict(
                 stdout=subprocess.PIPE,

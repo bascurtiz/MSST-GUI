@@ -22,8 +22,8 @@ try:
 except ImportError:
     # peft is now part of requirements-runtime / requirements_gui; on an env
     # that predates it there is nothing meaningful to regression-test.
-    print("SKIP: peft not installed")
-    sys.exit(0)
+    import pytest
+    pytest.skip("peft not installed", allow_module_level=True)
 
 from ml_collections import ConfigDict
 

@@ -189,12 +189,57 @@ def demix(
         num_overlap = config.inference.num_overlap
         step = chunk_size // num_overlap
     else:
-        if hasattr(config, 'inference') and 'inference' in config and 'chunk_size' in config.inference:
-            chunk_size = config.inference.chunk_size
-        elif hasattr(config, 'audio') and 'audio' in config and 'chunk_size' in config.audio:
-            chunk_size = config.audio.chunk_size
+        inf_node = config.get('inference', {}) if hasattr(config, 'get') else getattr(config, 'inference', None)
+        aud_node = config.get('audio', {}) if hasattr(config, 'get') else getattr(config, 'audio', None)
+        mod_node = config.get('model', {}) if hasattr(config, 'get') else getattr(config, 'model', None)
+
+        def _get_val(node, key):
+            if node is None:
+                return None
+            if hasattr(node, 'get'):
+                return node.get(key)
+            return getattr(node, key, None)
+
+        inf_cs = _get_val(inf_node, 'chunk_size')
+        inf_dim_t = _get_val(inf_node, 'dim_t')
+        aud_cs = _get_val(aud_node, 'chunk_size')
+
+        if inf_cs:
+            chunk_size = inf_cs
+        elif inf_dim_t:
+            hop = _get_val(mod_node, 'stft_hop_length') or _get_val(aud_node, 'hop_length') or 441
+            chunk_size = hop * (inf_dim_t - 1)
+        elif aud_cs:
+            chunk_size = aud_cs
         else:
             chunk_size = 132300
+
+        # Safety clamp for low-VRAM / legacy GPUs (<= 4.5 GB, e.g. GTX 900 series sm_52):
+        # On Maxwell hardware under Windows WDDM, chunks larger than ~352,800 samples (~8.0s)
+        # cause individual kernel execution times to exceed the Windows TDR (Timeout Detection
+        # and Recovery) watchdog limit, resulting in "CUDA error: the launch timed out and was terminated".
+        # Clamping chunk_size to 352,359 samples allows inference to run stably without TDR timeouts.
+        dev_obj = torch.device(device) if not isinstance(device, torch.device) else device
+        if dev_obj.type == 'cuda' and torch.cuda.is_available():
+            try:
+                dev_idx = dev_obj.index if dev_obj.index is not None else torch.cuda.current_device()
+                vram_gb = torch.cuda.get_device_properties(dev_idx).total_memory / (1024 ** 3)
+                major, _ = torch.cuda.get_device_capability(dev_idx)
+                if (vram_gb <= 4.5 or major < 6) and chunk_size > 352800:
+                    hop = _get_val(mod_node, 'stft_hop_length') or _get_val(aud_node, 'hop_length') or 441
+                    num_scales = _get_val(mod_node, 'num_scales') or 5
+                    align = 2 ** num_scales if isinstance(num_scales, int) else 32
+                    raw_cs = 352800
+                    T = raw_cs // hop + 1
+                    aligned_T = max(align, (T // align) * align)
+                    clamped_chunk = (aligned_T - 1) * hop
+                    if should_print:
+                        print(f"Low VRAM / legacy GPU detected ({vram_gb:.1f} GB, CC {major}.x) - clamping chunk_size "
+                              f"from {chunk_size} to {clamped_chunk} to prevent Windows TDR driver timeout.")
+                    chunk_size = clamped_chunk
+            except Exception:
+                pass
+
         num_instruments = len(prefer_target_instrument(config))
         num_overlap = config.inference.num_overlap if (hasattr(config, 'inference') and 'inference' in config and 'num_overlap' in config.inference) else 2
 
@@ -208,6 +253,20 @@ def demix(
             mix = nn.functional.pad(mix, (border, border), mode="reflect")
 
     batch_size = config.inference.batch_size if (hasattr(config, 'inference') and 'inference' in config and 'batch_size' in config.inference) else 1
+
+    # Safety clamp batch_size on low VRAM GPUs (<= 6.0 GB, e.g. GTX 960 4GB or RTX 2060 6GB)
+    dev_obj = torch.device(device) if not isinstance(device, torch.device) else device
+    if dev_obj.type == 'cuda' and torch.cuda.is_available() and batch_size > 1:
+        try:
+            dev_idx = dev_obj.index if dev_obj.index is not None else torch.cuda.current_device()
+            vram_gb = torch.cuda.get_device_properties(dev_idx).total_memory / (1024 ** 3)
+            if vram_gb <= 6.0:
+                if should_print:
+                    print(f"Low VRAM GPU detected ({vram_gb:.1f} GB <= 6.0 GB) - clamping batch_size "
+                          f"from {batch_size} to 1 to prevent out of memory.")
+                batch_size = 1
+        except Exception:
+            pass
 
     use_amp = effective_use_amp(config)
 
@@ -266,6 +325,7 @@ def demix(
 
                     batch_data.clear()
                     batch_locations.clear()
+                    del arr, x
 
                 if progress_bar:
                     progress_bar.update(step)
@@ -346,10 +406,11 @@ def assert_cuda_available(feature: str, remedy: str) -> None:
 def effective_use_amp(config: ConfigDict) -> bool:
     """Whether mixed precision should be active for a run.
 
-    AMP (torch.cuda.amp autocast / GradScaler) needs CUDA and hardware FP16
-    support (compute capability >= 6.0). On CPU or legacy GPUs (Maxwell CC < 6.0),
-    AMP is disabled with a notice because Maxwell lacks native FP16 execution units,
-    which causes driver timeouts (TDR) and kernel crashes.
+    AMP (torch.cuda.amp autocast / GradScaler) needs CUDA and device compute
+    capability >= 5.0 (Maxwell or newer). On Maxwell (CC 5.x), PyTorch autocast
+    executes half-precision math instructions and halves VRAM footprint, which is
+    essential for fitting models on 4 GB GPUs (e.g. GTX 960/970/980).
+    On CPU or legacy Kepler (CC < 5.0), AMP is disabled.
     """
     use_amp = getattr(config.training, 'use_amp', True)
     if not use_amp:
@@ -363,10 +424,10 @@ def effective_use_amp(config: ConfigDict) -> bool:
     try:
         cur_dev = torch.cuda.current_device()
         major, minor = torch.cuda.get_device_capability(cur_dev)
-        if major < 6:
+        if major < 5:
             should_print = not dist.is_initialized() or dist.get_rank() == 0
             if should_print:
-                print(f"GPU Compute Capability {major}.{minor} < 6.0 (Maxwell/legacy) lacks native FP16 support "
+                print(f"GPU Compute Capability {major}.{minor} < 5.0 lacks CUDA FP16 support "
                       "- disabling mixed precision (AMP) for safe float32 execution.")
             return False
     except Exception:

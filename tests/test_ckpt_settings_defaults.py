@@ -76,3 +76,22 @@ def test_ckpt_settings_save_and_delete():
 
     settings_store.save_ckpt_settings("test_apollo.ckpt", {})
     assert "test_apollo.ckpt" not in settings_store.load_ckpt_settings()
+
+
+def test_get_ckpt_settings_variations():
+    """Verify that get_ckpt_settings matches by name, basename, stem, and case-insensitively."""
+    settings_store.save_ckpt_settings("mbr_karaoke_becruily.ckpt", {"overlap": 1, "chunk_size": 352800})
+    try:
+        # Match by exact name with .ckpt
+        assert settings_store.get_ckpt_settings("mbr_karaoke_becruily.ckpt")["overlap"] == 1
+        # Match by stem without .ckpt
+        assert settings_store.get_ckpt_settings("mbr_karaoke_becruily")["overlap"] == 1
+        # Match by full path
+        assert settings_store.get_ckpt_settings("Random Display Name", r"E:\models\melband_roformer\mbr_karaoke_becruily.ckpt")["overlap"] == 1
+        # Case insensitive match
+        assert settings_store.get_ckpt_settings("MBR_KARAOKE_BECRUILY.CKPT")["overlap"] == 1
+        # Non-existent
+        assert settings_store.get_ckpt_settings("non_existent_model") == {}
+    finally:
+        settings_store.save_ckpt_settings("mbr_karaoke_becruily.ckpt", {})
+

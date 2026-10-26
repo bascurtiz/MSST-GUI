@@ -1,14 +1,18 @@
 # coding: utf-8
 __author__ = 'Roman Solovyev (ZFTurbo): https://github.com/ZFTurbo/'
 
-import time
-import librosa
 import sys
 import os
+# Prevent CUDA memory fragmentation on memory-constrained GPUs (e.g. 4-6 GB)
+_alloc_conf = "max_split_size_mb:128" if sys.platform == "win32" else "expandable_segments:True"
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", _alloc_conf)
+
+import time
 import glob
 import torch
 import soundfile as sf
 import numpy as np
+import librosa
 from tqdm.auto import tqdm
 import torch.nn as nn
 
@@ -379,7 +383,7 @@ def proc_folder(dict_args):
             major, minor = torch.cuda.get_device_capability(dev_idx)
             cuda_ver = torch.version.cuda or ""
             if major < 6:
-                # Disable cuDNN benchmark on legacy cards — algorithm probing can fault
+                # Disable cuDNN benchmark on legacy cards — algorithm probing can trigger Windows TDR driver timeouts
                 torch.backends.cudnn.benchmark = False
                 if cuda_ver.startswith("12."):
                     print(

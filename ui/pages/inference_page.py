@@ -5227,7 +5227,7 @@ class InferencePage(QWidget):
         # Apply per-ckpt settings and stem selection to YAML
         self._tmp_yaml = None
         ckpt_name = self._selected_model.get("name", "")
-        ckpt_settings = settings_store.load_ckpt_settings().get(ckpt_name, {})
+        ckpt_settings = settings_store.get_ckpt_settings(ckpt_name, ckpt)
 
         selected_stems = self._output_stems_row.get_selected_stems()
         save_rest = self._output_stems_row.get_save_rest()
@@ -5263,13 +5263,15 @@ class InferencePage(QWidget):
                     config = yaml.load(f, Loader=yaml.FullLoader)
                 if "inference" not in config:
                     config["inference"] = {}
+                applied_parts = []
                 if "chunk_size" in ckpt_settings:
                     raw_cs = ckpt_settings["chunk_size"]
                     # SW yamls set audio.hop_length: 441 ("don't work —
                     # use in model"). Align chunks to the STFT hop the
                     # RoFormer actually uses (model.stft_hop_length, 512).
                     is_roformer = (
-                        engine_type in ("bs_roformer", "mel_band_roformer")
+                        effective_type in ("bs_roformer", "mel_band_roformer")
+                        or model_type in ("bs_roformer", "mel_band_roformer")
                         or "roformer" in str(arch).lower()
                         or "roformer" in str(config.get("training", {}).get("model_type", "")).lower()
                     )
@@ -5284,10 +5286,16 @@ class InferencePage(QWidget):
                         config["inference"]["chunk_size"] = (aligned_T - 1) * hop
                     else:
                         config["inference"]["chunk_size"] = raw_cs
+                    applied_parts.append(f"chunk_size={config['inference']['chunk_size']}")
                 if "overlap" in ckpt_settings:
                     config["inference"]["num_overlap"] = ckpt_settings["overlap"]
+                    applied_parts.append(f"overlap={ckpt_settings['overlap']}")
                 if "batch_size" in ckpt_settings:
                     config["inference"]["batch_size"] = ckpt_settings["batch_size"]
+                    applied_parts.append(f"batch_size={ckpt_settings['batch_size']}")
+
+                if applied_parts:
+                    self.log_output.emit(f"Applied checkpoint override: {', '.join(applied_parts)}")
 
                 resolved = resolve_target(
                     config, selected_stems, effective_save_rest, custom_selection)
@@ -5301,8 +5309,8 @@ class InferencePage(QWidget):
                 yaml.dump(config, self._tmp_yaml, default_flow_style=False)
                 self._tmp_yaml.close()
                 yaml_path = self._tmp_yaml.name
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[inference_page] Failed to prepare modified YAML: {e}", flush=True)
 
         # Nest single-inference outputs under a per-checkpoint subfolder
         # ("<output>/<ckpt>/<song> (<stem>)"), matching the per-ckpt layout the
